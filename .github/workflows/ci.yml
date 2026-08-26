@@ -19,4 +19,5 @@ jobs:
       - run: go test ./...
       - uses: golangci/golangci-lint-action@v6
         with:
+          version: v2.12.2
           args: --build-tags with_quic,with_utls,with_gvisor
