@@ -12,7 +12,7 @@ jobs:
       GOFLAGS: -tags=with_quic,with_utls,with_gvisor
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - run: go vet ./...
