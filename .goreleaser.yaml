@@ -32,4 +32,4 @@ checksum:
   name_template: checksums.txt
 
 release:
-  draft: true
+  draft: false
