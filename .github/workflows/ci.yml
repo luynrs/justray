@@ -17,7 +17,7 @@ jobs:
           go-version-file: go.mod
       - run: go vet ./...
       - run: go test ./...
-      - uses: golangci/golangci-lint-action@v7
+      - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
           args: --build-tags with_quic,with_utls,with_gvisor
