@@ -1,3 +1,4 @@
 /result
-/bin
 /dist
+
+*.tape

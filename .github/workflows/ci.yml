@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      GOFLAGS: -tags=with_quic,with_utls,with_gvisor
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test ./...
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          args: --build-tags with_quic,with_utls,with_gvisor
