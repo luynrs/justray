@@ -2,6 +2,11 @@ package version
 
 import "strings"
 
-var Version = "1.1.0"
+var Version = "dev"
 
-func String() string { return "v" + strings.TrimPrefix(Version, "v") }
+func String() string {
+	if Version == "dev" {
+		return Version
+	}
+	return "v" + strings.TrimPrefix(Version, "v")
+}

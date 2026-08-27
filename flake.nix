@@ -20,7 +20,8 @@
       systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
 
-      version = "1.1.0";
+      ref = self.sourceInfo.original.ref or "";
+      version = if nixpkgs.lib.hasPrefix "v" ref then nixpkgs.lib.removePrefix "v" ref else "dev";
 
       justrayFor = system:
         let pkgs = nixpkgs.legacyPackages.${system};
