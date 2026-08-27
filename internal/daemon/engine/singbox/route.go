@@ -2,6 +2,7 @@ package singbox
 
 import (
 	"net/netip"
+	"runtime"
 
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
@@ -101,9 +102,13 @@ func TunInbound(s domain.Settings, resolverIPs []netip.Prefix) option.Inbound {
 		address = append(address, netip.MustParsePrefix("fdfe:dcba:9876::1/126"))
 		routes = append(routes, netip.MustParsePrefix("::/0"))
 	}
+	interfaceName := domain.TunInterface
+	if runtime.GOOS == "darwin" {
+		interfaceName = "" // macOS assigns utun names
+	}
 
 	tunOpts := &option.TunInboundOptions{
-		InterfaceName: domain.TunInterface,
+		InterfaceName: interfaceName,
 		MTU:           uint32(s.TunMTU),
 		Stack:         s.TunStack,
 		Address:       address,
