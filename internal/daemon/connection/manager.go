@@ -103,7 +103,9 @@ func (s *Service) start(n domain.Node, sub string) (err error) {
 		}
 
 		eng = s.newEngine(s.current(), rpc.EngineLog(s.dir))
-		if err = eng.Start(n, tun); err != nil {
+		if eng == nil {
+			err = errors.New("initialize engine: engine is nil")
+		} else if err = eng.Start(n, tun); err != nil {
 			err = errors.Join(err, s.discard(eng))
 		}
 	}

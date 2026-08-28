@@ -12,15 +12,15 @@ import (
 )
 
 type fakeEngine struct {
-	tunErr, closeErr error
-	closeCalls       int
+	startErr, tunErr, closeErr error
+	closeCalls                 int
 }
 
-func (*fakeEngine) Start(domain.Node, bool) error { return nil }
-func (*fakeEngine) Swap(domain.Node) error        { return nil }
-func (e *fakeEngine) TunAdd() error               { return e.tunErr }
-func (*fakeEngine) TunRemove() error              { return nil }
-func (e *fakeEngine) Close() error                { e.closeCalls++; return e.closeErr }
+func (e *fakeEngine) Start(domain.Node, bool) error { return e.startErr }
+func (*fakeEngine) Swap(domain.Node) error          { return nil }
+func (e *fakeEngine) TunAdd() error                 { return e.tunErr }
+func (*fakeEngine) TunRemove() error                { return nil }
+func (e *fakeEngine) Close() error                  { e.closeCalls++; return e.closeErr }
 
 func testService(t *testing.T, eng engine.Engine) *Service {
 	t.Helper()
@@ -61,5 +61,23 @@ func TestSetTunFailureDoesNotCommitState(t *testing.T) {
 	state, err := s.store.State()
 	if err != nil || s.tun || state.Tun {
 		t.Fatalf("tun committed after failure: desired=%v persisted=%v err=%v", s.tun, state.Tun, err)
+	}
+}
+
+func TestStartClosesEngineOnFailure(t *testing.T) {
+	eng := &fakeEngine{startErr: errors.New("start failed")}
+	s := testService(t, nil)
+	s.newEngine = func(domain.Settings, string) engine.Engine { return eng }
+	if err := s.start(domain.Node{ID: "n1"}, ""); err == nil || eng.closeCalls != 1 {
+		t.Fatalf("start err=%v closeCalls=%d", err, eng.closeCalls)
+	}
+}
+
+func TestShutdownClosesEngine(t *testing.T) {
+	eng := &fakeEngine{}
+	s := testService(t, eng)
+	s.Shutdown()
+	if eng.closeCalls != 1 {
+		t.Fatalf("Shutdown did not close engine: calls=%d", eng.closeCalls)
 	}
 }

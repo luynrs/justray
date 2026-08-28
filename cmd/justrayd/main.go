@@ -30,12 +30,6 @@ func main() {
 		die("create config dir:", err)
 	}
 	socket := rpc.Socket(dir)
-	if len(os.Args) == 2 && os.Args[1] == "--shutdown" {
-		if err := rpc.NewClient(socket).Shutdown(); err != nil {
-			die("shutdown daemon:", err)
-		}
-		return
-	}
 
 	logFile, err := os.OpenFile(rpc.DaemonLog(dir), os.O_CREATE|os.O_WRONLY|os.O_TRUNC|os.O_APPEND, 0o600)
 	if err != nil {

@@ -86,7 +86,7 @@ func ProbeConfig(ctx context.Context, nodes []domain.Node, s domain.Settings, lo
 		Log:   &option.LogOptions{Level: s.LogLevel, Output: logPath},
 		Route: &option.RouteOptions{AutoDetectInterface: true},
 	}
-	resolvedNodes := make([]domain.Node, len(nodes))
+	resolvedNodes := make([]*domain.Node, len(nodes))
 	jobs := make(chan int)
 	var wg sync.WaitGroup
 	for range min(probeWorkers, len(nodes)) {
@@ -96,9 +96,8 @@ func ProbeConfig(ctx context.Context, nodes []domain.Node, s domain.Settings, lo
 			for i := range jobs {
 				n := nodes[i]
 				if r, err := resolved(ctx, n, s); err == nil {
-					n = r
+					resolvedNodes[i] = &r
 				}
-				resolvedNodes[i] = n
 			}
 		}()
 	}
@@ -118,7 +117,10 @@ func ProbeConfig(ctx context.Context, nodes []domain.Node, s domain.Settings, lo
 	}
 
 	for i, n := range resolvedNodes {
-		if ep, obs, err := outbound.New(n, ProbeTag(i)); err == nil {
+		if n == nil {
+			continue
+		}
+		if ep, obs, err := outbound.New(*n, ProbeTag(i)); err == nil {
 			attach(opts, ep, obs)
 		}
 	}

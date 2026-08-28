@@ -105,9 +105,16 @@ tar -xzf "$tmp/$archive" -C "$tmp/out"
 
 if command -v pgrep >/dev/null 2>&1 &&
    pgrep -u "$(id -u)" -x justrayd >/dev/null 2>&1; then
+	if [ -x "$dir/justray" ]; then
+		"$dir/justray" down
+	elif command -v jray >/dev/null 2>&1; then
+		jray down
+	fi
+	pkill -TERM -u "$(id -u)" -x justrayd || true
+	while pgrep -u "$(id -u)" -x justrayd >/dev/null 2>&1; do
+		sleep 0.1 2>/dev/null || sleep 1
+	done
 	restart_daemon=1
-	pkill -u "$(id -u)" -x justrayd || true
-	sleep 1
 fi
 
 $sudo install -m 755 "$tmp/out/justrayd" "$dir/justrayd"

@@ -79,19 +79,14 @@ try {
 	New-Item -ItemType Directory -Force -Path $dir | Out-Null
 
 	if (Get-Process justrayd -ErrorAction SilentlyContinue) {
-		$restartDaemon = $true
-		$shutdown = Join-Path $dir "justrayd.exe"
-		if (Test-Path $shutdown -PathType Leaf) {
-			& $shutdown --shutdown 2>$null
+		if (Test-Path "$dir\justray.exe") {
+			& "$dir\justray.exe" down
 		}
-		$deadline = (Get-Date).AddSeconds(10)
-		while ((Get-Process justrayd -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {
+		Stop-Process -Name justrayd -ErrorAction SilentlyContinue
+		while (Get-Process justrayd -ErrorAction SilentlyContinue) {
 			Start-Sleep -Milliseconds 100
 		}
-		if (Get-Process justrayd -ErrorAction SilentlyContinue) {
-			Stop-Process -Name justrayd -Force
-			Start-Sleep -Milliseconds 300
-		}
+		$restartDaemon = $true
 	}
 
 	Copy-Item "$out\justrayd.exe" "$dir\justrayd.exe" -Force
