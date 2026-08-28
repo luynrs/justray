@@ -58,7 +58,7 @@ func (s *Server) dispatch(req rpc.Req) (any, error) {
 	case "Nodes":
 		return s.conn.Nodes()
 	case "Probe":
-		return s.conn.Probe(a.Sub, a.ID)
+		return s.conn.Probe(s.ctx, a.Sub, a.ID)
 	case "Connect":
 		return s.conn.Connect(a.ID)
 	case "Disconnect":

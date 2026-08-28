@@ -103,12 +103,7 @@ func main() {
 		conn.Shutdown()
 		close(cleaned)
 	}()
-	select {
-	case <-cleaned:
-	case s := <-sig:
-		logger.Printf("immediate exit (%s)", s)
-		os.Exit(1)
-	}
+	<-cleaned
 	if restart {
 		unlock()
 		unlock = nil

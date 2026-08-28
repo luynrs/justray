@@ -18,13 +18,15 @@ import (
 var (
 	dnsMu    sync.Mutex
 	dnsCache = map[string]dnsEntry{}
+	dnsTick  uint64
 )
 
 const maxDNSCache = 4096
 
 type dnsEntry struct {
-	ip  string
-	exp time.Time
+	ip   string
+	exp  time.Time
+	used uint64
 }
 
 func resolved(n domain.Node, s domain.Settings) (domain.Node, error) {
@@ -50,7 +52,7 @@ func resolved(n domain.Node, s domain.Settings) (domain.Node, error) {
 	return n, nil
 }
 
-func dnsKey(host string, s domain.Settings) string { return s.IPVersion + ":" + host }
+func dnsKey(host string, s domain.Settings) string { return s.DNS + ":" + s.IPVersion + ":" + host }
 
 func forget(host string, s domain.Settings) {
 	dnsMu.Lock()
@@ -63,8 +65,17 @@ func lookup(host string, s domain.Settings) (string, error) {
 
 	dnsMu.Lock()
 	e, ok := dnsCache[key]
+	if ok && !time.Now().Before(e.exp) {
+		delete(dnsCache, key)
+		ok = false
+	}
+	if ok {
+		dnsTick++
+		e.used = dnsTick
+		dnsCache[key] = e
+	}
 	dnsMu.Unlock()
-	if ok && time.Now().Before(e.exp) {
+	if ok {
 		return e.ip, nil
 	}
 
@@ -84,8 +95,10 @@ func lookup(host string, s domain.Settings) (string, error) {
 		return "", fmt.Errorf("no addresses for %s", host)
 	}
 
-	e = dnsEntry{ips[0].Unmap().String(), time.Now().Add(10 * time.Minute)} // ttl
+	e = dnsEntry{ip: ips[0].Unmap().String(), exp: time.Now().Add(10 * time.Minute)} // ttl
 	dnsMu.Lock()
+	dnsTick++
+	e.used = dnsTick
 	now := time.Now()
 	for key, cached := range dnsCache {
 		if !now.Before(cached.exp) {
@@ -93,10 +106,14 @@ func lookup(host string, s domain.Settings) (string, error) {
 		}
 	}
 	if len(dnsCache) >= maxDNSCache {
+		var oldest string
+		var used uint64
 		for key := range dnsCache {
-			delete(dnsCache, key)
-			break
+			if oldest == "" || dnsCache[key].used < used {
+				oldest, used = key, dnsCache[key].used
+			}
 		}
+		delete(dnsCache, oldest)
 	}
 	dnsCache[key] = e
 	dnsMu.Unlock()

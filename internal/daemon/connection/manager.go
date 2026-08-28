@@ -74,6 +74,9 @@ func (s *Service) ForgetIfRemoved(subID string, nodes []domain.Node) {
 }
 
 func (s *Service) start(n domain.Node, sub string) (err error) {
+	if n.TLS != nil && n.TLS.Insecure {
+		return errors.New("insecure TLS node is not allowed")
+	}
 	s.mu.Lock()
 	tun, cur := s.tun, s.session
 	s.mu.Unlock()
@@ -108,7 +111,7 @@ func (s *Service) start(n domain.Node, sub string) (err error) {
 		if tun && elevate.Needed(err) {
 			s.persistActive(n.ID)
 			s.requestRestart()
-			err = ErrRestartElevated{}
+			err = rpc.ErrElevate
 		}
 		s.setErr(err)
 		return err

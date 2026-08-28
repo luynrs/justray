@@ -21,6 +21,9 @@ func (s *Service) fetch(ctx context.Context, rawURL string) ([]domain.Node, stri
 	if err := check(rawURL); err != nil {
 		return nil, "", none, err
 	}
+	if s.device.Get("X-Hwid") == "" {
+		return nil, "", none, fmt.Errorf("device id unavailable")
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
@@ -43,6 +46,9 @@ func (s *Service) fetch(ctx context.Context, rawURL string) ([]domain.Node, stri
 			if r.URL.Host != via[0].URL.Host {
 				for k := range s.device {
 					r.Header.Del(k)
+				}
+				if hwid := s.device.Get("X-Hwid"); hwid != "" {
+					r.Header.Set("X-Hwid", hash(hwid+r.URL.Hostname()))
 				}
 			}
 			return nil

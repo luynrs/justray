@@ -86,7 +86,7 @@ func (s Settings) Normalize() (Settings, error) {
 		one("autostart", &s.Autostart, "off", Toggle),
 		one("emoji", &s.Emoji, "off", Toggle),
 		text("dns", &s.DNS, DefaultDNS, "an ip address", isAddr),
-		text("probe url", &s.ProbeURL, DefaultProbeURL, "an http url", isHTTPURL),
+		text("probe url", &s.ProbeURL, DefaultProbeURL, "an https url", isHTTPSURL),
 		canon(&s.Except),
 		canon(&s.Blocked),
 	} {
@@ -155,9 +155,9 @@ func isAddr(v string) bool {
 	return err == nil
 }
 
-func isHTTPURL(v string) bool {
+func isHTTPSURL(v string) bool {
 	u, err := url.Parse(v)
-	return err == nil && u.Host != "" && (u.Scheme == "http" || u.Scheme == "https")
+	return err == nil && u.Host != "" && u.Scheme == "https"
 }
 
 // ParseRule canonicalises a network, domain or program rule

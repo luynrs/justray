@@ -1,6 +1,7 @@
 package connection
 
 import (
+	"context"
 	"fmt"
 	"maps"
 
@@ -34,7 +35,7 @@ func (s *Service) Nodes() ([]rpc.Node, error) {
 }
 
 // Probe pings one node if id is set, else every node in sub, else all of them.
-func (s *Service) Probe(sub, id string) ([]rpc.Node, error) {
+func (s *Service) Probe(ctx context.Context, sub, id string) ([]rpc.Node, error) {
 	subs, err := s.store.Subscriptions()
 	if err != nil {
 		return nil, err
@@ -55,7 +56,7 @@ func (s *Service) Probe(sub, id string) ([]rpc.Node, error) {
 		return nil, fmt.Errorf("nothing to probe")
 	}
 
-	results, err := s.probeAll(targets, s.current(), rpc.EngineLog(s.dir))
+	results, err := s.probeAll(ctx, targets, s.current(), rpc.EngineLog(s.dir))
 	if err != nil {
 		return nil, err
 	}

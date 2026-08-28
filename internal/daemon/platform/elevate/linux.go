@@ -32,7 +32,11 @@ func Restart(dir string) error {
 		}
 	}
 
-	return syscall.Exec(target, os.Args, os.Environ())
+	cmd := exec.Command(target, os.Args[1:]...)
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	return cmd.Process.Release()
 }
 
 func hasNetAdmin(path string) bool {

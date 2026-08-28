@@ -49,21 +49,17 @@ func (e *Engine) Start(n domain.Node, tun bool) error {
 	}
 
 	inst, err := startBox(*opts)
-	if err != nil {
-		if inst != nil {
-			e.inst, e.tun, e.node = inst, tun, n
-			if tun && runtime.GOOS == "darwin" {
-				e.name = newInterface(before)
+	if inst != nil {
+		e.inst, e.node = inst, n
+		if tun && runtime.GOOS == "darwin" {
+			e.name = newInterface(before)
+			if e.name == "" {
+				return errors.Join(errors.New("tun interface name unavailable"), e.Close())
 			}
 		}
-		return err
+		e.tun = tun
 	}
-
-	e.inst, e.tun, e.node = inst, tun, n
-	if tun && runtime.GOOS == "darwin" {
-		e.name = newInterface(before)
-	}
-	return nil
+	return err
 }
 
 func rideOutEBusy(op func() error) error {
@@ -76,17 +72,12 @@ func rideOutEBusy(op func() error) error {
 	return err
 }
 
-func newBox(opts option.Options) (*sbox.Box, error) {
-	inst, err := sbox.New(sbox.Options{Options: opts, Context: Context(context.Background())})
-	if err == nil {
-		err = inst.Start()
-	}
-	return inst, err
-}
-
 func startBox(opts option.Options) (*sbox.Box, error) {
 	for attempt := 0; ; attempt++ {
-		inst, err := newBox(opts)
+		inst, err := sbox.New(sbox.Options{Options: opts, Context: Context(context.Background())})
+		if err == nil {
+			err = inst.Start()
+		}
 		if err == nil {
 			return inst, nil
 		}
@@ -154,10 +145,14 @@ func (e *Engine) TunAdd() error {
 		return e.inst.Inbound().Create(ctx, e.inst.Router(), logger, "tun-in", C.TypeTun, inb.Options)
 	})
 	if err == nil {
-		e.tun = true
 		if runtime.GOOS == "darwin" {
 			e.name = newInterface(before)
+			if e.name == "" {
+				_ = e.inst.Inbound().Remove("tun-in")
+				return errors.New("tun interface name unavailable")
+			}
 		}
+		e.tun = true
 	}
 	return err
 }
@@ -171,14 +166,11 @@ func (e *Engine) TunRemove() error {
 	if iface == "" {
 		return errors.New("tun interface name unavailable")
 	}
-	if waitGone(iface) {
-		e.tun = false
-		e.name = ""
-		return nil
-	}
-	link.Delete(iface)
 	if !waitGone(iface) {
-		return fmt.Errorf("%s still up after removing tun-in", iface)
+		link.Delete(iface)
+		if !waitGone(iface) {
+			return fmt.Errorf("%s still up after removing tun-in", iface)
+		}
 	}
 	e.tun = false
 	e.name = ""

@@ -89,8 +89,7 @@ try {
 			Start-Sleep -Milliseconds 100
 		}
 		if (Get-Process justrayd -ErrorAction SilentlyContinue) {
-			Stop-Process -Name justrayd -Force
-			Wait-Process -Name justrayd -Timeout 5 -ErrorAction SilentlyContinue
+			throw "justray: daemon did not stop gracefully"
 		}
 	}
 

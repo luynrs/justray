@@ -24,7 +24,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case msg.String() == "ctrl+c":
 			if m.settings != nil {
 				next, cmd := m.closeSettings()
-				next.stopWatch()
 				return next, tea.Sequence(cmd, tea.Quit)
 			}
 			return m.quit()

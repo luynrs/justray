@@ -72,11 +72,6 @@ func Listen(socket string) (net.Listener, func(), error) {
 
 func (s *Server) Serve(ln net.Listener) error {
 	s.mu.Lock()
-	if s.ctx.Err() != nil {
-		s.mu.Unlock()
-		_ = ln.Close()
-		return nil
-	}
 	s.ln = ln
 	closed := s.ctx.Err() != nil
 	s.mu.Unlock()

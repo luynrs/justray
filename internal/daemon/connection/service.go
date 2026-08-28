@@ -16,10 +16,6 @@ import (
 
 type Status = rpc.Status
 
-type ErrRestartElevated struct{}
-
-func (ErrRestartElevated) Error() string { return rpc.ErrElevate.Error() }
-
 type Service struct {
 	store     store.Disk
 	newEngine engine.New
@@ -184,7 +180,7 @@ func (s *Service) SetTun(enable bool) (Status, error) {
 	if err != nil && enable && elevate.Needed(err) {
 		s.setErr(rpc.ErrElevate)
 		s.requestRestart()
-		return s.finish(ErrRestartElevated{})
+		return s.finish(rpc.ErrElevate)
 	}
 	s.mu.Lock()
 	if err == nil {

@@ -117,7 +117,6 @@ func (m *Model) clamp() {
 
 func (m Model) quit() (tea.Model, tea.Cmd) {
 	m.quitting = true
-	m.stopWatch()
 	return m, tea.Quit
 }
 
