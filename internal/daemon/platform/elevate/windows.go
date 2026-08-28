@@ -3,11 +3,11 @@
 package elevate
 
 import (
+	"fmt"
 	"os"
 	"slices"
 	"strings"
 
-	"log"
 	"golang.org/x/sys/windows"
 )
 
@@ -22,24 +22,21 @@ func Needed(err error) bool {
 	return strings.Contains(e, "access is denied") || strings.Contains(e, "operation not permitted")
 }
 
-func Tun(logger *log.Logger, _ string) {
+func Restart(_ string) error {
 	if slices.Contains(os.Args, elevatedArg) {
-		return
+		return nil
 	}
 
 	self, err := os.Executable()
 	if err != nil {
-		logger.Print(err)
-		return
+		return err
 	}
 
 	verb, _ := windows.UTF16PtrFromString("runas")
 	file, _ := windows.UTF16PtrFromString(self)
 	args, _ := windows.UTF16PtrFromString(elevatedArg)
 	if err := windows.ShellExecute(0, verb, file, args, nil, windows.SW_HIDE); err != nil {
-		logger.Print(err)
-		return
+		return fmt.Errorf("start elevated daemon: %w", err)
 	}
-
-	os.Exit(0)
+	return nil
 }

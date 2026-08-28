@@ -2,8 +2,6 @@
 
 package elevate
 
-import "log"
-
 func Needed(error) bool { return false }
 
-func Tun(*log.Logger, string) {}
+func Restart(string) error { return nil }

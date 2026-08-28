@@ -107,8 +107,8 @@ func (s *Service) start(n domain.Node, sub string) (err error) {
 	if err != nil {
 		if tun && elevate.Needed(err) {
 			s.persistActive(n.ID)
-			go elevate.Tun(s.log, s.dir)
-			err = rpc.ErrElevate
+			s.requestRestart()
+			err = ErrRestartElevated{}
 		}
 		s.setErr(err)
 		return err

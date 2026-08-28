@@ -16,6 +16,10 @@ import (
 
 type Status = rpc.Status
 
+type ErrRestartElevated struct{}
+
+func (ErrRestartElevated) Error() string { return rpc.ErrElevate.Error() }
+
 type Service struct {
 	store     store.Disk
 	newEngine engine.New
@@ -34,6 +38,7 @@ type Service struct {
 	probes   map[string]engine.Result
 
 	watchers map[chan Status]struct{}
+	restart  chan struct{}
 }
 
 func New(dir string, st store.Disk, newEngine engine.New, probe engine.Probe, logger *log.Logger) *Service {
@@ -57,6 +62,7 @@ func New(dir string, st store.Disk, newEngine engine.New, probe engine.Probe, lo
 		settings:  settings,
 		probes:    map[string]engine.Result{},
 		watchers:  map[chan Status]struct{}{},
+		restart:   make(chan struct{}, 1),
 	}
 }
 
@@ -177,8 +183,8 @@ func (s *Service) SetTun(enable bool) (Status, error) {
 
 	if err != nil && enable && elevate.Needed(err) {
 		s.setErr(rpc.ErrElevate)
-		go elevate.Tun(s.log, s.dir)
-		return s.finish(rpc.ErrElevate)
+		s.requestRestart()
+		return s.finish(ErrRestartElevated{})
 	}
 	s.mu.Lock()
 	if err == nil {
@@ -192,6 +198,18 @@ func (s *Service) SetTun(enable bool) (Status, error) {
 	}
 
 	return s.finish(err)
+}
+
+func (s *Service) RestartRequested() <-chan struct{} { return s.restart }
+
+func (s *Service) requestRestart() {
+	if s.restart == nil {
+		return
+	}
+	select {
+	case s.restart <- struct{}{}:
+	default:
+	}
 }
 
 func (s *Service) commitTun(enable bool) (Status, error) {

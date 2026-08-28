@@ -13,6 +13,7 @@ import (
 
 	"github.com/luynrs/justray/internal/daemon/connection"
 	"github.com/luynrs/justray/internal/daemon/engine/singbox"
+	"github.com/luynrs/justray/internal/daemon/platform/elevate"
 	"github.com/luynrs/justray/internal/daemon/server"
 	"github.com/luynrs/justray/internal/daemon/store"
 	"github.com/luynrs/justray/internal/daemon/subscription"
@@ -27,6 +28,13 @@ func main() {
 	}
 	if err := rpc.EnsureDir(dir); err != nil {
 		die("create config dir:", err)
+	}
+	socket := rpc.Socket(dir)
+	if len(os.Args) == 2 && os.Args[1] == "--shutdown" {
+		if err := rpc.NewClient(socket).Shutdown(); err != nil {
+			die("shutdown daemon:", err)
+		}
+		return
 	}
 
 	logFile, err := os.OpenFile(rpc.DaemonLog(dir), os.O_CREATE|os.O_WRONLY|os.O_TRUNC|os.O_APPEND, 0o600)
@@ -45,8 +53,7 @@ func main() {
 		logger.Print(err)
 	}
 
-	socket := rpc.Socket(dir)
-	ln, err := server.Listen(socket)
+	ln, unlock, err := server.Listen(socket)
 	if err != nil {
 		if strings.Contains(err.Error(), "already listening") {
 			logger.Printf("%v, exiting", err)
@@ -54,6 +61,11 @@ func main() {
 		}
 		logger.Fatal(err)
 	}
+	defer func() {
+		if unlock != nil {
+			unlock()
+		}
+	}()
 	logger.Printf("justrayd %s listening on %s", version.String(), socket)
 
 	st := store.Disk{Dir: dir}
@@ -72,15 +84,38 @@ func main() {
 	served := make(chan error, 1)
 	go func() { served <- srv.Serve(ln) }()
 
+	restart := false
 	select {
 	case s := <-sig:
 		logger.Printf("shutting down (%s)", s)
+	case <-conn.RestartRequested():
+		restart = true
+		logger.Print("shutting down for elevated restart")
+	case <-srv.ShutdownRequested():
+		logger.Print("shutting down by request")
 	case err := <-served:
 		logger.Printf("shutting down (%v)", err)
 	}
 
-	srv.Shutdown()
-	conn.Shutdown()
+	cleaned := make(chan struct{})
+	go func() {
+		srv.Shutdown()
+		conn.Shutdown()
+		close(cleaned)
+	}()
+	select {
+	case <-cleaned:
+	case s := <-sig:
+		logger.Printf("immediate exit (%s)", s)
+		os.Exit(1)
+	}
+	if restart {
+		unlock()
+		unlock = nil
+		if err := elevate.Restart(dir); err != nil {
+			logger.Print(err)
+		}
+	}
 }
 
 func sameFile(a, b *os.File) bool {

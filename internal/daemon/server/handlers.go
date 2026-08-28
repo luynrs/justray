@@ -23,6 +23,11 @@ func (s *Server) handle(conn net.Conn) {
 		s.watch(conn)
 		return
 	}
+	if req.Method == "Shutdown" {
+		reply(conn, nil, nil)
+		s.requestShutdown()
+		return
+	}
 	_ = conn.SetDeadline(time.Time{})
 	result, err := s.dispatch(req)
 	_ = conn.SetDeadline(time.Now().Add(rpc.IdleTimeout))

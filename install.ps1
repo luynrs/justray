@@ -80,8 +80,18 @@ try {
 
 	if (Get-Process justrayd -ErrorAction SilentlyContinue) {
 		$restartDaemon = $true
-		Stop-Process -Name justrayd -Force
-		Start-Sleep -Milliseconds 300
+		$shutdown = Join-Path $dir "justrayd.exe"
+		if (Test-Path $shutdown -PathType Leaf) {
+			& $shutdown --shutdown 2>$null
+		}
+		$deadline = (Get-Date).AddSeconds(10)
+		while ((Get-Process justrayd -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {
+			Start-Sleep -Milliseconds 100
+		}
+		if (Get-Process justrayd -ErrorAction SilentlyContinue) {
+			Stop-Process -Name justrayd -Force
+			Wait-Process -Name justrayd -Timeout 5 -ErrorAction SilentlyContinue
+		}
 	}
 
 	Copy-Item "$out\justrayd.exe" "$dir\justrayd.exe" -Force

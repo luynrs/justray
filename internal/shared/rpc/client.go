@@ -91,6 +91,8 @@ func (c *Client) SetSettings(s domain.Settings) (Status, error) {
 	return call[Status](c, "SetSettings", Args{Settings: s})
 }
 
+func (c *Client) Shutdown() error { _, err := call[any](c, "Shutdown", Args{}); return err }
+
 func (c *Client) Watch(ctx context.Context, onUpdate func(Status)) error {
 	conn, err := c.dial()
 	if err != nil {
