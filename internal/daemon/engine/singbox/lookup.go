@@ -68,7 +68,13 @@ func lookup(host string, s domain.Settings) (string, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
-	ips, err := net.DefaultResolver.LookupNetIP(ctx, network(s), host)
+	resolver := net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, "tcp", net.JoinHostPort(s.DNS, "53"))
+		},
+	}
+	ips, err := resolver.LookupNetIP(ctx, network(s), host)
 	switch {
 	case err != nil:
 		return "", fmt.Errorf("could not resolve %s: %w", host, err)

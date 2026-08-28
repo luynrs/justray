@@ -54,7 +54,7 @@ type Network struct {
 	IPVersion string `yaml:"ip_version,omitempty"`
 	TunStack  string `yaml:"stack,omitempty"`
 	TunMTU    int    `yaml:"mtu,omitempty"`
-	TunStrict string `yaml:"strict_route,omitempty"` // on/off, empty = off
+	TunStrict string `yaml:"strict_route,omitempty"` // on/off, empty = on
 }
 
 type Routing struct {
@@ -79,7 +79,7 @@ func (s Settings) Normalize() (Settings, error) {
 		one("stack", &s.TunStack, DefaultTunStack, TunStacks),
 		one("ip version", &s.IPVersion, "auto", IPVersions),
 		one("mode", &s.Mode, ProxyAll, Modes),
-		one("strict route", &s.TunStrict, "off", Toggle),
+		one("strict route", &s.TunStrict, "on", Toggle),
 		one("dns hijack", &s.DNSHijack, "on", Toggle),
 		one("block quic", &s.BlockQUIC, "off", Toggle),
 		one("local networks", &s.BypassLocal, "on", Toggle),

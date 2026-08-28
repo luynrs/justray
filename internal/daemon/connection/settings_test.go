@@ -19,7 +19,7 @@ func TestEngineChanged(t *testing.T) {
 		"log level":      func(s *domain.Settings) { s.LogLevel = "debug" },
 		"mtu":            func(s *domain.Settings) { s.TunMTU = 1400 },
 		"stack":          func(s *domain.Settings) { s.TunStack = "system" },
-		"strict route":   func(s *domain.Settings) { s.TunStrict = "on" },
+		"strict route":   func(s *domain.Settings) { s.TunStrict = "off" },
 		"ip version":     func(s *domain.Settings) { s.IPVersion = "ipv4" },
 		"local networks": func(s *domain.Settings) { s.BypassLocal = "off" },
 		"block quic":     func(s *domain.Settings) { s.BlockQUIC = "on" },
