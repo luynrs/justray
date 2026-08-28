@@ -74,20 +74,6 @@ func Proxy(n domain.Node, s domain.Settings) (*option.Endpoint, []option.Outboun
 	return outbound.New(n, Tag)
 }
 
-func BlockConfig(s domain.Settings, logPath string) *option.Options {
-	return &option.Options{
-		Log:      &option.LogOptions{Level: s.LogLevel, Output: logPath},
-		Inbounds: []option.Inbound{TunInbound(s, resolvers.Get())},
-		Route: &option.RouteOptions{
-			AutoDetectInterface: true,
-			Rules: []option.Rule{{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{
-				RawDefaultRule: option.RawDefaultRule{Inbound: []string{"tun-in"}},
-				RuleAction:     reject,
-			}}},
-		},
-	}
-}
-
 func ProbeTag(i int) string { return "p" + strconv.Itoa(i) }
 
 func ProbeConfig(nodes []domain.Node, s domain.Settings, logPath string) *option.Options {

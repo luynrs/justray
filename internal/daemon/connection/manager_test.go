@@ -16,8 +16,6 @@ type fakeEngine struct {
 }
 
 func (*fakeEngine) Start(domain.Node, bool) error { return nil }
-func (*fakeEngine) Stage() error                  { return nil }
-func (*fakeEngine) Block() error                  { return nil }
 func (*fakeEngine) Swap(domain.Node) error        { return nil }
 func (e *fakeEngine) TunAdd() error               { return e.tunErr }
 func (*fakeEngine) TunRemove() error              { return nil }

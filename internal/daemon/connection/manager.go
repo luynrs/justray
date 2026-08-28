@@ -16,7 +16,6 @@ func (s *Service) Restore() {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
 	defer s.broadcast()
-	defer s.arm()
 
 	id, err := s.store.Active()
 	if err != nil || id == "" {
@@ -80,7 +79,7 @@ func (s *Service) start(n domain.Node, sub string) (err error) {
 	s.mu.Unlock()
 
 	eng := cur.eng
-	hot := cur.eng != nil && !cur.blocked
+	hot := cur.eng != nil
 	if hot {
 		err = cur.eng.Swap(n)
 		if err == nil && tun != cur.tun {
@@ -110,8 +109,6 @@ func (s *Service) start(n domain.Node, sub string) (err error) {
 			s.persistActive(n.ID)
 			go elevate.Tun(s.log, s.dir)
 			err = rpc.ErrElevate
-		} else if !hot && tun && s.current().KillSwitch == "on" {
-			err = errors.Join(err, s.block())
 		}
 		s.setErr(err)
 		return err
@@ -149,60 +146,12 @@ func (s *Service) stop() error {
 func (s *Service) clear() error {
 	s.mu.Lock()
 	s.lastErr = ""
-	block := s.tun && s.settings.KillSwitch == "on"
 	s.mu.Unlock()
 
-	if !block {
-		if err := s.stop(); err != nil {
-			return err
-		}
-	} else if err := s.block(); err != nil {
+	if err := s.stop(); err != nil {
 		return err
 	}
 	s.persistActive("")
-	return nil
-}
-
-func (s *Service) arm() {
-	s.mu.Lock()
-	idle := s.session.eng == nil && s.tun && s.settings.KillSwitch == "on"
-	s.mu.Unlock()
-	if idle {
-		if err := s.block(); err != nil {
-			s.log.Print(err)
-			s.setErr(err)
-		}
-	}
-}
-
-func (s *Service) block() error {
-	if err := s.closeCleanup(); err != nil {
-		return err
-	}
-
-	eng := s.newEngine(s.current(), rpc.EngineLog(s.dir))
-	if err := eng.Stage(); err != nil {
-		return errors.Join(err, s.discard(eng))
-	}
-
-	s.mu.Lock()
-	old := s.session.eng
-	s.mu.Unlock()
-
-	if old != nil {
-		if err := old.Close(); err != nil {
-			return errors.Join(err, s.discard(eng))
-		}
-		s.mu.Lock()
-		s.session = session{}
-		s.mu.Unlock()
-	}
-	if err := eng.Block(); err != nil {
-		return errors.Join(err, s.discard(eng))
-	}
-	s.mu.Lock()
-	s.session = session{eng: eng, tun: true, blocked: true}
-	s.mu.Unlock()
 	return nil
 }
 

@@ -82,12 +82,6 @@ var tabs = []tab{
 	}},
 	{name: "Network", fields: []field{
 		{
-			name: "Kill switch",
-			enum: domain.Toggle,
-			get:  func(s domain.Settings) string { return s.KillSwitch },
-			set:  func(s *domain.Settings, in string) error { s.KillSwitch = in; return nil },
-		},
-		{
 			name: "DNS hijack",
 			enum: domain.Toggle,
 			get:  func(s domain.Settings) string { return s.DNSHijack },

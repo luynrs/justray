@@ -138,8 +138,6 @@ func (m Model) footer() string {
 	switch {
 	case m.connected():
 		status = style.Strong.Render(fmt.Sprintf("%s %s · %s", icon, style.Sanitize(m.status.NodeName, m.emoji), style.Uptime(time.Since(m.since))))
-	case m.live && m.status.Blocked:
-		status = style.Pending.Render(icon + " kill switch")
 	case m.live:
 		status = style.Dim.Render(icon + " disconnected")
 	default:

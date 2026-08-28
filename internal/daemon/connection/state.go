@@ -13,7 +13,6 @@ type session struct {
 	sub     string
 	started time.Time
 	tun     bool // the tun the engine has
-	blocked bool
 }
 
 // Watch registers a status subscriber

@@ -4,8 +4,6 @@ import "github.com/luynrs/justray/internal/shared/domain"
 
 type Engine interface {
 	Start(n domain.Node, tun bool) error
-	Stage() error
-	Block() error
 	Swap(n domain.Node) error
 	TunAdd() error
 	TunRemove() error

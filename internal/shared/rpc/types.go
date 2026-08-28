@@ -61,5 +61,4 @@ type Status struct {
 	LastErr   string
 	Port      int
 	Tun       bool
-	Blocked   bool
 }

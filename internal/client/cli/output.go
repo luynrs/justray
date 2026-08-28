@@ -38,8 +38,6 @@ func state(st rpc.Status) string {
 	switch {
 	case st.Connected:
 		return "connected via " + strings.ToUpper(modeWord(st.Tun))
-	case st.Blocked:
-		return "blocked (killswitch)"
 	}
 	return "disconnected"
 }
@@ -51,9 +49,6 @@ func stateHeadline(st rpc.Status) {
 		return
 	}
 	color := style.Dim
-	if st.Blocked {
-		color = style.Pending
-	}
 	out(color.Render("·") + " " + upperFirst(text))
 }
 

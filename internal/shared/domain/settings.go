@@ -49,13 +49,12 @@ type General struct {
 }
 
 type Network struct {
-	KillSwitch string `yaml:"kill_switch,omitempty"` // on/off, empty = off
-	DNSHijack  string `yaml:"dns_hijack,omitempty"`  // on/off, empty = on
-	DNS        string `yaml:"dns,omitempty"`
-	IPVersion  string `yaml:"ip_version,omitempty"`
-	TunStack   string `yaml:"stack,omitempty"`
-	TunMTU     int    `yaml:"mtu,omitempty"`
-	TunStrict  string `yaml:"strict_route,omitempty"` // on/off, empty = off
+	DNSHijack string `yaml:"dns_hijack,omitempty"` // on/off, empty = on
+	DNS       string `yaml:"dns,omitempty"`
+	IPVersion string `yaml:"ip_version,omitempty"`
+	TunStack  string `yaml:"stack,omitempty"`
+	TunMTU    int    `yaml:"mtu,omitempty"`
+	TunStrict string `yaml:"strict_route,omitempty"` // on/off, empty = off
 }
 
 type Routing struct {
@@ -86,7 +85,6 @@ func (s Settings) Normalize() (Settings, error) {
 		one("local networks", &s.BypassLocal, "on", Toggle),
 		one("autostart", &s.Autostart, "off", Toggle),
 		one("emoji", &s.Emoji, "off", Toggle),
-		one("kill switch", &s.KillSwitch, "off", Toggle),
 		text("dns", &s.DNS, DefaultDNS, "an ip address", isAddr),
 		text("probe url", &s.ProbeURL, DefaultProbeURL, "an http url", isHTTPURL),
 		canon(&s.Except),

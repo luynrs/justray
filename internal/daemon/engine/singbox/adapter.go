@@ -26,10 +26,9 @@ type Engine struct {
 	settings domain.Settings
 	logPath  string
 
-	inst   *sbox.Box
-	staged *sbox.Box
-	tun    bool
-	node   domain.Node
+	inst *sbox.Box
+	tun  bool
+	node domain.Node
 }
 
 func New(s domain.Settings, logPath string) engine.Engine {
@@ -53,34 +52,6 @@ func (e *Engine) Start(n domain.Node, tun bool) error {
 	}
 
 	e.inst, e.tun, e.node = inst, tun, n
-	return nil
-}
-
-func (e *Engine) Stage() error {
-	if err := e.dropStaged(); err != nil {
-		return err
-	}
-	inst, err := sbox.New(sbox.Options{Options: *BlockConfig(e.settings, e.logPath), Context: Context(context.Background())})
-	if err != nil {
-		if inst != nil {
-			e.staged = inst
-			err = errors.Join(err, e.dropStaged())
-		}
-		return err
-	}
-	e.staged = inst
-	return nil
-}
-func (e *Engine) Block() error {
-	inst := e.staged
-	if inst == nil {
-		return errors.New("kill switch: nothing staged")
-	}
-	if err := rideOutEBusy(inst.Start); err != nil {
-		return err
-	}
-	e.staged = nil
-	e.inst, e.tun = inst, true
 	return nil
 }
 
@@ -177,27 +148,16 @@ func (e *Engine) TunRemove() error {
 	return nil
 }
 
-func (e *Engine) dropStaged() error {
-	if e.staged != nil {
-		if err := e.staged.Close(); err != nil {
-			return err
-		}
-		e.staged = nil
-	}
-	return nil
-}
-
 func (e *Engine) Close() error {
-	stagedErr := e.dropStaged()
 	if e.inst == nil {
-		return stagedErr
+		return nil
 	}
 	err := e.inst.Close()
 	if e.tun {
 		if !waitGone(domain.TunInterface) {
 			link.Delete(domain.TunInterface)
 			if !waitGone(domain.TunInterface) {
-				return errors.Join(stagedErr, err, fmt.Errorf("%s still up after closing engine", domain.TunInterface))
+				return errors.Join(err, fmt.Errorf("%s still up after closing engine", domain.TunInterface))
 			}
 		}
 	}
@@ -205,10 +165,10 @@ func (e *Engine) Close() error {
 		err = nil
 	}
 	if err != nil {
-		return errors.Join(stagedErr, err)
+		return err
 	}
 	e.inst, e.tun = nil, false
-	return stagedErr
+	return nil
 }
 
 func (e *Engine) runtimeCtx() context.Context {
