@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -28,6 +30,7 @@ type Engine struct {
 
 	inst *sbox.Box
 	tun  bool
+	name string
 	node domain.Node
 }
 
@@ -40,18 +43,26 @@ func (e *Engine) Start(n domain.Node, tun bool) error {
 	if err != nil {
 		return err
 	}
+	var before map[string]struct{}
+	if tun && runtime.GOOS == "darwin" {
+		before = interfaceNames()
+	}
 
-	var inst *sbox.Box
-	err = rideOutEBusy(func() error {
-		var last error
-		inst, last = newBox(*opts)
-		return last
-	})
+	inst, err := startBox(*opts)
 	if err != nil {
+		if inst != nil {
+			e.inst, e.tun, e.node = inst, tun, n
+			if tun && runtime.GOOS == "darwin" {
+				e.name = newInterface(before)
+			}
+		}
 		return err
 	}
 
 	e.inst, e.tun, e.node = inst, tun, n
+	if tun && runtime.GOOS == "darwin" {
+		e.name = newInterface(before)
+	}
 	return nil
 }
 
@@ -70,13 +81,26 @@ func newBox(opts option.Options) (*sbox.Box, error) {
 	if err == nil {
 		err = inst.Start()
 	}
-	if err != nil {
-		if inst != nil {
-			_ = inst.Close()
+	return inst, err
+}
+
+func startBox(opts option.Options) (*sbox.Box, error) {
+	for attempt := 0; ; attempt++ {
+		inst, err := newBox(opts)
+		if err == nil {
+			return inst, nil
 		}
-		return nil, err
+		if inst != nil {
+			if closeErr := inst.Close(); closeErr != nil {
+				return inst, errors.Join(err, closeErr)
+			}
+		}
+		if !errors.Is(err, syscall.EBUSY) || attempt == 2 {
+			return nil, err
+		}
+		link.Delete(domain.TunInterface)
+		waitGone(domain.TunInterface)
 	}
-	return inst, nil
 }
 
 func (e *Engine) Swap(n domain.Node) error {
@@ -115,6 +139,10 @@ func (e *Engine) apply(n domain.Node) error {
 }
 
 func (e *Engine) TunAdd() error {
+	var before map[string]struct{}
+	if runtime.GOOS == "darwin" {
+		before = interfaceNames()
+	}
 	if _, err := wintun.Ensure(); err != nil {
 		return err
 	}
@@ -127,6 +155,9 @@ func (e *Engine) TunAdd() error {
 	})
 	if err == nil {
 		e.tun = true
+		if runtime.GOOS == "darwin" {
+			e.name = newInterface(before)
+		}
 	}
 	return err
 }
@@ -136,15 +167,21 @@ func (e *Engine) TunRemove() error {
 	if err != nil {
 		return err
 	}
-	if waitGone(domain.TunInterface) {
+	iface := e.interfaceName()
+	if iface == "" {
+		return errors.New("tun interface name unavailable")
+	}
+	if waitGone(iface) {
 		e.tun = false
+		e.name = ""
 		return nil
 	}
-	link.Delete(domain.TunInterface)
-	if !waitGone(domain.TunInterface) {
-		return fmt.Errorf("%s still up after removing tun-in", domain.TunInterface)
+	link.Delete(iface)
+	if !waitGone(iface) {
+		return fmt.Errorf("%s still up after removing tun-in", iface)
 	}
 	e.tun = false
+	e.name = ""
 	return nil
 }
 
@@ -154,10 +191,13 @@ func (e *Engine) Close() error {
 	}
 	err := e.inst.Close()
 	if e.tun {
-		if !waitGone(domain.TunInterface) {
-			link.Delete(domain.TunInterface)
-			if !waitGone(domain.TunInterface) {
-				return errors.Join(err, fmt.Errorf("%s still up after closing engine", domain.TunInterface))
+		iface := e.interfaceName()
+		if iface == "" {
+			err = errors.Join(err, errors.New("tun interface name unavailable"))
+		} else if !waitGone(iface) {
+			link.Delete(iface)
+			if !waitGone(iface) {
+				err = errors.Join(err, fmt.Errorf("%s still up after closing engine", iface))
 			}
 		}
 	}
@@ -167,8 +207,39 @@ func (e *Engine) Close() error {
 	if err != nil {
 		return err
 	}
-	e.inst, e.tun = nil, false
+	e.inst, e.tun, e.name = nil, false, ""
 	return nil
+}
+
+func (e *Engine) interfaceName() string {
+	if runtime.GOOS == "darwin" {
+		return e.name
+	}
+	return domain.TunInterface
+}
+
+func interfaceNames() map[string]struct{} {
+	before := map[string]struct{}{}
+	interfaces, _ := net.Interfaces()
+	for _, iface := range interfaces {
+		before[iface.Name] = struct{}{}
+	}
+	return before
+}
+
+func newInterface(before map[string]struct{}) string {
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); {
+		interfaces, _ := net.Interfaces()
+		for _, iface := range interfaces {
+			if strings.HasPrefix(iface.Name, "utun") {
+				if _, ok := before[iface.Name]; !ok {
+					return iface.Name
+				}
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	return ""
 }
 
 func (e *Engine) runtimeCtx() context.Context {

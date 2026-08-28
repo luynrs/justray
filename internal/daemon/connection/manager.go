@@ -125,22 +125,33 @@ func (s *Service) start(n domain.Node, sub string) (err error) {
 }
 
 func (s *Service) stop() error {
-	if err := s.closeCleanup(); err != nil {
-		return err
-	}
 	s.mu.Lock()
-	eng := s.session.eng
+	cleanup, eng := s.cleanup, s.session.eng
 	s.mu.Unlock()
-	if eng == nil {
-		return nil
+	var errs []error
+	if cleanup != nil {
+		if err := cleanup.Close(); err != nil {
+			errs = append(errs, err)
+		} else {
+			s.mu.Lock()
+			if s.cleanup == cleanup {
+				s.cleanup = nil
+			}
+			s.mu.Unlock()
+		}
 	}
-	if err := eng.Close(); err != nil {
-		return err
+	if eng != nil && eng != cleanup {
+		if err := eng.Close(); err != nil {
+			errs = append(errs, err)
+		} else {
+			s.mu.Lock()
+			if s.session.eng == eng {
+				s.session = session{}
+			}
+			s.mu.Unlock()
+		}
 	}
-	s.mu.Lock()
-	s.session = session{}
-	s.mu.Unlock()
-	return nil
+	return errors.Join(errs...)
 }
 
 func (s *Service) clear() error {
@@ -152,22 +163,6 @@ func (s *Service) clear() error {
 		return err
 	}
 	s.persistActive("")
-	return nil
-}
-
-func (s *Service) closeCleanup() error {
-	s.mu.Lock()
-	eng := s.cleanup
-	s.mu.Unlock()
-	if eng == nil {
-		return nil
-	}
-	if err := eng.Close(); err != nil {
-		return err
-	}
-	s.mu.Lock()
-	s.cleanup = nil
-	s.mu.Unlock()
 	return nil
 }
 

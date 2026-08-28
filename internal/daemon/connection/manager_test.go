@@ -13,13 +13,14 @@ import (
 
 type fakeEngine struct {
 	tunErr, closeErr error
+	closeCalls       int
 }
 
 func (*fakeEngine) Start(domain.Node, bool) error { return nil }
 func (*fakeEngine) Swap(domain.Node) error        { return nil }
 func (e *fakeEngine) TunAdd() error               { return e.tunErr }
 func (*fakeEngine) TunRemove() error              { return nil }
-func (e *fakeEngine) Close() error                { return e.closeErr }
+func (e *fakeEngine) Close() error                { e.closeCalls++; return e.closeErr }
 
 func testService(t *testing.T, eng engine.Engine) *Service {
 	t.Helper()
@@ -36,6 +37,19 @@ func TestStopRetainsEngineAfterCloseFailure(t *testing.T) {
 	s := testService(t, eng)
 	if err := s.stop(); err == nil || s.session.eng != eng {
 		t.Fatalf("stop: err=%v engine=%v", err, s.session.eng)
+	}
+}
+
+func TestStopClosesActiveAfterCleanupFailure(t *testing.T) {
+	cleanup := &fakeEngine{closeErr: errors.New("cleanup failed")}
+	active := &fakeEngine{}
+	s := testService(t, active)
+	s.cleanup = cleanup
+	if err := s.stop(); err == nil {
+		t.Fatal("stop succeeded")
+	}
+	if active.closeCalls != 1 || s.session.eng != nil {
+		t.Fatalf("active engine was not closed: calls=%d session=%v", active.closeCalls, s.session.eng)
 	}
 }
 
