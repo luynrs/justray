@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -90,12 +91,14 @@ func (c *Client) SetSettings(s domain.Settings) (Status, error) {
 	return call[Status](c, "SetSettings", Args{Settings: s})
 }
 
-func (c *Client) Watch(onUpdate func(Status)) error {
+func (c *Client) Watch(ctx context.Context, onUpdate func(Status)) error {
 	conn, err := c.dial()
 	if err != nil {
 		return err
 	}
 	defer func() { _ = conn.Close() }()
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
 
 	if err := json.NewEncoder(conn).Encode(Req{Method: "Watch"}); err != nil {
 		return fmt.Errorf("watch: %w", err)

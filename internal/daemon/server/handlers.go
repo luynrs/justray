@@ -47,7 +47,7 @@ func (s *Server) dispatch(req rpc.Req) (any, error) {
 	case "MoveSub":
 		return nil, s.subs.MoveSub(a.ID, a.Dir)
 	case "RefreshAll":
-		return s.subs.RefreshAll()
+		return s.subs.RefreshAll(s.ctx)
 	case "Refresh":
 		return s.subs.Refresh(a.ID)
 	case "Nodes":
@@ -96,6 +96,8 @@ func (s *Server) watch(conn net.Conn) {
 	}
 	for {
 		select {
+		case <-s.ctx.Done():
+			return
 		case <-gone:
 			return
 		case st := <-ch:

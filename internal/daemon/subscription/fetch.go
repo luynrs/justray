@@ -1,6 +1,7 @@
 package subscription
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -14,10 +15,10 @@ import (
 	"github.com/luynrs/justray/internal/shared/parser"
 )
 
-func (s *Service) fetch(rawURL string) ([]domain.Node, string, domain.Traffic, error) {
+func (s *Service) fetch(ctx context.Context, rawURL string) ([]domain.Node, string, domain.Traffic, error) {
 	var none domain.Traffic
 
-	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, "", none, err
 	}

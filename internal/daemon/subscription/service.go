@@ -2,6 +2,7 @@
 package subscription
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -48,7 +49,7 @@ func (s *Service) Add(rawURL string) (rpc.Sub, error) {
 	}
 
 	sub := store.Subscription{ID: store.NewID(), URL: rawURL}
-	if err := s.fill(&sub); err != nil {
+	if err := s.fill(context.Background(), &sub); err != nil {
 		return rpc.Sub{}, err
 	}
 	if sub.Name == "" {

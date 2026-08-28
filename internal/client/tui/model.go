@@ -2,6 +2,7 @@
 package tui
 
 import (
+	"context"
 	"io"
 	"log"
 	"time"
@@ -48,6 +49,8 @@ type Model struct {
 	emoji      bool
 	since      time.Time
 	statusCh   chan pushed
+	watchCtx   context.Context
+	stopWatch  context.CancelFunc
 	connecting bool
 
 	err string
@@ -57,6 +60,7 @@ type Model struct {
 }
 
 func New(c *rpc.Client) Model {
+	watchCtx, stopWatch := context.WithCancel(context.Background())
 	editor := textinput.New()
 	editor.Prompt = "Add:  "
 	editor.Placeholder = "subscription URL, or a vless://, vmess://, trojan://, ss://, etc. link"
@@ -70,11 +74,13 @@ func New(c *rpc.Client) Model {
 		editor:    editor,
 		filter:    filter,
 		statusCh:  make(chan pushed),
+		watchCtx:  watchCtx,
+		stopWatch: stopWatch,
 	}
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(func() tea.Msg { return load(m.client) }, settingsCmd(m.client, false), watch(m.client, m.statusCh), next(m.statusCh), tickCmd(), m.spin.Tick)
+	return tea.Batch(func() tea.Msg { return load(m.client) }, settingsCmd(m.client, false), watch(m.watchCtx, m.client, m.statusCh), next(m.statusCh), tickCmd(), m.spin.Tick)
 }
 
 func (m Model) data() tree.Data {
@@ -111,11 +117,14 @@ func (m *Model) clamp() {
 
 func (m Model) quit() (tea.Model, tea.Cmd) {
 	m.quitting = true
+	m.stopWatch()
 	return m, tea.Quit
 }
 
 func Run(c *rpc.Client) error {
 	log.SetOutput(io.Discard)
-	_, err := tea.NewProgram(New(c)).Run()
+	m := New(c)
+	_, err := tea.NewProgram(m).Run()
+	m.stopWatch()
 	return err
 }

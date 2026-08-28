@@ -17,6 +17,9 @@ import (
 )
 
 func Probe(nodes []domain.Node, s domain.Settings, logPath string) (map[string]engine.Result, error) {
+	if len(nodes) > maxProbeNodes {
+		return nil, fmt.Errorf("too many nodes to probe: %d (maximum %d)", len(nodes), maxProbeNodes)
+	}
 	inst, err := sbox.New(sbox.Options{Options: *ProbeConfig(nodes, s, logPath), Context: Context(context.Background())})
 	if err != nil {
 		return nil, fmt.Errorf("build probe engine: %w", err)
@@ -39,8 +42,8 @@ func Probe(nodes []domain.Node, s domain.Settings, logPath string) (map[string]e
 			mu.Unlock()
 			continue
 		}
-		wg.Add(1)
 		sem <- struct{}{}
+		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()

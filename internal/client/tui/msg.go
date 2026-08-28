@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -53,17 +54,31 @@ func probeCmd(c *rpc.Client, sub, id string) tea.Cmd {
 	}
 }
 
-func watch(c *rpc.Client, ch chan<- pushed) tea.Cmd {
+func watch(ctx context.Context, c *rpc.Client, ch chan<- pushed) tea.Cmd {
 	return func() tea.Msg {
 		go func() {
 			backoff := time.Second
 			for {
-				_ = c.Watch(func(st rpc.Status) {
-					ch <- pushed{st: st, live: true}
+				if ctx.Err() != nil {
+					return
+				}
+				_ = c.Watch(ctx, func(st rpc.Status) {
+					select {
+					case ch <- pushed{st: st, live: true}:
+					case <-ctx.Done():
+					}
 					backoff = time.Second
 				})
-				ch <- pushed{}
-				time.Sleep(backoff)
+				select {
+				case ch <- pushed{}:
+				case <-ctx.Done():
+					return
+				}
+				select {
+				case <-time.After(backoff):
+				case <-ctx.Done():
+					return
+				}
 				if backoff < 10*time.Second {
 					backoff *= 2
 				}

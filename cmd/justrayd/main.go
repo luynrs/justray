@@ -79,7 +79,7 @@ func main() {
 		logger.Printf("shutting down (%v)", err)
 	}
 
-	_ = ln.Close()
+	srv.Shutdown()
 	conn.Shutdown()
 }
 

@@ -16,7 +16,11 @@ import (
 	"github.com/luynrs/justray/internal/shared/domain"
 )
 
-const Tag = "proxy"
+const (
+	Tag                 = "proxy"
+	maxProbeNodes       = 512
+	probeResolveWorkers = 32
+)
 
 func Build(n domain.Node, s domain.Settings, logPath string, tun bool) (*option.Options, error) {
 	ep, obs, err := Proxy(n, s)
@@ -82,17 +86,25 @@ func ProbeConfig(nodes []domain.Node, s domain.Settings, logPath string) *option
 		Route: &option.RouteOptions{AutoDetectInterface: true},
 	}
 	resolvedNodes := make([]domain.Node, len(nodes))
+	jobs := make(chan int)
 	var wg sync.WaitGroup
-	for i, n := range nodes {
+	for range min(probeResolveWorkers, len(nodes)) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if r, err := resolved(n, s); err == nil {
-				n = r
+			for i := range jobs {
+				n := nodes[i]
+				if r, err := resolved(n, s); err == nil {
+					n = r
+				}
+				resolvedNodes[i] = n
 			}
-			resolvedNodes[i] = n
 		}()
 	}
+	for i := range nodes {
+		jobs <- i
+	}
+	close(jobs)
 	wg.Wait()
 
 	for i, n := range resolvedNodes {

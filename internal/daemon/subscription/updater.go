@@ -1,6 +1,7 @@
 package subscription
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"sync"
@@ -12,21 +13,34 @@ import (
 	"github.com/luynrs/justray/internal/shared/rpc"
 )
 
-func (s *Service) RefreshAll() ([]rpc.Sub, error) {
+func (s *Service) RefreshAll(ctx context.Context) ([]rpc.Sub, error) {
 	subs, err := s.store.Subscriptions()
 	if err != nil {
 		return nil, err
 	}
 
 	errs := make([]error, len(subs))
+	jobs := make(chan int)
 	var wg sync.WaitGroup
-	for i := range subs {
+	for range min(8, len(subs)) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			errs[i] = s.fill(&subs[i])
+			for i := range jobs {
+				errs[i] = s.fill(ctx, &subs[i])
+			}
 		}()
 	}
+	for i := range subs {
+		select {
+		case jobs <- i:
+		case <-ctx.Done():
+			close(jobs)
+			wg.Wait()
+			return nil, ctx.Err()
+		}
+	}
+	close(jobs)
 	wg.Wait()
 
 	out := make([]rpc.Sub, len(subs))
@@ -63,7 +77,7 @@ func (s *Service) Refresh(id string) (rpc.Sub, error) {
 	if i < 0 {
 		return rpc.Sub{}, fmt.Errorf("subscription %q not found", id)
 	}
-	if err := s.fill(&subs[i]); err != nil {
+	if err := s.fill(context.Background(), &subs[i]); err != nil {
 		return rpc.Sub{}, err
 	}
 
@@ -88,7 +102,7 @@ func (s *Service) merge(updated []store.Subscription) error {
 	return s.store.Save(subs)
 }
 
-func (s *Service) fill(sub *store.Subscription) error {
+func (s *Service) fill(ctx context.Context, sub *store.Subscription) error {
 	if parser.IsLink(sub.URL) {
 		n, err := parser.ParseURI(sub.URL)
 		if err != nil {
@@ -99,7 +113,7 @@ func (s *Service) fill(sub *store.Subscription) error {
 		return nil
 	}
 
-	nodes, name, traffic, err := s.fetch(sub.URL)
+	nodes, name, traffic, err := s.fetch(ctx, sub.URL)
 	if err != nil {
 		return err
 	}
