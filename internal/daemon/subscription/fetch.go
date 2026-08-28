@@ -7,6 +7,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -17,16 +18,25 @@ import (
 
 func (s *Service) fetch(ctx context.Context, rawURL string) ([]domain.Node, string, domain.Traffic, error) {
 	var none domain.Traffic
+	if err := check(rawURL); err != nil {
+		return nil, "", none, err
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, "", none, err
 	}
 	req.Header = s.device.Clone()
+	if u, err := url.Parse(rawURL); err == nil {
+		req.Header.Set("X-Hwid", hash(s.device.Get("X-Hwid")+u.Hostname()))
+	}
 
 	client := http.Client{
 		Timeout: 20 * time.Second,
 		CheckRedirect: func(r *http.Request, via []*http.Request) error {
+			if r.URL.Scheme != "https" {
+				return fmt.Errorf("subscription redirect must use https")
+			}
 			if len(via) >= 10 {
 				return fmt.Errorf("stopped after 10 redirects")
 			}
@@ -59,6 +69,9 @@ func (s *Service) fetch(ctx context.Context, rawURL string) ([]domain.Node, stri
 	}
 	nodes, err := parser.ParseSubscription(body)
 	if err != nil {
+		return nil, "", none, err
+	}
+	if err := validateNodes(nodes); err != nil {
 		return nil, "", none, err
 	}
 	return nodes, title(resp.Header), usage(resp.Header), nil

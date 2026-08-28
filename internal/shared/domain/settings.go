@@ -16,7 +16,7 @@ const (
 	DefaultTunMTU   = 9000
 	DefaultTunStack = "gvisor"
 	DefaultRefresh  = 6
-	DefaultProbeURL = "http://connectivitycheck.gstatic.com/generate_204"
+	DefaultProbeURL = "https://connectivitycheck.gstatic.com/generate_204"
 	TunInterface    = "justray"
 )
 

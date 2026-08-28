@@ -2,7 +2,7 @@ package protocols
 
 import (
 	"cmp"
-	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -25,8 +25,8 @@ func Unbase64(s string) ([]byte, error) {
 }
 
 func id(raw string) string {
-	sum := sha1.Sum([]byte(raw))
-	return hex.EncodeToString(sum[:])[:8]
+	sum := sha256.Sum256([]byte(raw))
+	return hex.EncodeToString(sum[:16])
 }
 
 func NodeID(n domain.Node) string {

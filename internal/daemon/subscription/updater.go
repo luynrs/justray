@@ -10,6 +10,7 @@ import (
 	"github.com/luynrs/justray/internal/daemon/store"
 	"github.com/luynrs/justray/internal/shared/domain"
 	"github.com/luynrs/justray/internal/shared/parser"
+	"github.com/luynrs/justray/internal/shared/parser/protocols"
 	"github.com/luynrs/justray/internal/shared/rpc"
 )
 
@@ -108,7 +109,12 @@ func (s *Service) fill(ctx context.Context, sub *store.Subscription) error {
 		if err != nil {
 			return err
 		}
-		sub.Nodes, sub.Name, sub.Traffic = []domain.Node{n}, n.Name, domain.Traffic{}
+		nodes := []domain.Node{n}
+		if err := validateNodes(nodes); err != nil {
+			return err
+		}
+		preserveIDs(nodes, sub.Nodes)
+		sub.Nodes, sub.Name, sub.Traffic = nodes, n.Name, domain.Traffic{}
 		sub.UpdatedAt = time.Now().UTC()
 		return nil
 	}
@@ -117,9 +123,30 @@ func (s *Service) fill(ctx context.Context, sub *store.Subscription) error {
 	if err != nil {
 		return err
 	}
+	preserveIDs(nodes, sub.Nodes)
 	sub.Nodes, sub.Traffic, sub.UpdatedAt = nodes, traffic, time.Now().UTC()
 	if name != "" { // change name if it changed on server
 		sub.Name = name
 	}
 	return nil
+}
+
+func validateNodes(nodes []domain.Node) error {
+	for _, n := range nodes {
+		if n.TLS != nil && n.TLS.Insecure {
+			return fmt.Errorf("subscription contains an insecure node")
+		}
+	}
+	return nil
+}
+
+func preserveIDs(nodes, old []domain.Node) {
+	for i := range nodes {
+		for _, previous := range old {
+			if protocols.NodeID(previous) == nodes[i].ID {
+				nodes[i].ID = previous.ID
+				break
+			}
+		}
+	}
 }

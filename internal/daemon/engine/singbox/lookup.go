@@ -20,6 +20,8 @@ var (
 	dnsCache = map[string]dnsEntry{}
 )
 
+const maxDNSCache = 4096
+
 type dnsEntry struct {
 	ip  string
 	exp time.Time
@@ -84,6 +86,18 @@ func lookup(host string, s domain.Settings) (string, error) {
 
 	e = dnsEntry{ips[0].Unmap().String(), time.Now().Add(10 * time.Minute)} // ttl
 	dnsMu.Lock()
+	now := time.Now()
+	for key, cached := range dnsCache {
+		if !now.Before(cached.exp) {
+			delete(dnsCache, key)
+		}
+	}
+	if len(dnsCache) >= maxDNSCache {
+		for key := range dnsCache {
+			delete(dnsCache, key)
+			break
+		}
+	}
 	dnsCache[key] = e
 	dnsMu.Unlock()
 	return e.ip, nil

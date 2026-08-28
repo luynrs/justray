@@ -112,7 +112,10 @@ func check(rawURL string) error {
 		return nil
 	}
 	u, err := url.Parse(rawURL)
-	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+	if err != nil || u.Host == "" || u.Scheme != "https" {
+		if err == nil && u.Scheme == "http" {
+			return fmt.Errorf("subscription must use https")
+		}
 		return fmt.Errorf("%q is not a url or a share link", rawURL)
 	}
 	return nil

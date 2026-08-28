@@ -37,7 +37,7 @@ func Enable() error {
 	if err != nil {
 		return err
 	}
-	cmd := task("/Create", "/F", "/RL", "HIGHEST", "/SC", "ONLOGON", "/TN", name, "/TR", `"`+bin+`"`)
+	cmd := task("/Create", "/F", "/RL", "LIMITED", "/SC", "ONLOGON", "/TN", name, "/TR", `"`+bin+`"`)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("schtasks create: %v: %s", err, out)
 	}
