@@ -89,7 +89,8 @@ try {
 			Start-Sleep -Milliseconds 100
 		}
 		if (Get-Process justrayd -ErrorAction SilentlyContinue) {
-			throw "justray: daemon did not stop gracefully"
+			Stop-Process -Name justrayd -Force
+			Start-Sleep -Milliseconds 300
 		}
 	}
 
@@ -113,7 +114,7 @@ try {
 finally {
 	Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
 
-	if ($restartDaemon -and (Test-Path "$dir\justrayd.exe")) {
+	if ($restartDaemon -and -not (Get-Process justrayd -ErrorAction SilentlyContinue) -and (Test-Path "$dir\justrayd.exe")) {
 		Start-Process "$dir\justrayd.exe" -WindowStyle Hidden
 	}
 }
