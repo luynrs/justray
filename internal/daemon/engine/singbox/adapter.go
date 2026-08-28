@@ -182,6 +182,9 @@ func (e *Engine) Close() error {
 		return nil
 	}
 	err := e.inst.Close()
+	if errors.Is(err, os.ErrClosed) {
+		err = nil
+	}
 	if e.tun {
 		iface := e.interfaceName()
 		if iface == "" {
@@ -192,9 +195,6 @@ func (e *Engine) Close() error {
 				err = errors.Join(err, fmt.Errorf("%s still up after closing engine", iface))
 			}
 		}
-	}
-	if errors.Is(err, os.ErrClosed) {
-		err = nil
 	}
 	if err != nil {
 		return err

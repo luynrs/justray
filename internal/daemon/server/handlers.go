@@ -46,7 +46,7 @@ func (s *Server) dispatch(req rpc.Req) (any, error) {
 	case "Subs":
 		return s.subs.List()
 	case "AddSub":
-		return s.subs.Add(a.URL)
+		return s.subs.Add(s.ctx, a.URL)
 	case "RemoveSub":
 		return nil, s.removeSub(a.ID)
 	case "MoveSub":
@@ -54,7 +54,7 @@ func (s *Server) dispatch(req rpc.Req) (any, error) {
 	case "RefreshAll":
 		return s.subs.RefreshAll(s.ctx)
 	case "Refresh":
-		return s.subs.Refresh(a.ID)
+		return s.subs.Refresh(s.ctx, a.ID)
 	case "Nodes":
 		return s.conn.Nodes()
 	case "Probe":

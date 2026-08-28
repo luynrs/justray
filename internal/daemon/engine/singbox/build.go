@@ -1,6 +1,7 @@
 package singbox
 
 import (
+	"context"
 	"net/netip"
 	"strconv"
 	"strings"
@@ -17,9 +18,9 @@ import (
 )
 
 const (
-	Tag                 = "proxy"
-	maxProbeNodes       = 512
-	probeResolveWorkers = 32
+	Tag           = "proxy"
+	maxProbeNodes = 512
+	probeWorkers  = 32
 )
 
 func Build(n domain.Node, s domain.Settings, logPath string, tun bool) (*option.Options, error) {
@@ -71,7 +72,7 @@ func Build(n domain.Node, s domain.Settings, logPath string, tun bool) (*option.
 }
 
 func Proxy(n domain.Node, s domain.Settings) (*option.Endpoint, []option.Outbound, error) {
-	n, err := resolved(n, s)
+	n, err := resolved(context.Background(), n, s)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -80,7 +81,7 @@ func Proxy(n domain.Node, s domain.Settings) (*option.Endpoint, []option.Outboun
 
 func ProbeTag(i int) string { return "p" + strconv.Itoa(i) }
 
-func ProbeConfig(nodes []domain.Node, s domain.Settings, logPath string) *option.Options {
+func ProbeConfig(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath string) (*option.Options, error) {
 	opts := &option.Options{
 		Log:   &option.LogOptions{Level: s.LogLevel, Output: logPath},
 		Route: &option.RouteOptions{AutoDetectInterface: true},
@@ -88,13 +89,13 @@ func ProbeConfig(nodes []domain.Node, s domain.Settings, logPath string) *option
 	resolvedNodes := make([]domain.Node, len(nodes))
 	jobs := make(chan int)
 	var wg sync.WaitGroup
-	for range min(probeResolveWorkers, len(nodes)) {
+	for range min(probeWorkers, len(nodes)) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for i := range jobs {
 				n := nodes[i]
-				if r, err := resolved(n, s); err == nil {
+				if r, err := resolved(ctx, n, s); err == nil {
 					n = r
 				}
 				resolvedNodes[i] = n
@@ -102,17 +103,26 @@ func ProbeConfig(nodes []domain.Node, s domain.Settings, logPath string) *option
 		}()
 	}
 	for i := range nodes {
-		jobs <- i
+		select {
+		case jobs <- i:
+		case <-ctx.Done():
+			close(jobs)
+			wg.Wait()
+			return nil, ctx.Err()
+		}
 	}
 	close(jobs)
 	wg.Wait()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	for i, n := range resolvedNodes {
 		if ep, obs, err := outbound.New(n, ProbeTag(i)); err == nil {
 			attach(opts, ep, obs)
 		}
 	}
-	return opts
+	return opts, nil
 }
 
 func attach(opts *option.Options, ep *option.Endpoint, obs []option.Outbound) {

@@ -20,7 +20,11 @@ func Probe(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath 
 	if len(nodes) > maxProbeNodes {
 		return nil, fmt.Errorf("too many nodes to probe: %d (maximum %d)", len(nodes), maxProbeNodes)
 	}
-	inst, err := sbox.New(sbox.Options{Options: *ProbeConfig(nodes, s, logPath), Context: Context(ctx)})
+	opts, err := ProbeConfig(ctx, nodes, s, logPath)
+	if err != nil {
+		return nil, err
+	}
+	inst, err := sbox.New(sbox.Options{Options: *opts, Context: Context(ctx)})
 	if err != nil {
 		return nil, fmt.Errorf("build probe engine: %w", err)
 	}
@@ -31,7 +35,7 @@ func Probe(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath 
 	defer func() { _ = inst.Close() }()
 
 	out := map[string]engine.Result{}
-	sem := make(chan struct{}, 5) // workers
+	sem := make(chan struct{}, probeWorkers)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	for i, n := range nodes {
@@ -42,7 +46,12 @@ func Probe(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath 
 			mu.Unlock()
 			continue
 		}
-		sem <- struct{}{}
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			wg.Wait()
+			return nil, ctx.Err()
+		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

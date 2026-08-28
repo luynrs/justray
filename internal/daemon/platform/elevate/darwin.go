@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"syscall"
 )
@@ -34,7 +35,7 @@ func Restart(_ string) error {
 	if err != nil {
 		return err
 	}
-	command := "HOME=" + shellQuote(home) + " /usr/bin/nohup " + shellQuote(helper)
+	command := "HOME=" + shellQuote(home) + " JUSTRAY_UID=" + strconv.Itoa(os.Getuid()) + " JUSTRAY_GID=" + strconv.Itoa(os.Getgid()) + " /usr/bin/nohup " + shellQuote(helper)
 	for _, arg := range os.Args[1:] {
 		command += " " + shellQuote(arg)
 	}

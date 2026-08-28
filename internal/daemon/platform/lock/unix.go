@@ -3,6 +3,7 @@
 package lock
 
 import (
+	"errors"
 	"os"
 
 	"golang.org/x/sys/unix"
@@ -13,8 +14,11 @@ func File(path string) (unlock func(), err error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX); err != nil {
+	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
 		_ = f.Close()
+		if errors.Is(err, unix.EWOULDBLOCK) {
+			return nil, ErrLocked
+		}
 		return nil, err
 	}
 	return func() {

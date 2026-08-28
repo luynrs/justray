@@ -30,7 +30,7 @@ func (s *Server) AutoRefresh(done <-chan struct{}) {
 				continue
 			}
 			tried[id] = time.Now()
-			if _, err := s.subs.Refresh(id); err != nil {
+			if _, err := s.subs.Refresh(s.ctx, id); err != nil {
 				s.log.Print(err)
 			}
 		}

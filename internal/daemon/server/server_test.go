@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +15,22 @@ import (
 	"github.com/luynrs/justray/internal/daemon/subscription"
 	"github.com/luynrs/justray/internal/shared/rpc"
 )
+
+func TestListenDoesNotWaitForLock(t *testing.T) {
+	socket := filepath.Join(t.TempDir(), "daemon.sock")
+	ln, unlock, err := Listen(socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = ln.Close()
+		unlock()
+	}()
+
+	if _, _, err := Listen(socket); err == nil || !strings.Contains(err.Error(), "already listening") {
+		t.Fatalf("second Listen error = %v", err)
+	}
+}
 
 func TestShutdownClosesWatch(t *testing.T) {
 	dir := t.TempDir()

@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -42,6 +43,9 @@ func New(logger *log.Logger, conn *connection.Service, subs *subscription.Servic
 func Listen(socket string) (net.Listener, func(), error) {
 	unlock, err := lock.File(socket + ".lock")
 	if err != nil {
+		if errors.Is(err, lock.ErrLocked) {
+			return nil, nil, fmt.Errorf("another justrayd is already listening on %s", socket)
+		}
 		return nil, nil, err
 	}
 

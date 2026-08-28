@@ -43,13 +43,13 @@ func (s *Service) List() ([]rpc.Sub, error) {
 	return out, nil
 }
 
-func (s *Service) Add(rawURL string) (rpc.Sub, error) {
+func (s *Service) Add(ctx context.Context, rawURL string) (rpc.Sub, error) {
 	if err := check(rawURL); err != nil {
 		return rpc.Sub{}, err
 	}
 
 	sub := store.Subscription{ID: store.NewID(), URL: rawURL}
-	if err := s.fill(context.Background(), &sub); err != nil {
+	if err := s.fill(ctx, &sub); err != nil {
 		return rpc.Sub{}, err
 	}
 	if sub.Name == "" {

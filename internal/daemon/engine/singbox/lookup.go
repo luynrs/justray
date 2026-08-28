@@ -29,11 +29,11 @@ type dnsEntry struct {
 	used uint64
 }
 
-func resolved(n domain.Node, s domain.Settings) (domain.Node, error) {
+func resolved(ctx context.Context, n domain.Node, s domain.Settings) (domain.Node, error) {
 	if _, err := netip.ParseAddr(n.Server); err == nil {
 		return n, nil
 	}
-	ip, err := lookup(n.Server, s)
+	ip, err := lookup(ctx, n.Server, s)
 	if err != nil {
 		return n, err
 	}
@@ -60,7 +60,7 @@ func forget(host string, s domain.Settings) {
 	dnsMu.Unlock()
 }
 
-func lookup(host string, s domain.Settings) (string, error) {
+func lookup(ctx context.Context, host string, s domain.Settings) (string, error) {
 	key := dnsKey(host, s)
 
 	dnsMu.Lock()
@@ -79,7 +79,7 @@ func lookup(host string, s domain.Settings) (string, error) {
 		return e.ip, nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 	resolver := net.Resolver{
 		PreferGo: true,

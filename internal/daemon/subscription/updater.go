@@ -69,7 +69,7 @@ func (s *Service) RefreshAll(ctx context.Context) ([]rpc.Sub, error) {
 	return out, nil
 }
 
-func (s *Service) Refresh(id string) (rpc.Sub, error) {
+func (s *Service) Refresh(ctx context.Context, id string) (rpc.Sub, error) {
 	subs, err := s.store.Subscriptions()
 	if err != nil {
 		return rpc.Sub{}, err
@@ -78,7 +78,7 @@ func (s *Service) Refresh(id string) (rpc.Sub, error) {
 	if i < 0 {
 		return rpc.Sub{}, fmt.Errorf("subscription %q not found", id)
 	}
-	if err := s.fill(context.Background(), &subs[i]); err != nil {
+	if err := s.fill(ctx, &subs[i]); err != nil {
 		return rpc.Sub{}, err
 	}
 
@@ -141,12 +141,16 @@ func validateNodes(nodes []domain.Node) error {
 }
 
 func preserveIDs(nodes, old []domain.Node) {
+	ids := make(map[string]string, len(old))
+	for _, previous := range old {
+		id := protocols.NodeID(previous)
+		if _, ok := ids[id]; !ok {
+			ids[id] = previous.ID
+		}
+	}
 	for i := range nodes {
-		for _, previous := range old {
-			if protocols.NodeID(previous) == nodes[i].ID {
-				nodes[i].ID = previous.ID
-				break
-			}
+		if id, ok := ids[nodes[i].ID]; ok {
+			nodes[i].ID = id
 		}
 	}
 }
