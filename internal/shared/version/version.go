@@ -2,11 +2,8 @@ package version
 
 import "strings"
 
-var Version = "dev"
+var Version = "1.1.2"
 
 func String() string {
-	if Version == "dev" {
-		return Version
-	}
 	return "v" + strings.TrimPrefix(Version, "v")
 }
