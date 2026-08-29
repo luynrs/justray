@@ -116,10 +116,6 @@ func awaitElevate(status func() (rpc.Status, error), want *bool, timeout time.Du
 		switch {
 		case err != nil: // the daemon is mid exec-restart
 			pending = true
-		case st.LastErr == rpc.ErrElevate.Error():
-			pending = true
-		case st.LastErr != "":
-			return st, errors.New(st.LastErr)
 		case pending:
 			return st, nil
 		case st.Connected && (want == nil || st.Tun == *want):
@@ -147,7 +143,6 @@ func (a *app) switchMode(st rpc.Status, tun bool) error {
 func (a *app) report(headline string, st rpc.Status) {
 	done(headline)
 	a.nodeDetails(st)
-	a.warn(st.LastErr)
 }
 
 func (a *app) resolveNode(key string) (rpc.Node, error) {

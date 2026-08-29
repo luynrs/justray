@@ -12,32 +12,32 @@ func TestAwaitElevate(t *testing.T) {
 	elevatePoll = time.Millisecond
 	tun := true
 
-	replies := func(steps ...rpc.Status) func() (rpc.Status, error) {
+	replies := func(steps ...any) func() (rpc.Status, error) {
 		i := -1
 		return func() (rpc.Status, error) {
 			if i++; i >= len(steps) {
 				return rpc.Status{}, errors.New("socket closed")
 			}
-			return steps[i], nil
+			switch v := steps[i].(type) {
+			case rpc.Status:
+				return v, nil
+			case error:
+				return rpc.Status{}, v
+			default:
+				panic("unknown reply type")
+			}
 		}
 	}
 
 	t.Run("waits out the restart", func(t *testing.T) {
 		status := replies(
-			rpc.Status{LastErr: rpc.ErrElevate.Error()}, // old daemon, still on its way out
-			rpc.Status{LastErr: rpc.ErrElevate.Error()}, // prompt still open
-			rpc.Status{Connected: true, Tun: true},      // restored
+			errors.New("connection reset"),        // old daemon, still on its way out
+			errors.New("connection refused"),      // prompt still open
+			rpc.Status{Connected: true, Tun: true}, // restored
 		)
 		st, err := awaitElevate(status, &tun, time.Second)
 		if err != nil || !st.Tun {
 			t.Fatalf("got %+v, %v; want the tun session, nil", st, err)
-		}
-	})
-
-	t.Run("reports a real failure", func(t *testing.T) {
-		status := replies(rpc.Status{LastErr: "operation not permitted"})
-		if _, err := awaitElevate(status, &tun, time.Second); err == nil || err.Error() != "operation not permitted" {
-			t.Fatalf("got %v; want the daemon's error", err)
 		}
 	})
 

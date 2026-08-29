@@ -28,7 +28,6 @@ type Service struct {
 	mu       sync.Mutex
 	session  session
 	cleanup  engine.Engine
-	lastErr  string
 	tun      bool
 	settings domain.Settings
 	probes   map[string]engine.Result
@@ -177,23 +176,18 @@ func (s *Service) SetTun(enable bool) (Status, error) {
 		}
 	}
 
-	if err != nil && enable && elevate.Needed(err) {
-		s.setErr(rpc.ErrElevate)
-		s.requestRestart()
-		return s.finish(rpc.ErrElevate)
-	}
-	s.mu.Lock()
-	if err == nil {
-		s.session.tun = enable
-	} else {
-		s.lastErr = err.Error()
-	}
-	s.mu.Unlock()
-	if err == nil {
-		return s.commitTun(enable)
+	if err != nil {
+		if enable && elevate.Needed(err) {
+			s.requestRestart()
+			err = rpc.ErrElevate
+		}
+		return s.finish(err)
 	}
 
-	return s.finish(err)
+	s.mu.Lock()
+	s.session.tun = enable
+	s.mu.Unlock()
+	return s.commitTun(enable)
 }
 
 func (s *Service) RestartRequested() <-chan struct{} { return s.restart }
@@ -243,7 +237,7 @@ func (s *Service) Status() Status {
 }
 
 func (s *Service) status() Status {
-	st := Status{Port: s.settings.Port, Tun: s.tun, LastErr: s.lastErr}
+	st := Status{Port: s.settings.Port, Tun: s.tun}
 	if s.session.eng != nil {
 		st.Connected = true
 		st.NodeID, st.NodeName = s.session.node.ID, s.session.node.Name

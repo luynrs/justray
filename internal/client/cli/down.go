@@ -19,12 +19,11 @@ func (a *app) down(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	stop := spin("Disconnecting")
-	next, err := a.client.Disconnect()
+	_, err = a.client.Disconnect()
 	stop()
 	if err != nil {
 		return err
 	}
 	done("Disconnected")
-	a.warn(next.LastErr)
 	return nil
 }

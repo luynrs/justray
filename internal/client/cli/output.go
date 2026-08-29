@@ -104,12 +104,6 @@ func Fail(err error) {
 	_, _ = lipgloss.Fprintln(os.Stderr, style.Err.Bold(true).Render("✗"), upperFirst(style.Sanitize(err.Error(), true)))
 }
 
-func (a *app) warn(msg string) {
-	if msg != "" {
-		out("  " + style.Err.Render(a.clean(style.FirstLine(msg))))
-	}
-}
-
 func (a *app) clean(s string) string { return style.Sanitize(s, a.emoji) }
 
 func spin(text string) func() {

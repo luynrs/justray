@@ -64,7 +64,6 @@ func (s *Service) ForgetIfRemoved(subID string, nodes []domain.Node) {
 
 	if err := s.clear(); err != nil {
 		s.log.Print(err)
-		s.setErr(err)
 		return
 	}
 	if name != "" {
@@ -94,7 +93,6 @@ func (s *Service) start(n domain.Node, sub string) (err error) {
 		}
 	} else {
 		if err = s.stop(); err != nil {
-			s.setErr(err)
 			return err
 		}
 
@@ -115,13 +113,11 @@ func (s *Service) start(n domain.Node, sub string) (err error) {
 			s.requestRestart()
 			err = rpc.ErrElevate
 		}
-		s.setErr(err)
 		return err
 	}
 
 	s.mu.Lock()
 	s.session = session{eng: eng, node: n, sub: sub, started: time.Now(), tun: tun}
-	s.lastErr = ""
 	s.mu.Unlock()
 
 	s.persistActive(n.ID)
@@ -160,10 +156,6 @@ func (s *Service) stop() error {
 }
 
 func (s *Service) clear() error {
-	s.mu.Lock()
-	s.lastErr = ""
-	s.mu.Unlock()
-
 	if err := s.stop(); err != nil {
 		return err
 	}
@@ -179,12 +171,6 @@ func (s *Service) discard(eng engine.Engine) error {
 		s.mu.Unlock()
 	}
 	return err
-}
-
-func (s *Service) setErr(err error) {
-	s.mu.Lock()
-	s.lastErr = err.Error()
-	s.mu.Unlock()
 }
 
 func (s *Service) persistActive(id string) {

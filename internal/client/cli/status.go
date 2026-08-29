@@ -15,7 +15,6 @@ func (a *app) status(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	stateHeadline(st)
-	a.warn(st.LastErr)
 
 	if st.Connected {
 		a.nodeDetails(st)
