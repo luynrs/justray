@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/lipgloss/v2"
@@ -92,12 +93,11 @@ func modeWord(tun bool) string {
 }
 
 func upperFirst(s string) string {
-	r := []rune(s)
-	if len(r) == 0 {
-		return s
+	if s == "" {
+		return ""
 	}
-	r[0] = unicode.ToUpper(r[0])
-	return string(r)
+	r, size := utf8.DecodeRuneInString(s)
+	return string(unicode.ToUpper(r)) + s[size:]
 }
 
 func Fail(err error) {

@@ -17,11 +17,11 @@ import (
 
 func Unbase64(s string) ([]byte, error) {
 	s = strings.Join(strings.Fields(s), "")
-	s = strings.NewReplacer("-", "+", "_", "/").Replace(s)
-	if pad := len(s) % 4; pad != 0 {
-		s += strings.Repeat("=", 4-pad)
+	s = strings.TrimRight(s, "=")
+	if b, err := base64.RawURLEncoding.DecodeString(s); err == nil {
+		return b, nil
 	}
-	return base64.StdEncoding.DecodeString(s)
+	return base64.RawStdEncoding.DecodeString(s)
 }
 
 func id(raw string) string {
@@ -107,11 +107,8 @@ func splitComma(s string) []string {
 
 // covers insecure=1, allowInsecure=true and friends
 func truthy(s string) bool {
-	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "1", "true", "yes":
-		return true
-	}
-	return false
+	v, _ := strconv.ParseBool(strings.TrimSpace(s))
+	return v || strings.EqualFold(strings.TrimSpace(s), "yes")
 }
 
 func insecureFlag(q url.Values) bool {
