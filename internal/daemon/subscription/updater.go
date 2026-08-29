@@ -10,7 +10,6 @@ import (
 	"github.com/luynrs/justray/internal/daemon/store"
 	"github.com/luynrs/justray/internal/shared/domain"
 	"github.com/luynrs/justray/internal/shared/parser"
-	"github.com/luynrs/justray/internal/shared/parser/protocols"
 	"github.com/luynrs/justray/internal/shared/rpc"
 )
 
@@ -113,7 +112,6 @@ func (s *Service) fill(ctx context.Context, sub *store.Subscription) error {
 		if err := validateNodes(nodes); err != nil {
 			return err
 		}
-		preserveIDs(nodes, sub.Nodes)
 		sub.Nodes, sub.Name, sub.Traffic = nodes, n.Name, domain.Traffic{}
 		sub.UpdatedAt = time.Now().UTC()
 		return nil
@@ -123,7 +121,6 @@ func (s *Service) fill(ctx context.Context, sub *store.Subscription) error {
 	if err != nil {
 		return err
 	}
-	preserveIDs(nodes, sub.Nodes)
 	sub.Nodes, sub.Traffic, sub.UpdatedAt = nodes, traffic, time.Now().UTC()
 	if name != "" { // change name if it changed on server
 		sub.Name = name
@@ -138,19 +135,4 @@ func validateNodes(nodes []domain.Node) error {
 		}
 	}
 	return nil
-}
-
-func preserveIDs(nodes, old []domain.Node) {
-	ids := make(map[string]string, len(old))
-	for _, previous := range old {
-		id := protocols.NodeID(previous)
-		if _, ok := ids[id]; !ok {
-			ids[id] = previous.ID
-		}
-	}
-	for i := range nodes {
-		if id, ok := ids[nodes[i].ID]; ok {
-			nodes[i].ID = id
-		}
-	}
 }
