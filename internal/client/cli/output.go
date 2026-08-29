@@ -37,7 +37,11 @@ func fieldLines(pairs ...[2]string) string {
 func state(st rpc.Status) string {
 	switch {
 	case st.Connected:
-		return "connected via " + strings.ToUpper(modeWord(st.Tun))
+		text := "connected via " + strings.ToUpper(modeWord(st.Tun))
+		if st.Uptime > 0 {
+			text += " for " + style.Uptime(time.Duration(st.Uptime)*time.Second)
+		}
+		return text
 	}
 	return "disconnected"
 }
@@ -55,9 +59,6 @@ func stateHeadline(st rpc.Status) {
 func (a *app) statusFields(st rpc.Status, n rpc.Node) [][2]string {
 	f := [][2]string{{"Node", a.nodeName(st.NodeName, st.NodeID)}}
 	f = append(f, a.nodeFields(n)...)
-	if st.Uptime > 0 {
-		f = append(f, [2]string{"Uptime", style.Uptime(time.Duration(st.Uptime) * time.Second)})
-	}
 	return f
 }
 
