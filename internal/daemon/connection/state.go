@@ -10,7 +10,7 @@ import (
 type session struct {
 	eng     engine.Engine
 	node    domain.Node
-	sub     string
+	ref     domain.NodeRef
 	started time.Time
 	tun     bool // the tun the engine has
 }

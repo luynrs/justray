@@ -3,7 +3,6 @@ package connection
 import (
 	"context"
 	"fmt"
-	"maps"
 
 	"github.com/luynrs/justray/internal/shared/domain"
 	"github.com/luynrs/justray/internal/shared/rpc"
@@ -20,12 +19,13 @@ func (s *Service) Nodes() ([]rpc.Node, error) {
 	out := []rpc.Node{} // never nil: the TUI tells "no nodes" from "not loaded yet"
 	for _, sub := range subs {
 		for _, n := range sub.Nodes {
+			ref := domain.NodeRef{SubscriptionID: sub.ID, NodeID: n.ID}
 			item := rpc.Node{
 				ID: n.ID, Name: n.Name, Protocol: string(n.Protocol),
 				Server: n.Server, Port: n.Port,
 				Sub: sub.ID,
 			}
-			if p, ok := s.probes[n.ID]; ok {
+			if p, ok := s.probes[ref]; ok {
 				item.Probed, item.Alive, item.MS = true, p.Alive, p.MS
 			}
 			out = append(out, item)
@@ -41,13 +41,15 @@ func (s *Service) Probe(ctx context.Context, sub, id string) ([]rpc.Node, error)
 		return nil, err
 	}
 
+	live := map[domain.NodeRef]bool{}
+	var refs []domain.NodeRef
 	var targets []domain.Node
 	for _, x := range subs {
-		if sub != "" && x.ID != sub {
-			continue
-		}
 		for _, n := range x.Nodes {
-			if id == "" || n.ID == id {
+			ref := domain.NodeRef{SubscriptionID: x.ID, NodeID: n.ID}
+			live[ref] = true
+			if (sub == "" || x.ID == sub) && (id == "" || n.ID == id) {
+				refs = append(refs, ref)
 				targets = append(targets, n)
 			}
 		}
@@ -61,18 +63,15 @@ func (s *Service) Probe(ctx context.Context, sub, id string) ([]rpc.Node, error)
 		return nil, err
 	}
 
-	live := map[string]bool{}
-	for _, x := range subs {
-		for _, n := range x.Nodes {
-			live[n.ID] = true
+	s.mu.Lock()
+	for _, ref := range refs {
+		if result, ok := results[ref.NodeID]; ok {
+			s.probes[ref] = result
 		}
 	}
-
-	s.mu.Lock()
-	maps.Copy(s.probes, results)
-	for id := range s.probes {
-		if !live[id] {
-			delete(s.probes, id)
+	for ref := range s.probes {
+		if !live[ref] {
+			delete(s.probes, ref)
 		}
 	}
 	s.mu.Unlock()

@@ -40,21 +40,22 @@ func TestStore(t *testing.T) {
 
 	t.Run("active", func(t *testing.T) {
 		d := Disk{Dir: t.TempDir()}
+		ref := domain.NodeRef{SubscriptionID: "sub1", NodeID: "node1"}
 
-		if id, err := d.Active(); err != nil || id != "" {
-			t.Fatalf("empty dir: got %q, %v; want \"\", nil", id, err)
+		if got, err := d.Active(); err != nil || got != (domain.NodeRef{}) {
+			t.Fatalf("empty dir: got %+v, %v; want zero ref, nil", got, err)
 		}
-		if err := d.SetActive("node1"); err != nil {
+		if err := d.SetActive(ref); err != nil {
 			t.Fatalf("SetActive: %v", err)
 		}
-		if id, err := d.Active(); err != nil || id != "node1" {
-			t.Fatalf("got %q, %v; want \"node1\", nil", id, err)
+		if got, err := d.Active(); err != nil || got != ref {
+			t.Fatalf("got %+v, %v; want %+v, nil", got, err, ref)
 		}
-		if err := d.SetActive(""); err != nil {
+		if err := d.SetActive(domain.NodeRef{}); err != nil {
 			t.Fatalf("SetActive(\"\"): %v", err)
 		}
-		if id, err := d.Last(); err != nil || id != "node1" {
-			t.Fatalf("disconnect forgot the last node: got %q, %v; want \"node1\", nil", id, err)
+		if got, err := d.Last(); err != nil || got != ref {
+			t.Fatalf("disconnect forgot the last node: got %+v, %v; want %+v, nil", got, err, ref)
 		}
 	})
 

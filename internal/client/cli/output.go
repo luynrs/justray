@@ -58,13 +58,13 @@ func stateHeadline(st rpc.Status) {
 }
 
 func (a *app) statusFields(st rpc.Status, n rpc.Node) [][2]string {
-	f := [][2]string{{"Node", a.nodeName(st.NodeName, st.NodeID)}}
+	f := [][2]string{{"Node", a.nodeName(st.NodeName, st.NodeRef.NodeID)}}
 	f = append(f, a.nodeFields(n)...)
 	return f
 }
 
 func (a *app) nodeDetails(st rpc.Status) {
-	n, _ := a.resolveNode(st.NodeID)
+	n, _ := a.resolveNode(st.NodeRef.NodeID, st.NodeRef.SubscriptionID)
 	fields(a.statusFields(st, n)...)
 }
 
@@ -82,8 +82,10 @@ func (a *app) nodeName(name, id string) string {
 	if id == "" {
 		return a.clean(name)
 	}
-	return a.clean(name) + " " + style.Dim.Render("("+id+")")
+	return a.clean(name) + " " + style.Dim.Render("("+displayID(id)+")")
 }
+
+func displayID(id string) string { return id[:min(8, len(id))] }
 
 func modeWord(tun bool) string {
 	if tun {

@@ -38,6 +38,11 @@ type Node struct {
 	WireGuard      *WireGuard
 }
 
+type NodeRef struct {
+	SubscriptionID string
+	NodeID         string
+}
+
 func ValidPort(port int) bool { return port >= 1 && port <= 65535 }
 
 type Auth struct {

@@ -1,7 +1,6 @@
 package connection
 
 import (
-	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -31,7 +30,7 @@ type Service struct {
 	lastErr  string
 	tun      bool
 	settings domain.Settings
-	probes   map[string]engine.Result
+	probes   map[domain.NodeRef]engine.Result
 
 	watchers map[chan Status]struct{}
 	restart  chan struct{}
@@ -56,7 +55,7 @@ func New(dir string, st store.Disk, newEngine engine.New, probe engine.Probe, lo
 		dir:       dir,
 		tun:       state.Tun,
 		settings:  settings,
-		probes:    map[string]engine.Result{},
+		probes:    map[domain.NodeRef]engine.Result{},
 		watchers:  map[chan Status]struct{}{},
 		restart:   make(chan struct{}, 1),
 	}
@@ -115,7 +114,7 @@ func (s *Service) SetSettings(in domain.Settings) (Status, error) {
 	if err := s.stop(); err != nil {
 		return s.finish(err)
 	}
-	return s.finish(s.start(cur.node, cur.sub))
+	return s.finish(s.start(cur.node, cur.ref))
 }
 
 func engineChanged(x, y domain.Settings) bool {
@@ -126,7 +125,7 @@ func engineChanged(x, y domain.Settings) bool {
 	return !x.Equal(y)
 }
 
-func (s *Service) Connect(id string) (Status, error) {
+func (s *Service) Connect(queryID, subID string) (Status, error) {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
 
@@ -134,12 +133,12 @@ func (s *Service) Connect(id string) (Status, error) {
 	if err != nil {
 		return Status{}, err
 	}
-	n, sub, ok := find(subs, id)
-	if !ok {
-		return Status{}, fmt.Errorf("node %q not found", id)
+	n, ref, err := find(subs, domain.NodeRef{SubscriptionID: subID, NodeID: queryID})
+	if err != nil {
+		return Status{}, err
 	}
 
-	return s.finish(s.start(n, sub))
+	return s.finish(s.start(n, ref))
 }
 
 func (s *Service) Disconnect() (Status, error) {
@@ -227,11 +226,11 @@ func (s *Service) Shutdown() {
 	}
 }
 
-// ActiveID returns the connected node id, or the last one used, or "" if none.
-func (s *Service) ActiveID() (string, error) {
-	id, err := s.store.Active()
-	if id != "" || err != nil {
-		return id, err
+// ActiveRef returns the connected node, the last one used, or zero if none.
+func (s *Service) ActiveRef() (domain.NodeRef, error) {
+	ref, err := s.store.Active()
+	if ref.NodeID != "" || err != nil {
+		return ref, err
 	}
 	return s.store.Last()
 }
@@ -246,7 +245,7 @@ func (s *Service) status() Status {
 	st := Status{Port: s.settings.Port, Tun: s.tun, LastErr: s.lastErr}
 	if s.session.eng != nil {
 		st.Connected = true
-		st.NodeID, st.NodeName = s.session.node.ID, s.session.node.Name
+		st.NodeRef, st.NodeName = s.session.ref, s.session.node.Name
 		st.Uptime = int64(time.Since(s.session.started).Seconds())
 	}
 	return st

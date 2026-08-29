@@ -56,11 +56,11 @@ func call[T any](c *Client, method string, args Args) (T, error) {
 	return out, nil
 }
 
-func (c *Client) Ping() error                    { _, err := call[any](c, "Ping", Args{}); return err }
-func (c *Client) Status() (Status, error)        { return call[Status](c, "Status", Args{}) }
-func (c *Client) Active() (string, error)        { return call[string](c, "Active", Args{}) }
-func (c *Client) Subs() ([]Sub, error)           { return call[[]Sub](c, "Subs", Args{}) }
-func (c *Client) AddSub(url string) (Sub, error) { return call[Sub](c, "AddSub", Args{URL: url}) }
+func (c *Client) Ping() error                     { _, err := call[any](c, "Ping", Args{}); return err }
+func (c *Client) Status() (Status, error)         { return call[Status](c, "Status", Args{}) }
+func (c *Client) Active() (domain.NodeRef, error) { return call[domain.NodeRef](c, "Active", Args{}) }
+func (c *Client) Subs() ([]Sub, error)            { return call[[]Sub](c, "Subs", Args{}) }
+func (c *Client) AddSub(url string) (Sub, error)  { return call[Sub](c, "AddSub", Args{URL: url}) }
 func (c *Client) RemoveSub(id string) error {
 	_, err := call[any](c, "RemoveSub", Args{ID: id})
 	return err
@@ -69,11 +69,13 @@ func (c *Client) MoveSub(id string, dir int) error {
 	_, err := call[any](c, "MoveSub", Args{ID: id, Dir: dir})
 	return err
 }
-func (c *Client) RefreshAll() ([]Sub, error)        { return call[[]Sub](c, "RefreshAll", Args{}) }
-func (c *Client) Refresh(id string) (Sub, error)    { return call[Sub](c, "Refresh", Args{ID: id}) }
-func (c *Client) Nodes() ([]Node, error)            { return call[[]Node](c, "Nodes", Args{}) }
-func (c *Client) Connect(id string) (Status, error) { return call[Status](c, "Connect", Args{ID: id}) }
-func (c *Client) Disconnect() (Status, error)       { return call[Status](c, "Disconnect", Args{}) }
+func (c *Client) RefreshAll() ([]Sub, error)     { return call[[]Sub](c, "RefreshAll", Args{}) }
+func (c *Client) Refresh(id string) (Sub, error) { return call[Sub](c, "Refresh", Args{ID: id}) }
+func (c *Client) Nodes() ([]Node, error)         { return call[[]Node](c, "Nodes", Args{}) }
+func (c *Client) Connect(ref domain.NodeRef) (Status, error) {
+	return call[Status](c, "Connect", Args{ID: ref.NodeID, Sub: ref.SubscriptionID})
+}
+func (c *Client) Disconnect() (Status, error) { return call[Status](c, "Disconnect", Args{}) }
 
 func (c *Client) Probe(sub, id string) ([]Node, error) {
 	return call[[]Node](c, "Probe", Args{Sub: sub, ID: id})

@@ -2,7 +2,9 @@ package connection
 
 import (
 	"errors"
+	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/luynrs/justray/internal/daemon/engine"
@@ -17,8 +19,8 @@ func (s *Service) Restore() {
 	defer s.opMu.Unlock()
 	defer s.broadcast()
 
-	id, err := s.store.Active()
-	if err != nil || id == "" {
+	ref, err := s.store.Active()
+	if err != nil || ref.NodeID == "" {
 		return
 	}
 	subs, err := s.store.Subscriptions()
@@ -26,11 +28,11 @@ func (s *Service) Restore() {
 		s.log.Print(err)
 		return
 	}
-	n, sub, ok := find(subs, id)
-	if !ok {
+	n, ref, err := find(subs, ref)
+	if err != nil {
 		return
 	}
-	if err := s.start(n, sub); err != nil {
+	if err := s.start(n, ref); err != nil {
 		s.log.Print(err)
 	}
 }
@@ -40,22 +42,22 @@ func (s *Service) ForgetIfRemoved(subID string, nodes []domain.Node) {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
 
-	gone := func(id string) bool {
-		return id != "" && slices.ContainsFunc(nodes, func(n domain.Node) bool { return n.ID == id })
+	gone := func(ref domain.NodeRef) bool {
+		return ref.NodeID != "" && (ref.SubscriptionID == subID || ref.SubscriptionID == "" && slices.ContainsFunc(nodes, func(n domain.Node) bool { return n.ID == ref.NodeID }))
 	}
 	if active, err := s.store.Active(); err == nil && gone(active) {
-		if err := s.store.SetActive(""); err != nil {
+		if err := s.store.SetActive(domain.NodeRef{}); err != nil {
 			s.log.Print(err)
 		}
 	}
 	if last, err := s.store.Last(); err == nil && gone(last) {
-		if err := s.store.SetLast(""); err != nil {
+		if err := s.store.SetLast(domain.NodeRef{}); err != nil {
 			s.log.Print(err)
 		}
 	}
 
 	s.mu.Lock()
-	live := s.session.sub == subID
+	live := s.session.ref.SubscriptionID == subID
 	name := s.session.node.Name
 	s.mu.Unlock()
 	if !live {
@@ -73,7 +75,7 @@ func (s *Service) ForgetIfRemoved(subID string, nodes []domain.Node) {
 	s.broadcast()
 }
 
-func (s *Service) start(n domain.Node, sub string) (err error) {
+func (s *Service) start(n domain.Node, ref domain.NodeRef) (err error) {
 	if n.TLS != nil && n.TLS.Insecure {
 		return errors.New("insecure TLS node is not allowed")
 	}
@@ -111,7 +113,7 @@ func (s *Service) start(n domain.Node, sub string) (err error) {
 	}
 	if err != nil {
 		if tun && elevate.Needed(err) {
-			s.persistActive(n.ID)
+			s.persistActive(ref)
 			s.requestRestart()
 			err = rpc.ErrElevate
 		}
@@ -120,11 +122,11 @@ func (s *Service) start(n domain.Node, sub string) (err error) {
 	}
 
 	s.mu.Lock()
-	s.session = session{eng: eng, node: n, sub: sub, started: time.Now(), tun: tun}
+	s.session = session{eng: eng, node: n, ref: ref, started: time.Now(), tun: tun}
 	s.lastErr = ""
 	s.mu.Unlock()
 
-	s.persistActive(n.ID)
+	s.persistActive(ref)
 	s.log.Printf("connected to %s (%s %s:%d)", n.Name, n.Protocol, n.Server, n.Port)
 	return nil
 }
@@ -167,7 +169,7 @@ func (s *Service) clear() error {
 	if err := s.stop(); err != nil {
 		return err
 	}
-	s.persistActive("")
+	s.persistActive(domain.NodeRef{})
 	return nil
 }
 
@@ -187,19 +189,34 @@ func (s *Service) setErr(err error) {
 	s.mu.Unlock()
 }
 
-func (s *Service) persistActive(id string) {
-	if err := s.store.SetActive(id); err != nil {
+func (s *Service) persistActive(ref domain.NodeRef) {
+	if err := s.store.SetActive(ref); err != nil {
 		s.log.Print(err)
 	}
 }
 
-func find(subs []store.Subscription, nodeID string) (domain.Node, string, bool) {
+func find(subs []store.Subscription, query domain.NodeRef) (domain.Node, domain.NodeRef, error) {
+	var node domain.Node
+	var ref domain.NodeRef
+	if query.NodeID == "" {
+		return node, ref, errors.New("node not found")
+	}
 	for _, sub := range subs {
+		if query.SubscriptionID != "" && sub.ID != query.SubscriptionID {
+			continue
+		}
 		for _, n := range sub.Nodes {
-			if n.ID == nodeID {
-				return n, sub.ID, true
+			if !strings.HasPrefix(n.ID, query.NodeID) {
+				continue
 			}
+			if ref.NodeID != "" {
+				return domain.Node{}, domain.NodeRef{}, fmt.Errorf("ambiguous node ID %q", query.NodeID)
+			}
+			node, ref = n, domain.NodeRef{SubscriptionID: sub.ID, NodeID: n.ID}
 		}
 	}
-	return domain.Node{}, "", false
+	if ref.NodeID == "" {
+		return node, ref, fmt.Errorf("node %q not found", query.NodeID)
+	}
+	return node, ref, nil
 }

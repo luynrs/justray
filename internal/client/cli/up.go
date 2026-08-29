@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -42,14 +43,18 @@ func (a *app) up(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	id, err := a.client.Active()
+	ref, err := a.client.Active()
 	if err != nil {
 		return err
 	}
-	if id == "" {
+	if ref.NodeID == "" {
 		return fmt.Errorf("no node selected yet; pick one: %s <id | name>", cmd.CommandPath())
 	}
-	return a.connectNode(id, mode)
+	n, err := a.resolveNode(ref.NodeID, ref.SubscriptionID)
+	if err != nil {
+		return err
+	}
+	return a.connect(n, mode)
 }
 
 func init() {
@@ -69,10 +74,14 @@ func tunMode(tun, proxy bool) *bool {
 }
 
 func (a *app) connectNode(key string, mode *bool) error {
-	n, err := a.resolveNode(key)
+	n, err := a.resolveNode(key, "")
 	if err != nil {
 		return err
 	}
+	return a.connect(n, mode)
+}
+
+func (a *app) connect(n rpc.Node, mode *bool) error {
 	spinText := "Connecting to " + a.clean(n.Name)
 	if mode != nil {
 		if _, err := a.runOp(spinText, func() (rpc.Status, error) { return a.client.SetTun(*mode) }, mode); err != nil {
@@ -80,7 +89,7 @@ func (a *app) connectNode(key string, mode *bool) error {
 		}
 	}
 	st, err := a.runOp(spinText, func() (rpc.Status, error) {
-		return a.client.Connect(n.ID)
+		return a.client.Connect(n.Ref())
 	}, mode)
 	if err != nil {
 		return err
@@ -150,10 +159,13 @@ func (a *app) report(headline string, st rpc.Status) {
 	a.warn(st.LastErr)
 }
 
-func (a *app) resolveNode(key string) (rpc.Node, error) {
+func (a *app) resolveNode(key, sub string) (rpc.Node, error) {
 	nodes, err := a.client.Nodes()
 	if err != nil {
 		return rpc.Node{}, err
+	}
+	if sub != "" {
+		nodes = slices.DeleteFunc(nodes, func(n rpc.Node) bool { return n.Sub != sub })
 	}
 	return match(key, "node", nodes, func(n rpc.Node) (string, string) { return n.ID, n.Name })
 }

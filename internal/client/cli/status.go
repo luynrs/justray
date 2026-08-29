@@ -22,11 +22,11 @@ func (a *app) status(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	id, err := a.client.Active()
-	if err != nil || id == "" {
+	ref, err := a.client.Active()
+	if err != nil || ref.NodeID == "" {
 		return nil
 	}
-	n, err := a.resolveNode(id)
+	n, err := a.resolveNode(ref.NodeID, ref.SubscriptionID)
 	if err != nil || n.ID == "" {
 		return nil
 	}

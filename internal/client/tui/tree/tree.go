@@ -3,6 +3,7 @@ package tree
 import (
 	"strings"
 
+	"github.com/luynrs/justray/internal/shared/domain"
 	"github.com/luynrs/justray/internal/shared/rpc"
 )
 
@@ -34,7 +35,7 @@ type Data struct {
 	Subs       []rpc.Sub
 	Nodes      []rpc.Node
 	Collapsed  map[string]bool
-	Probing    map[string]bool
+	Probing    map[domain.NodeRef]bool
 	Refreshing map[string]bool
 	Query      string
 	Status     rpc.Status
@@ -90,7 +91,7 @@ func (d Data) Rows() []Row {
 			rows = append(rows, Row{Kind: Meta, Sub: g.Sub})
 		}
 		for _, n := range nodes {
-			if q != "" || !d.Collapsed[g.Sub.ID] || (d.connected() && d.Status.NodeID == n.ID) {
+			if q != "" || !d.Collapsed[g.Sub.ID] || (d.connected() && d.Status.NodeRef == n.Ref()) {
 				rows = append(rows, Row{Kind: Node, Node: n})
 			}
 		}

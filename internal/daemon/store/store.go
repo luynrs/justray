@@ -22,10 +22,12 @@ type Subscription struct {
 }
 
 type State struct {
-	Active   string          `yaml:"active"`
-	Last     string          `yaml:"last,omitempty"`
-	Tun      bool            `yaml:"tun,omitempty"`
-	Settings domain.Settings `yaml:"settings,omitempty"`
+	Active    string          `yaml:"active"`
+	ActiveSub string          `yaml:"active_subscription,omitempty"`
+	Last      string          `yaml:"last,omitempty"`
+	LastSub   string          `yaml:"last_subscription,omitempty"`
+	Tun       bool            `yaml:"tun,omitempty"`
+	Settings  domain.Settings `yaml:"settings,omitempty"`
 }
 
 // Disk reads and writes subscriptions.yaml and configuration.yaml
@@ -64,28 +66,28 @@ func (d Disk) State() (State, error) {
 	return s, yaml.Unmarshal(data, &s)
 }
 
-func (d Disk) Active() (string, error) {
+func (d Disk) Active() (domain.NodeRef, error) {
 	s, err := d.State()
-	return s.Active, err
+	return domain.NodeRef{SubscriptionID: s.ActiveSub, NodeID: s.Active}, err
 }
 
 // SetActive persists the node to restore on start; connecting also records it as Last
-func (d Disk) SetActive(id string) error {
+func (d Disk) SetActive(ref domain.NodeRef) error {
 	return d.update(func(s *State) {
-		s.Active = id
-		if id != "" {
-			s.Last = id
+		s.Active, s.ActiveSub = ref.NodeID, ref.SubscriptionID
+		if ref.NodeID != "" {
+			s.Last, s.LastSub = ref.NodeID, ref.SubscriptionID
 		}
 	})
 }
 
-func (d Disk) Last() (string, error) {
+func (d Disk) Last() (domain.NodeRef, error) {
 	s, err := d.State()
-	return s.Last, err
+	return domain.NodeRef{SubscriptionID: s.LastSub, NodeID: s.Last}, err
 }
 
-func (d Disk) SetLast(id string) error {
-	return d.update(func(s *State) { s.Last = id })
+func (d Disk) SetLast(ref domain.NodeRef) error {
+	return d.update(func(s *State) { s.Last, s.LastSub = ref.NodeID, ref.SubscriptionID })
 }
 
 func (d Disk) SetTun(on bool) error {

@@ -53,9 +53,13 @@ type Node struct {
 	MS     int
 }
 
+func (n Node) Ref() domain.NodeRef {
+	return domain.NodeRef{SubscriptionID: n.Sub, NodeID: n.ID}
+}
+
 type Status struct {
 	Connected bool
-	NodeID    string
+	NodeRef   domain.NodeRef
 	NodeName  string
 	Uptime    int64 // seconds
 	LastErr   string
