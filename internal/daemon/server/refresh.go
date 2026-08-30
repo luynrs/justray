@@ -1,21 +1,28 @@
 package server
 
-import "time"
+import (
+	"time"
 
-func (s *Server) AutoRefresh(done <-chan struct{}) {
+	"github.com/luynrs/justray/internal/shared/rpc"
+)
+
+func (s *Server) AutoRefresh() {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
 	tried := map[string]time.Time{}
 	for {
 		select {
-		case <-done:
+		case <-s.ctx.Done():
 			return
-		case <-time.After(time.Minute):
+		case <-ticker.C:
 		}
 
-		every := time.Duration(s.core.RefreshEvery()) * time.Hour
+		snapshot := s.core.Snapshot()
+		every := time.Duration(snapshot.Settings.RefreshEvery) * time.Hour
 		if every == 0 {
 			continue
 		}
-		stale := s.stale(every)
+		stale := stale(snapshot.Subscriptions, every)
 		active := make(map[string]struct{}, len(stale))
 		for _, id := range stale {
 			active[id] = struct{}{}
@@ -37,12 +44,7 @@ func (s *Server) AutoRefresh(done <-chan struct{}) {
 	}
 }
 
-func (s *Server) stale(every time.Duration) []string {
-	list, err := s.core.Subscriptions()
-	if err != nil {
-		s.log.Printf("auto refresh: %v", err)
-		return nil
-	}
+func stale(list []rpc.Sub, every time.Duration) []string {
 	var out []string
 	for _, sub := range list {
 		if time.Since(sub.UpdatedAt) >= every {

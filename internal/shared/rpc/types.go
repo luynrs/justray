@@ -65,3 +65,14 @@ type Status struct {
 	Port      int
 	Tun       bool
 }
+
+type Snapshot struct {
+	Revision      uint64
+	Settings      domain.Settings
+	Subscriptions []Sub
+	Nodes         []Node
+	Status        Status
+	Active        domain.NodeRef
+}
+
+type Changed struct{ Revision uint64 }

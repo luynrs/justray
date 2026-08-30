@@ -8,7 +8,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/luynrs/justray/internal/client/tui/style"
-	"github.com/luynrs/justray/internal/client/tui/subscriptions"
 	"github.com/luynrs/justray/internal/client/tui/tree"
 	"github.com/luynrs/justray/internal/shared/rpc"
 )
@@ -28,14 +27,18 @@ var subAddCmd = &cobra.Command{
 
 func (a *app) subAdd(cmd *cobra.Command, args []string) error {
 	stop := spin("Fetching subscription")
-	sub, err := a.client.AddSub(args[0])
+	snapshot, err := a.client.AddSub(args[0])
 	stop()
 	if err != nil {
 		return err
 	}
+	if len(snapshot.Subscriptions) == 0 {
+		return fmt.Errorf("subscription was not added")
+	}
+	sub := snapshot.Subscriptions[len(snapshot.Subscriptions)-1]
 	done("Added " + a.clean(sub.Name))
 	f := [][2]string{{"ID", sub.ID}, {"Nodes", strconv.Itoa(sub.Nodes)}}
-	if t := subscriptions.Usage(sub); t != "" {
+	if t := style.Usage(sub.Traffic); t != "" {
 		f = append(f, [2]string{"Traffic", t})
 	}
 	fields(f...)
@@ -55,7 +58,7 @@ func (a *app) subRemove(cmd *cobra.Command, args []string) error {
 	}
 	name := a.clean(sub.Name)
 	stop := spin("Removing " + name)
-	err = a.client.RemoveSub(sub.ID)
+	_, err = a.client.RemoveSub(sub.ID)
 	stop()
 	if err != nil {
 		return err
@@ -71,19 +74,16 @@ var subListCmd = &cobra.Command{
 }
 
 func (a *app) subList(cmd *cobra.Command, args []string) error {
-	subs, err := a.client.Subs()
+	snapshot, err := a.client.Snapshot()
 	if err != nil {
 		return err
 	}
+	subs := snapshot.Subscriptions
 	if len(subs) == 0 {
 		out(style.Dim.Render("No subscriptions yet. Add one: " + cmd.Parent().CommandPath() + " add <url>"))
 		return nil
 	}
-	nodes, err := a.client.Nodes()
-	if err != nil {
-		return err
-	}
-	a.showTree(subs, nodes)
+	a.showTree(subs, snapshot.Nodes)
 	return nil
 }
 
@@ -92,11 +92,11 @@ func init() {
 }
 
 func (a *app) resolveSub(key string) (rpc.Sub, error) {
-	subs, err := a.client.Subs()
+	snapshot, err := a.client.Snapshot()
 	if err != nil {
 		return rpc.Sub{}, err
 	}
-	return match(key, "subscription", subs, func(s rpc.Sub) (string, string) { return s.ID, s.Name })
+	return match(key, "subscription", snapshot.Subscriptions, func(s rpc.Sub) (string, string) { return s.ID, s.Name })
 }
 
 func (a *app) completeSub(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -107,8 +107,8 @@ func (a *app) completeSub(cmd *cobra.Command, args []string, toComplete string) 
 	if c == nil || c.Ping() != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	subs, err := c.Subs()
-	return completeNames(subs, err, func(s rpc.Sub) string { return s.Name })
+	snapshot, err := c.Snapshot()
+	return completeNames(snapshot.Subscriptions, err, func(s rpc.Sub) string { return s.Name })
 }
 
 func (a *app) showTree(subs []rpc.Sub, nodes []rpc.Node) {
@@ -154,7 +154,7 @@ func (a *app) serverProto(n rpc.Node) string {
 }
 
 func subMeta(s rpc.Sub) string {
-	meta := subscriptions.Usage(s)
+	meta := style.Usage(s.Traffic)
 	if meta != "" {
 		meta += style.Dim.Render(" · ")
 	}

@@ -46,6 +46,7 @@ type Model struct {
 	query     string
 
 	status     rpc.Status
+	revision   uint64
 	live       bool
 	emoji      bool
 	since      time.Time
@@ -81,7 +82,7 @@ func New(c *rpc.Client) Model {
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(func() tea.Msg { return load(m.client) }, settingsCmd(m.client, false), watch(m.watchCtx, m.client, m.statusCh), next(m.statusCh), tickCmd(), m.spin.Tick)
+	return tea.Batch(func() tea.Msg { return load(m.client) }, watch(m.watchCtx, m.client, m.statusCh), next(m.statusCh), tickCmd(), m.spin.Tick)
 }
 
 func (m Model) data() tree.Data {

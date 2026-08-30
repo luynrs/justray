@@ -3,6 +3,7 @@ package main
 // DAEMON ENTRYPOINT
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -23,6 +24,8 @@ import (
 )
 
 func main() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	dir, err := rpc.Dir()
 	if err != nil {
 		die("resolve config dir:", err)
@@ -64,18 +67,16 @@ func main() {
 	logger.Printf("justrayd %s listening on %s", version.String(), socket)
 
 	st := store.Disk{Dir: dir}
-	conn := connection.New(dir, singbox.New, singbox.Probe, logger)
-	subs := subscription.New(logger)
+	conn := connection.New(ctx, dir, singbox.New, singbox.Probe, logger)
+	subs := subscription.New(ctx, logger)
 	app := core.New(st, conn, subs, logger)
-	srv := server.New(logger, app)
+	srv := server.New(ctx, logger, app)
 	app.Restore()
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 
-	done := make(chan struct{})
-	defer close(done)
-	go srv.AutoRefresh(done)
+	go srv.AutoRefresh()
 
 	served := make(chan error, 1)
 	go func() { served <- srv.Serve(ln) }()
@@ -92,6 +93,7 @@ func main() {
 	case err := <-served:
 		logger.Printf("shutting down (%v)", err)
 	}
+	cancel()
 
 	cleaned := make(chan struct{})
 	go func() {

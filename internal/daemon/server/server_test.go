@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log"
@@ -41,7 +42,7 @@ func TestShutdownClosesWatch(t *testing.T) {
 	}
 	logger := log.New(io.Discard, "", 0)
 	st := store.Disk{Dir: dir}
-	srv := New(logger, core.New(st, connection.New(dir, nil, nil, logger), subscription.New(logger), logger))
+	srv := New(context.Background(), logger, core.New(st, connection.New(context.Background(), dir, nil, nil, logger), subscription.New(context.Background(), logger), logger))
 	served := make(chan error, 1)
 	go func() { served <- srv.Serve(ln) }()
 
@@ -54,8 +55,8 @@ func TestShutdownClosesWatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = client.SetReadDeadline(time.Now().Add(time.Second))
-	if err := json.NewDecoder(client).Decode(&rpc.Status{}); err != nil {
-		t.Fatalf("initial Watch status: %v", err)
+	if err := json.NewDecoder(client).Decode(&rpc.Changed{}); err != nil {
+		t.Fatalf("initial Watch revision: %v", err)
 	}
 
 	stopped := make(chan struct{})

@@ -8,8 +8,10 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/luynrs/justray/internal/daemon/connection"
+	"github.com/luynrs/justray/internal/daemon/engine"
 	"github.com/luynrs/justray/internal/daemon/platform/autostart"
 	"github.com/luynrs/justray/internal/daemon/store"
 	"github.com/luynrs/justray/internal/daemon/subscription"
@@ -18,15 +20,20 @@ import (
 )
 
 type Core struct {
-	opMu    sync.Mutex
-	stateMu sync.RWMutex
-	store   store.Disk
-	state   store.PersistentState
-	conn    *connection.Service
-	subs    *subscription.Service
+	opMu   sync.Mutex
+	store  store.Disk
+	state  store.PersistentState
+	probes map[domain.NodeRef]engine.Result
+	conn   *connection.Service
+	subs   *subscription.Service
 
 	jobsMu    sync.Mutex
 	refreshes map[string]*refreshCall
+
+	revision atomic.Uint64
+	snapshot atomic.Pointer[rpc.Snapshot]
+	watchMu  sync.Mutex
+	watchers map[chan rpc.Changed]struct{}
 }
 
 func New(st store.Disk, conn *connection.Service, subs *subscription.Service, logger *log.Logger) *Core {
@@ -43,8 +50,9 @@ func New(st store.Disk, conn *connection.Service, subs *subscription.Service, lo
 		settings.Autostart = "on"
 	}
 	state.Settings = settings
-	conn.Configure(settings, state.Tun)
-	return &Core{store: st, state: state, conn: conn, subs: subs, refreshes: map[string]*refreshCall{}}
+	c := &Core{store: st, state: state, probes: map[domain.NodeRef]engine.Result{}, conn: conn, subs: subs, refreshes: map[string]*refreshCall{}, watchers: map[chan rpc.Changed]struct{}{}}
+	c.publish()
+	return c
 }
 
 type refreshCall struct {
@@ -64,39 +72,57 @@ func (c *Core) Restore() {
 	if err != nil {
 		return
 	}
-	c.conn.Restore(n, ref)
+	c.conn.Restore(n, ref, state.Settings, state.Tun)
+	c.publish()
 }
 
 func (c *Core) Shutdown() {
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
 	c.conn.Shutdown()
+	c.publish()
 }
 
-func (c *Core) Status() rpc.Status { return c.conn.Status() }
-func (c *Core) ActiveRef() (domain.NodeRef, error) {
-	state := c.current()
-	if state.Active.NodeID != "" {
-		return state.Active, nil
-	}
-	return state.Last, nil
-}
-func (c *Core) Subscriptions() ([]rpc.Sub, error) {
-	state := c.current()
-	out := make([]rpc.Sub, len(state.Subscriptions))
-	for i, sub := range state.Subscriptions {
-		out[i] = subscription.Info(sub)
-	}
-	return out, nil
-}
-func (c *Core) Nodes() ([]rpc.Node, error)                     { return c.conn.Nodes(c.current().Subscriptions), nil }
-func (c *Core) Settings() domain.Settings                      { return c.current().Settings }
-func (c *Core) RefreshEvery() int                              { return c.current().Settings.RefreshEvery }
-func (c *Core) Watch() (rpc.Status, <-chan rpc.Status, func()) { return c.conn.Watch() }
-func (c *Core) RestartRequested() <-chan struct{}              { return c.conn.RestartRequested() }
+func (c *Core) Snapshot() rpc.Snapshot            { return cloneSnapshot(*c.snapshot.Load()) }
+func (c *Core) RestartRequested() <-chan struct{} { return c.conn.RestartRequested() }
 
-func (c *Core) Probe(ctx context.Context, sub, id string) ([]rpc.Node, error) {
-	return c.conn.Probe(ctx, c.current().Subscriptions, sub, id)
+func (c *Core) Watch() (rpc.Changed, <-chan rpc.Changed, func()) {
+	ch := make(chan rpc.Changed, 1)
+	c.watchMu.Lock()
+	c.watchers[ch] = struct{}{}
+	c.watchMu.Unlock()
+	return rpc.Changed{Revision: c.Snapshot().Revision}, ch, func() {
+		c.watchMu.Lock()
+		delete(c.watchers, ch)
+		c.watchMu.Unlock()
+	}
+}
+
+func (c *Core) Probe(ctx context.Context, sub, id string) error {
+	state := c.current()
+	refs, nodes, err := probeTargets(state.Subscriptions, sub, id)
+	if err != nil {
+		return err
+	}
+	results, err := c.conn.Probe(ctx, nodes, state.Settings)
+	if err != nil {
+		return err
+	}
+	c.opMu.Lock()
+	defer c.opMu.Unlock()
+	live := map[domain.NodeRef]bool{}
+	for _, subscription := range c.current().Subscriptions {
+		for _, node := range subscription.Nodes {
+			live[domain.NodeRef{SubscriptionID: subscription.ID, NodeID: node.ID}] = true
+		}
+	}
+	for _, ref := range refs {
+		if result, ok := results[ref.NodeID]; ok && live[ref] {
+			c.probes[ref] = result
+		}
+	}
+	c.publish()
+	return nil
 }
 
 func (c *Core) AddSubscription(ctx context.Context, rawURL string) (rpc.Sub, error) {
@@ -111,6 +137,7 @@ func (c *Core) AddSubscription(ctx context.Context, rawURL string) (rpc.Sub, err
 	if err := c.commit(next); err != nil {
 		return rpc.Sub{}, err
 	}
+	c.publish()
 	return subscription.Info(sub), nil
 }
 
@@ -137,6 +164,7 @@ func (c *Core) RemoveSubscription(id string) error {
 		return err
 	}
 	c.conn.ForgetIfRemoved(id)
+	c.publish()
 	return nil
 }
 
@@ -153,13 +181,18 @@ func (c *Core) MoveSubscription(id string, dir int) error {
 		return nil
 	}
 	next.Subscriptions[i], next.Subscriptions[j] = next.Subscriptions[j], next.Subscriptions[i]
-	return c.commit(next)
+	if err := c.commit(next); err != nil {
+		return err
+	}
+	c.publish()
+	return nil
 }
 
 func (c *Core) RefreshSubscriptions(ctx context.Context) ([]rpc.Sub, error) {
 	subs := c.current().Subscriptions
 	out, updated, refreshErr := c.subs.RefreshAll(ctx, subs, c.refresh)
 	c.opMu.Lock()
+	defer c.opMu.Unlock()
 	next := c.current()
 	for _, sub := range updated {
 		if i := slices.IndexFunc(next.Subscriptions, func(current store.Subscription) bool { return current.ID == sub.ID }); i >= 0 {
@@ -167,10 +200,10 @@ func (c *Core) RefreshSubscriptions(ctx context.Context) ([]rpc.Sub, error) {
 		}
 	}
 	err := c.commit(next)
-	c.opMu.Unlock()
 	if err != nil {
 		return nil, err
 	}
+	c.publish()
 	return out, refreshErr
 }
 
@@ -187,20 +220,20 @@ func (c *Core) RefreshSubscription(ctx context.Context, id string) (rpc.Sub, err
 		return rpc.Sub{}, err
 	}
 	c.opMu.Lock()
+	defer c.opMu.Unlock()
 	next := c.current()
 	i = slices.IndexFunc(next.Subscriptions, func(current store.Subscription) bool { return current.ID == id })
 	if i >= 0 {
 		next.Subscriptions[i] = sub
 	}
 	if i < 0 {
-		c.opMu.Unlock()
 		return rpc.Sub{}, fmt.Errorf("subscription %q not found", id)
 	}
 	err = c.commit(next)
-	c.opMu.Unlock()
 	if err != nil {
 		return rpc.Sub{}, err
 	}
+	c.publish()
 	return subscription.Info(sub), nil
 }
 
@@ -227,15 +260,15 @@ func (c *Core) refresh(ctx context.Context, sub store.Subscription) (store.Subsc
 	return call.sub, call.err
 }
 
-func (c *Core) Connect(nodeID, subscriptionID string) (rpc.Status, error) {
+func (c *Core) Connect(ctx context.Context, nodeID, subscriptionID string) (rpc.Status, error) {
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
 	next := c.current()
 	n, ref, err := find(next.Subscriptions, domain.NodeRef{SubscriptionID: subscriptionID, NodeID: nodeID})
 	if err != nil {
-		return c.conn.Status(), err
+		return c.status(next), err
 	}
-	status, err := c.conn.Connect(n, ref)
+	status, err := c.conn.Connect(ctx, n, ref, next.Settings, next.Tun)
 	if err != nil && err != rpc.ErrElevate {
 		return status, err
 	}
@@ -243,13 +276,14 @@ func (c *Core) Connect(nodeID, subscriptionID string) (rpc.Status, error) {
 	if saveErr := c.commit(next); saveErr != nil {
 		return status, saveErr
 	}
+	c.publish()
 	return status, err
 }
 
-func (c *Core) Disconnect() (rpc.Status, error) {
+func (c *Core) Disconnect(ctx context.Context) (rpc.Status, error) {
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
-	status, err := c.conn.Disconnect()
+	status, err := c.conn.Disconnect(ctx)
 	if err != nil {
 		return status, err
 	}
@@ -258,30 +292,32 @@ func (c *Core) Disconnect() (rpc.Status, error) {
 	if err := c.commit(next); err != nil {
 		return status, err
 	}
+	c.publish()
 	return status, nil
 }
 
-func (c *Core) SetTun(enable bool) (rpc.Status, error) {
+func (c *Core) SetTun(ctx context.Context, enable bool) (rpc.Status, error) {
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
-	status, err := c.conn.SetTun(enable)
+	next := c.current()
+	next.Tun = enable
+	status, err := c.apply(ctx, next)
 	if err != nil {
 		return status, err
 	}
-	next := c.current()
-	next.Tun = enable
 	if err := c.commit(next); err != nil {
 		return status, err
 	}
+	c.publish()
 	return status, nil
 }
 
-func (c *Core) SetSettings(settings domain.Settings) (rpc.Status, error) {
+func (c *Core) SetSettings(ctx context.Context, settings domain.Settings) (rpc.Status, error) {
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
 	settings, err := settings.Normalize()
 	if err != nil {
-		return c.conn.Status(), err
+		return c.status(c.current()), err
 	}
 	old := c.current().Settings
 	if settings.Autostart != old.Autostart {
@@ -290,20 +326,23 @@ func (c *Core) SetSettings(settings domain.Settings) (rpc.Status, error) {
 			apply = autostart.Disable
 		}
 		if err := apply(); err != nil {
-			return c.conn.Status(), err
+			return c.status(c.current()), err
 		}
 	}
 	next := c.current()
 	next.Settings = settings
-	if err := c.commit(next); err != nil {
-		return c.conn.Status(), err
+	status, err := c.apply(ctx, next)
+	if err != nil {
+		return status, err
 	}
-	return c.conn.ApplySettings(settings)
+	if err := c.commit(next); err != nil {
+		return status, err
+	}
+	c.publish()
+	return status, nil
 }
 
 func (c *Core) current() store.PersistentState {
-	c.stateMu.RLock()
-	defer c.stateMu.RUnlock()
 	state := c.state
 	state.Subscriptions = slices.Clone(state.Subscriptions)
 	return state
@@ -313,10 +352,110 @@ func (c *Core) commit(state store.PersistentState) error {
 	if err := c.store.Save(state); err != nil {
 		return err
 	}
-	c.stateMu.Lock()
 	c.state = state
-	c.stateMu.Unlock()
 	return nil
+}
+
+func (c *Core) publish() {
+	state := c.state
+	subs := make([]rpc.Sub, len(state.Subscriptions))
+	for i, sub := range state.Subscriptions {
+		subs[i] = subscription.Info(sub)
+	}
+	active := state.Active
+	if active.NodeID == "" {
+		active = state.Last
+	}
+	snapshot := &rpc.Snapshot{
+		Revision:      c.revision.Add(1),
+		Settings:      cloneSettings(state.Settings),
+		Subscriptions: subs,
+		Nodes:         c.nodes(state.Subscriptions),
+		Status:        c.status(state),
+		Active:        active,
+	}
+	c.snapshot.Store(snapshot)
+	c.watchMu.Lock()
+	for ch := range c.watchers {
+		select {
+		case ch <- rpc.Changed{Revision: snapshot.Revision}:
+		default:
+		}
+	}
+	c.watchMu.Unlock()
+}
+
+func (c *Core) apply(ctx context.Context, state store.PersistentState) (rpc.Status, error) {
+	if !c.conn.Status().Connected {
+		return c.status(state), nil
+	}
+	node, ref, err := find(state.Subscriptions, state.Active)
+	if err != nil {
+		return c.status(state), err
+	}
+	return c.conn.Apply(ctx, node, ref, state.Settings, state.Tun)
+}
+
+func (c *Core) status(state store.PersistentState) rpc.Status {
+	status := c.conn.Status()
+	status.Port, status.Tun = state.Settings.Port, state.Tun
+	return status
+}
+
+func (c *Core) nodes(subscriptions []store.Subscription) []rpc.Node {
+	live := map[domain.NodeRef]bool{}
+	out := []rpc.Node{}
+	for _, subscription := range subscriptions {
+		for _, node := range subscription.Nodes {
+			ref := domain.NodeRef{SubscriptionID: subscription.ID, NodeID: node.ID}
+			live[ref] = true
+			item := rpc.Node{ID: node.ID, Name: node.Name, Protocol: string(node.Protocol), Server: node.Server, Port: node.Port, Sub: subscription.ID}
+			if result, ok := c.probes[ref]; ok {
+				item.Probed, item.Alive, item.MS = true, result.Alive, result.MS
+			}
+			out = append(out, item)
+		}
+	}
+	for ref := range c.probes {
+		if !live[ref] {
+			delete(c.probes, ref)
+		}
+	}
+	return out
+}
+
+func probeTargets(subscriptions []store.Subscription, subID, nodeID string) ([]domain.NodeRef, []domain.Node, error) {
+	var refs []domain.NodeRef
+	var nodes []domain.Node
+	for _, subscription := range subscriptions {
+		if subID != "" && subscription.ID != subID {
+			continue
+		}
+		for _, node := range subscription.Nodes {
+			if nodeID != "" && node.ID != nodeID {
+				continue
+			}
+			refs = append(refs, domain.NodeRef{SubscriptionID: subscription.ID, NodeID: node.ID})
+			nodes = append(nodes, node)
+		}
+	}
+	if len(nodes) == 0 {
+		return nil, nil, fmt.Errorf("nothing to probe")
+	}
+	return refs, nodes, nil
+}
+
+func cloneSnapshot(snapshot rpc.Snapshot) rpc.Snapshot {
+	snapshot.Settings = cloneSettings(snapshot.Settings)
+	snapshot.Subscriptions = slices.Clone(snapshot.Subscriptions)
+	snapshot.Nodes = slices.Clone(snapshot.Nodes)
+	return snapshot
+}
+
+func cloneSettings(settings domain.Settings) domain.Settings {
+	settings.Except = slices.Clone(settings.Except)
+	settings.Blocked = slices.Clone(settings.Blocked)
+	return settings
 }
 
 func find(subs []store.Subscription, query domain.NodeRef) (domain.Node, domain.NodeRef, error) {

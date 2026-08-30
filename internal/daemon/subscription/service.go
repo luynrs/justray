@@ -17,8 +17,8 @@ type Service struct {
 	log    *log.Logger
 }
 
-func New(logger *log.Logger) *Service {
-	device, err := deviceHeaders()
+func New(ctx context.Context, logger *log.Logger) *Service {
+	device, err := deviceHeaders(ctx)
 	if err != nil && logger != nil {
 		logger.Print(err)
 	}

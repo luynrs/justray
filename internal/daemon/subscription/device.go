@@ -19,7 +19,8 @@ import (
 )
 
 // Device info; X-Hwid is required, the rest cosmetic
-func deviceHeaders() (http.Header, error) {
+func deviceHeaders(ctx context.Context) (http.Header, error) {
+	run := func(name string, arg ...string) string { return runCommand(ctx, name, arg...) }
 	h := http.Header{}
 	set := func(key, val string) {
 		if val != "" {
@@ -79,8 +80,8 @@ func readFile(p string) string {
 	return strings.TrimSpace(string(data))
 }
 
-func run(name string, arg ...string) string {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+func runCommand(ctx context.Context, name string, arg ...string) string {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, name, arg...)
 	console.Hide(cmd)

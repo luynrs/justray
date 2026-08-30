@@ -10,6 +10,7 @@ import (
 
 	"github.com/luynrs/justray/internal/client/tui/settings"
 	"github.com/luynrs/justray/internal/client/tui/tree"
+	"github.com/luynrs/justray/internal/shared/rpc"
 )
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -77,29 +78,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.err = msg.err.Error()
 			m.probing, m.refreshing = nil, nil
+			return m, nil
 		}
-		if msg.subs != nil {
-			m.subs, m.refreshing = msg.subs, nil
-		}
-		if msg.nodes != nil {
-			m.nodes, m.probing = msg.nodes, nil
-		}
+		m.revision = msg.snapshot.Revision
+		m.subs, m.nodes = msg.snapshot.Subscriptions, msg.snapshot.Nodes
+		m.status = msg.snapshot.Status
+		m.since = time.Now().Add(-time.Duration(m.status.Uptime) * time.Second)
+		m.emoji = msg.snapshot.Settings.Emoji == "on"
+		m.live, m.probing, m.refreshing = true, nil, nil
 		m.clamp()
 
 	case connectResult:
 		m.connecting = false
-		m.err = ""
 		if msg.err != nil {
 			m.err = msg.err.Error()
+			return m, nil
 		}
+		return m, func() tea.Msg { return loaded{snapshot: msg.snapshot} }
 
 	case pushed:
-		m.live = msg.live
 		if msg.live {
-			m.since = time.Now().Add(-time.Duration(msg.st.Uptime) * time.Second)
-			m.status, m.err = msg.st, ""
+			if msg.revision > m.revision {
+				return m, tea.Batch(next(m.statusCh), func() tea.Msg { return load(m.client) })
+			}
 			return m, next(m.statusCh)
 		}
+		m.live = false
 		return m, tea.Batch(next(m.statusCh), m.spin.Tick)
 	}
 	return m, nil
@@ -114,7 +118,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.confirmQ, m.confirmID = "", ""
 		yes := k == "y"
 		if yes {
-			return m, act(m.client, func() error { return m.client.RemoveSub(id) })
+			return m, act(func() (rpc.Snapshot, error) { return m.client.RemoveSub(id) })
 		}
 		return m, nil
 
@@ -131,7 +135,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			if url == "" {
 				return m, nil
 			}
-			return m, act(m.client, func() error { _, err := m.client.AddSub(url); return err })
+			return m, act(func() (rpc.Snapshot, error) { return m.client.AddSub(url) })
 		}
 		var cmd tea.Cmd
 		m.editor, cmd = m.editor.Update(msg)
@@ -289,5 +293,5 @@ func (m Model) closeSettings() (Model, tea.Cmd) {
 	}
 	m.emoji = next.Emoji == "on"
 	m.connecting = true
-	return m, tea.Batch(m.spin.Tick, connectCmd(func() error { _, err := m.client.SetSettings(next); return err }))
+	return m, tea.Batch(m.spin.Tick, connectCmd(func() (rpc.Snapshot, error) { return m.client.SetSettings(next) }))
 }

@@ -7,8 +7,8 @@ import (
 )
 
 type Engine interface {
-	Apply(SessionSpec) error
-	Stop() error
+	Apply(context.Context, SessionSpec) error
+	Stop(context.Context) error
 }
 
 type SessionSpec struct {

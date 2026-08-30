@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -29,48 +30,59 @@ func (s *Server) handle(conn net.Conn) {
 		return
 	}
 	_ = conn.SetDeadline(time.Time{})
-	result, err := s.dispatch(req)
+	ctx, cancel := context.WithCancel(s.ctx)
+	defer cancel()
+	result, err := s.dispatch(ctx, req)
 	_ = conn.SetDeadline(time.Now().Add(rpc.IdleTimeout))
 	reply(conn, result, err)
 }
 
-func (s *Server) dispatch(req rpc.Req) (any, error) {
+func (s *Server) dispatch(ctx context.Context, req rpc.Req) (any, error) {
 	a := req.Args
 	switch req.Method {
 	case "Ping":
 		return "pong", nil
-	case "Status":
-		return s.core.Status(), nil
-	case "Active":
-		return s.core.ActiveRef()
-	case "Subs":
-		return s.core.Subscriptions()
+	case "Snapshot":
+		return s.core.Snapshot(), nil
 	case "AddSub":
-		return s.core.AddSubscription(s.ctx, a.URL)
+		_, err := s.core.AddSubscription(ctx, a.URL)
+		return s.mutation(err)
 	case "RemoveSub":
-		return nil, s.core.RemoveSubscription(a.ID)
+		return s.mutation(s.core.RemoveSubscription(a.ID))
 	case "MoveSub":
-		return nil, s.core.MoveSubscription(a.ID, a.Dir)
+		return s.mutation(s.core.MoveSubscription(a.ID, a.Dir))
 	case "RefreshAll":
-		return s.core.RefreshSubscriptions(s.ctx)
+		_, err := s.core.RefreshSubscriptions(ctx)
+		return s.mutation(err)
 	case "Refresh":
-		return s.core.RefreshSubscription(s.ctx, a.ID)
-	case "Nodes":
-		return s.core.Nodes()
+		_, err := s.core.RefreshSubscription(ctx, a.ID)
+		return s.mutation(err)
 	case "Probe":
-		return s.core.Probe(s.ctx, a.Sub, a.ID)
+		if err := s.core.Probe(ctx, a.Sub, a.ID); err != nil {
+			return nil, err
+		}
+		return s.core.Snapshot(), nil
 	case "Connect":
-		return s.core.Connect(a.ID, a.Sub)
+		_, err := s.core.Connect(ctx, a.ID, a.Sub)
+		return s.mutation(err)
 	case "Disconnect":
-		return s.core.Disconnect()
+		_, err := s.core.Disconnect(ctx)
+		return s.mutation(err)
 	case "SetTun":
-		return s.core.SetTun(a.Tun)
-	case "Settings":
-		return s.core.Settings(), nil
+		_, err := s.core.SetTun(ctx, a.Tun)
+		return s.mutation(err)
 	case "SetSettings":
-		return s.core.SetSettings(a.Settings)
+		_, err := s.core.SetSettings(ctx, a.Settings)
+		return s.mutation(err)
 	}
 	return nil, fmt.Errorf("unknown method %q", req.Method)
+}
+
+func (s *Server) mutation(err error) (any, error) {
+	if err != nil {
+		return nil, err
+	}
+	return s.core.Snapshot(), nil
 }
 
 func (s *Server) watch(conn net.Conn) {
@@ -95,8 +107,8 @@ func (s *Server) watch(conn net.Conn) {
 			return
 		case <-gone:
 			return
-		case st := <-ch:
-			if err := enc.Encode(st); err != nil {
+		case changed := <-ch:
+			if err := enc.Encode(changed); err != nil {
 				return
 			}
 		}

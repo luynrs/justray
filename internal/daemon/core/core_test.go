@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/luynrs/justray/internal/daemon/connection"
+	"github.com/luynrs/justray/internal/daemon/engine"
 	"github.com/luynrs/justray/internal/daemon/store"
 	"github.com/luynrs/justray/internal/daemon/subscription"
 	"github.com/luynrs/justray/internal/shared/domain"
@@ -39,8 +40,8 @@ func TestRefreshRunsOutsideMutationLockAndJoins(t *testing.T) {
 		t.Fatal(err)
 	}
 	logger := log.New(io.Discard, "", 0)
-	subs := subscription.New(logger)
-	app := New(disk, connection.New("", nil, nil, logger), subs, logger)
+	subs := subscription.New(context.Background(), logger)
+	app := New(disk, connection.New(context.Background(), "", nil, nil, logger), subs, logger)
 	sub := app.current().Subscriptions[0]
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -101,9 +102,19 @@ func TestMoveSubscriptionCommitsCoreState(t *testing.T) {
 		t.Fatal(err)
 	}
 	logger := log.New(io.Discard, "", 0)
-	app := New(disk, connection.New("", nil, nil, logger), subscription.New(logger), logger)
+	app := New(disk, connection.New(context.Background(), "", nil, nil, logger), subscription.New(context.Background(), logger), logger)
+	initial, changed, cancel := app.Watch()
+	defer cancel()
 	if err := app.MoveSubscription("a", 1); err != nil {
 		t.Fatal(err)
+	}
+	select {
+	case update := <-changed:
+		if update.Revision <= initial.Revision || app.Snapshot().Revision != update.Revision {
+			t.Fatalf("revision: initial=%d update=%d snapshot=%d", initial.Revision, update.Revision, app.Snapshot().Revision)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("watch did not receive mutation revision")
 	}
 	state, err := disk.Load()
 	if err != nil {
@@ -111,5 +122,86 @@ func TestMoveSubscriptionCommitsCoreState(t *testing.T) {
 	}
 	if got := state.Subscriptions; len(got) != 2 || got[0].ID != "b" || got[1].ID != "a" {
 		t.Fatalf("subscriptions = %+v", got)
+	}
+}
+
+func TestRefreshSubscriptionPublishesCommittedSnapshot(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "vless://11111111-1111-1111-1111-111111111111@example.com:443?security=tls#node")
+	}))
+	defer srv.Close()
+	transport := http.DefaultTransport
+	http.DefaultTransport = srv.Client().Transport
+	defer func() { http.DefaultTransport = transport }()
+
+	disk := store.Disk{Dir: t.TempDir()}
+	if err := disk.Save(store.PersistentState{Subscriptions: []store.Subscription{{ID: "sub", URL: srv.URL}}}); err != nil {
+		t.Fatal(err)
+	}
+	logger := log.New(io.Discard, "", 0)
+	app := New(disk, connection.New(context.Background(), "", nil, nil, logger), subscription.New(context.Background(), logger), logger)
+	initial, changed, cancel := app.Watch()
+	defer cancel()
+	if _, err := app.RefreshSubscription(context.Background(), "sub"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case update := <-changed:
+		snapshot := app.Snapshot()
+		if update.Revision <= initial.Revision || snapshot.Revision != update.Revision || len(snapshot.Nodes) != 1 {
+			t.Fatalf("update=%+v initial=%+v snapshot=%+v", update, initial, snapshot)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("watch did not receive refresh revision")
+	}
+}
+
+func TestProbePublishesCoreOwnedResults(t *testing.T) {
+	disk := store.Disk{Dir: t.TempDir()}
+	if err := disk.Save(store.PersistentState{Subscriptions: []store.Subscription{{ID: "sub", Nodes: []domain.Node{{ID: "node"}}}}}); err != nil {
+		t.Fatal(err)
+	}
+	logger := log.New(io.Discard, "", 0)
+	probe := func(context.Context, []domain.Node, domain.Settings, string) (map[string]engine.Result, error) {
+		return map[string]engine.Result{"node": {Alive: true, MS: 12}}, nil
+	}
+	app := New(disk, connection.New(context.Background(), "", nil, probe, logger), subscription.New(context.Background(), logger), logger)
+	initial, changed, cancel := app.Watch()
+	defer cancel()
+	if err := app.Probe(context.Background(), "sub", "node"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case update := <-changed:
+		snapshot := app.Snapshot()
+		if update.Revision <= initial.Revision || snapshot.Revision != update.Revision || len(snapshot.Nodes) != 1 || !snapshot.Nodes[0].Probed || !snapshot.Nodes[0].Alive || snapshot.Nodes[0].MS != 12 {
+			t.Fatalf("update=%+v initial=%+v snapshot=%+v", update, initial, snapshot)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("watch did not receive probe revision")
+	}
+}
+
+func TestSetTunCommitsCoreState(t *testing.T) {
+	disk := store.Disk{Dir: t.TempDir()}
+	logger := log.New(io.Discard, "", 0)
+	app := New(disk, connection.New(context.Background(), "", nil, nil, logger), subscription.New(context.Background(), logger), logger)
+	initial, changed, cancel := app.Watch()
+	defer cancel()
+	if _, err := app.SetTun(context.Background(), true); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case update := <-changed:
+		snapshot := app.Snapshot()
+		if update.Revision <= initial.Revision || snapshot.Revision != update.Revision || !snapshot.Status.Tun {
+			t.Fatalf("update=%+v initial=%+v snapshot=%+v", update, initial, snapshot)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("watch did not receive TUN revision")
+	}
+	state, err := disk.Load()
+	if err != nil || !state.Tun {
+		t.Fatalf("state=%+v err=%v", state, err)
 	}
 }

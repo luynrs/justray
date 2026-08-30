@@ -11,46 +11,45 @@ import (
 )
 
 type loaded struct {
-	subs  []rpc.Sub
-	nodes []rpc.Node
-	err   error
+	snapshot rpc.Snapshot
+	err      error
 }
 
 type pushed struct {
-	st   rpc.Status
-	live bool
+	revision uint64
+	live     bool
 }
 
-type connectResult struct{ err error }
+type connectResult struct {
+	snapshot rpc.Snapshot
+	err      error
+}
 
-func connectCmd(fn func() error) tea.Cmd {
-	return func() tea.Msg { return connectResult{fn()} }
+func connectCmd(fn func() (rpc.Snapshot, error)) tea.Cmd {
+	return func() tea.Msg {
+		snapshot, err := fn()
+		return connectResult{snapshot: snapshot, err: err}
+	}
 }
 
 type tick struct{}
 
 func load(c *rpc.Client) tea.Msg {
-	subs, err := c.Subs()
-	if err != nil {
-		return loaded{err: err}
-	}
-	nodes, err := c.Nodes()
-	return loaded{subs: subs, nodes: nodes, err: err}
+	snapshot, err := c.Snapshot()
+	return loaded{snapshot: snapshot, err: err}
 }
 
-func act(c *rpc.Client, fn func() error) tea.Cmd {
+func act(fn func() (rpc.Snapshot, error)) tea.Cmd {
 	return func() tea.Msg {
-		if err := fn(); err != nil {
-			return loaded{err: err}
-		}
-		return load(c)
+		snapshot, err := fn()
+		return loaded{snapshot: snapshot, err: err}
 	}
 }
 
 func probeCmd(c *rpc.Client, sub, id string) tea.Cmd {
 	return func() tea.Msg {
-		nodes, err := c.Probe(sub, id)
-		return loaded{nodes: nodes, err: err}
+		snapshot, err := c.Probe(sub, id)
+		return loaded{snapshot: snapshot, err: err}
 	}
 }
 
@@ -62,9 +61,9 @@ func watch(ctx context.Context, c *rpc.Client, ch chan<- pushed) tea.Cmd {
 				if ctx.Err() != nil {
 					return
 				}
-				_ = c.Watch(ctx, func(st rpc.Status) {
+				_ = c.Watch(ctx, func(changed rpc.Changed) {
 					select {
-					case ch <- pushed{st: st, live: true}:
+					case ch <- pushed{revision: changed.Revision, live: true}:
 					case <-ctx.Done():
 					}
 					backoff = time.Second
@@ -104,7 +103,7 @@ type settingsLoaded struct {
 
 func settingsCmd(c *rpc.Client, open bool) tea.Cmd {
 	return func() tea.Msg {
-		s, err := c.Settings()
-		return settingsLoaded{s: s, err: err, open: open}
+		snapshot, err := c.Snapshot()
+		return settingsLoaded{s: snapshot.Settings, err: err, open: open}
 	}
 }

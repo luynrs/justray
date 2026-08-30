@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
+
+	"github.com/luynrs/justray/internal/shared/domain"
 )
 
 func Clip(s string, width int) string {
@@ -135,4 +137,24 @@ func span(d time.Duration) string {
 		return fmt.Sprintf("%dh", (d+30*time.Minute)/time.Hour)
 	}
 	return fmt.Sprintf("%dd", (d+12*time.Hour)/(24*time.Hour))
+}
+
+func Usage(t domain.Traffic) string {
+	used := t.UploadBytes + t.DownloadBytes
+	var parts []string
+	switch {
+	case t.TotalBytes > 0:
+		parts = append(parts, fmt.Sprintf("%s %s %s",
+			Bytes(used),
+			Bar(float64(used)/float64(t.TotalBytes)),
+			Bytes(t.TotalBytes)))
+	case used > 0:
+		parts = append(parts, Bytes(used)+" used")
+	default:
+		parts = append(parts, "No data")
+	}
+	if !t.ExpiresAt.IsZero() {
+		parts = append(parts, Expiry(t.ExpiresAt))
+	}
+	return strings.Join(parts, " · ")
 }

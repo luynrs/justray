@@ -23,8 +23,8 @@ const (
 	probeWorkers  = 32
 )
 
-func Build(n domain.Node, s domain.Settings, logPath string, tun bool) (*option.Options, error) {
-	ep, obs, err := Proxy(n, s)
+func Build(ctx context.Context, n domain.Node, s domain.Settings, logPath string, tun bool) (*option.Options, error) {
+	ep, obs, err := Proxy(ctx, n, s)
 	if err != nil {
 		return nil, err
 	}
@@ -71,8 +71,8 @@ func Build(n domain.Node, s domain.Settings, logPath string, tun bool) (*option.
 	return opts, nil
 }
 
-func Proxy(n domain.Node, s domain.Settings) (*option.Endpoint, []option.Outbound, error) {
-	n, err := resolved(context.Background(), n, s)
+func Proxy(ctx context.Context, n domain.Node, s domain.Settings) (*option.Endpoint, []option.Outbound, error) {
+	n, err := resolved(ctx, n, s)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -56,46 +56,41 @@ func call[T any](c *Client, method string, args Args) (T, error) {
 	return out, nil
 }
 
-func (c *Client) Ping() error                     { _, err := call[any](c, "Ping", Args{}); return err }
-func (c *Client) Status() (Status, error)         { return call[Status](c, "Status", Args{}) }
-func (c *Client) Active() (domain.NodeRef, error) { return call[domain.NodeRef](c, "Active", Args{}) }
-func (c *Client) Subs() ([]Sub, error)            { return call[[]Sub](c, "Subs", Args{}) }
-func (c *Client) AddSub(url string) (Sub, error)  { return call[Sub](c, "AddSub", Args{URL: url}) }
-func (c *Client) RemoveSub(id string) error {
-	_, err := call[any](c, "RemoveSub", Args{ID: id})
-	return err
+func (c *Client) Ping() error                 { _, err := call[any](c, "Ping", Args{}); return err }
+func (c *Client) Snapshot() (Snapshot, error) { return call[Snapshot](c, "Snapshot", Args{}) }
+func (c *Client) AddSub(url string) (Snapshot, error) {
+	return call[Snapshot](c, "AddSub", Args{URL: url})
 }
-func (c *Client) MoveSub(id string, dir int) error {
-	_, err := call[any](c, "MoveSub", Args{ID: id, Dir: dir})
-	return err
+func (c *Client) RemoveSub(id string) (Snapshot, error) {
+	return call[Snapshot](c, "RemoveSub", Args{ID: id})
 }
-func (c *Client) RefreshAll() ([]Sub, error)     { return call[[]Sub](c, "RefreshAll", Args{}) }
-func (c *Client) Refresh(id string) (Sub, error) { return call[Sub](c, "Refresh", Args{ID: id}) }
-func (c *Client) Nodes() ([]Node, error)         { return call[[]Node](c, "Nodes", Args{}) }
-func (c *Client) Connect(ref domain.NodeRef) (Status, error) {
-	return call[Status](c, "Connect", Args{ID: ref.NodeID, Sub: ref.SubscriptionID})
+func (c *Client) MoveSub(id string, dir int) (Snapshot, error) {
+	return call[Snapshot](c, "MoveSub", Args{ID: id, Dir: dir})
 }
-func (c *Client) Disconnect() (Status, error) { return call[Status](c, "Disconnect", Args{}) }
+func (c *Client) RefreshAll() (Snapshot, error) { return call[Snapshot](c, "RefreshAll", Args{}) }
+func (c *Client) Refresh(id string) (Snapshot, error) {
+	return call[Snapshot](c, "Refresh", Args{ID: id})
+}
+func (c *Client) Connect(ref domain.NodeRef) (Snapshot, error) {
+	return call[Snapshot](c, "Connect", Args{ID: ref.NodeID, Sub: ref.SubscriptionID})
+}
+func (c *Client) Disconnect() (Snapshot, error) { return call[Snapshot](c, "Disconnect", Args{}) }
 
-func (c *Client) Probe(sub, id string) ([]Node, error) {
-	return call[[]Node](c, "Probe", Args{Sub: sub, ID: id})
-}
-
-func (c *Client) SetTun(enable bool) (Status, error) {
-	return call[Status](c, "SetTun", Args{Tun: enable})
+func (c *Client) Probe(sub, id string) (Snapshot, error) {
+	return call[Snapshot](c, "Probe", Args{Sub: sub, ID: id})
 }
 
-func (c *Client) Settings() (domain.Settings, error) {
-	return call[domain.Settings](c, "Settings", Args{})
+func (c *Client) SetTun(enable bool) (Snapshot, error) {
+	return call[Snapshot](c, "SetTun", Args{Tun: enable})
 }
 
-func (c *Client) SetSettings(s domain.Settings) (Status, error) {
-	return call[Status](c, "SetSettings", Args{Settings: s})
+func (c *Client) SetSettings(s domain.Settings) (Snapshot, error) {
+	return call[Snapshot](c, "SetSettings", Args{Settings: s})
 }
 
 func (c *Client) Shutdown() error { _, err := call[any](c, "Shutdown", Args{}); return err }
 
-func (c *Client) Watch(ctx context.Context, onUpdate func(Status)) error {
+func (c *Client) Watch(ctx context.Context, onUpdate func(Changed)) error {
 	conn, err := c.dial()
 	if err != nil {
 		return err
@@ -109,10 +104,10 @@ func (c *Client) Watch(ctx context.Context, onUpdate func(Status)) error {
 	}
 	dec := json.NewDecoder(conn)
 	for {
-		var st Status
-		if err := dec.Decode(&st); err != nil {
+		var changed Changed
+		if err := dec.Decode(&changed); err != nil {
 			return fmt.Errorf("watch: %w", err)
 		}
-		onUpdate(st)
+		onUpdate(changed)
 	}
 }

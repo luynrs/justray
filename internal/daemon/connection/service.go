@@ -1,8 +1,9 @@
 package connection
 
 import (
+	"context"
+	"errors"
 	"log"
-	"sync"
 	"time"
 
 	"github.com/luynrs/justray/internal/daemon/engine"
@@ -11,148 +12,106 @@ import (
 	"github.com/luynrs/justray/internal/shared/rpc"
 )
 
-type Status = rpc.Status
+type session struct {
+	eng     engine.Engine
+	node    domain.Node
+	ref     domain.NodeRef
+	started time.Time
+	tun     bool
+}
 
 type Service struct {
+	ctx       context.Context
 	newEngine engine.New
 	probeAll  engine.Probe
 	log       *log.Logger
 	dir       string
 
-	opMu sync.Mutex
-
-	mu       sync.Mutex
-	session  session
-	cleanup  engine.Engine
-	tun      bool
-	settings domain.Settings
-	probes   map[domain.NodeRef]engine.Result
-
-	watchers map[chan Status]struct{}
-	restart  chan struct{}
+	session session
+	cleanup engine.Engine
+	restart chan struct{}
 }
 
-func New(dir string, newEngine engine.New, probe engine.Probe, logger *log.Logger) *Service {
+func New(ctx context.Context, dir string, newEngine engine.New, probe engine.Probe, logger *log.Logger) *Service {
 	return &Service{
+		ctx:       ctx,
 		newEngine: newEngine,
 		probeAll:  probe,
 		log:       logger,
 		dir:       dir,
-		probes:    map[domain.NodeRef]engine.Result{},
-		watchers:  map[chan Status]struct{}{},
 		restart:   make(chan struct{}, 1),
 	}
 }
 
-func (s *Service) Configure(settings domain.Settings, tun bool) {
-	s.mu.Lock()
-	s.settings, s.tun = settings, tun
-	s.mu.Unlock()
-}
-
-func (s *Service) current() domain.Settings {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.settings
-}
-
-func (s *Service) ApplySettings(in domain.Settings) (Status, error) {
-	s.opMu.Lock()
-	defer s.opMu.Unlock()
-
-	s.mu.Lock()
-	old, cur, tun := s.settings, s.session, s.tun
-	s.settings = in
-	s.mu.Unlock()
-
-	if cur.eng == nil {
-		return s.finish(nil)
+func (s *Service) Connect(ctx context.Context, n domain.Node, ref domain.NodeRef, settings domain.Settings, tun bool) (rpc.Status, error) {
+	if err := ctx.Err(); err != nil {
+		return s.Status(), err
 	}
-	return s.finish(s.apply(cur.node, cur.ref, in, tun, engine.Rebuilds(old, in)))
+	return s.Status(), s.apply(n, ref, settings, tun, true)
 }
 
-func (s *Service) Connect(n domain.Node, ref domain.NodeRef) (Status, error) {
-	s.opMu.Lock()
-	defer s.opMu.Unlock()
-	s.mu.Lock()
-	settings, tun := s.settings, s.tun
-	s.mu.Unlock()
-	return s.finish(s.apply(n, ref, settings, tun, true))
+func (s *Service) Apply(ctx context.Context, n domain.Node, ref domain.NodeRef, settings domain.Settings, tun bool) (rpc.Status, error) {
+	if err := ctx.Err(); err != nil {
+		return s.Status(), err
+	}
+	return s.Status(), s.apply(n, ref, settings, tun, false)
 }
 
-func (s *Service) Disconnect() (Status, error) {
-	s.opMu.Lock()
-	defer s.opMu.Unlock()
-
-	s.mu.Lock()
+func (s *Service) Disconnect(ctx context.Context) (rpc.Status, error) {
+	if err := ctx.Err(); err != nil {
+		return s.Status(), err
+	}
 	name := s.session.node.Name
-	s.mu.Unlock()
-
-	if err := s.clear(); err != nil {
-		return s.finish(err)
+	if err := s.stop(ctx); err != nil {
+		return s.Status(), err
 	}
-
 	if name != "" {
 		s.log.Printf("disconnected from %s", name)
 	}
-	return s.finish(nil)
+	return s.Status(), nil
 }
 
-func (s *Service) SetTun(enable bool) (Status, error) {
-	s.opMu.Lock()
-	defer s.opMu.Unlock()
-
-	s.mu.Lock()
-	cur, settings := s.session, s.settings
-	s.mu.Unlock()
-	var err error
-	if cur.eng != nil && enable != cur.tun {
-		err = s.apply(cur.node, cur.ref, settings, enable, false)
+func (s *Service) Restore(n domain.Node, ref domain.NodeRef, settings domain.Settings, tun bool) {
+	if err := s.apply(n, ref, settings, tun, true); err != nil {
+		s.log.Print(err)
 	}
+}
 
-	if err != nil {
-		if enable && elevate.Needed(err) {
-			s.requestRestart()
-			err = rpc.ErrElevate
-		}
-		return s.finish(err)
+func (s *Service) ForgetIfRemoved(subID string) {
+	if s.session.ref.SubscriptionID != subID {
+		return
 	}
+	name := s.session.node.Name
+	if err := s.stop(s.ctx); err != nil {
+		s.log.Print(err)
+		return
+	}
+	if name != "" {
+		s.log.Printf("disconnected from %s", name)
+	}
+}
 
-	s.mu.Lock()
-	s.tun = enable
-	s.mu.Unlock()
-	return s.finish(nil)
+func (s *Service) Probe(ctx context.Context, nodes []domain.Node, settings domain.Settings) (map[string]engine.Result, error) {
+	return s.probeAll(ctx, nodes, settings, rpc.EngineLog(s.dir))
 }
 
 func (s *Service) RestartRequested() <-chan struct{} { return s.restart }
 
 func (s *Service) requestRestart() {
-	if s.restart == nil {
-		return
-	}
 	select {
 	case s.restart <- struct{}{}:
 	default:
 	}
 }
 
-// Shutdown tears the active engine down without broadcasting, for process exit.
 func (s *Service) Shutdown() {
-	s.opMu.Lock()
-	defer s.opMu.Unlock()
-	if err := s.stop(); err != nil {
+	if err := s.stop(s.ctx); err != nil {
 		s.log.Print(err)
 	}
 }
 
-func (s *Service) Status() Status {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.status()
-}
-
-func (s *Service) status() Status {
-	st := Status{Port: s.settings.Port, Tun: s.tun}
+func (s *Service) Status() rpc.Status {
+	st := rpc.Status{}
 	if s.session.eng != nil {
 		st.Connected = true
 		st.NodeRef, st.NodeName = s.session.ref, s.session.node.Name
@@ -161,7 +120,67 @@ func (s *Service) status() Status {
 	return st
 }
 
-// finish broadcasts the post-op status and passes err through.
-func (s *Service) finish(err error) (Status, error) {
-	return s.broadcast(), err
+func (s *Service) apply(n domain.Node, ref domain.NodeRef, settings domain.Settings, tun, resetStarted bool) (err error) {
+	if n.TLS != nil && n.TLS.Insecure {
+		return errors.New("insecure TLS node is not allowed")
+	}
+	eng := s.session.eng
+	if eng == nil {
+		if err = s.stop(s.ctx); err != nil {
+			return err
+		}
+		if err = rpc.ClearLog(rpc.EngineLog(s.dir)); err != nil {
+			s.log.Print(err)
+		}
+		eng = s.newEngine(rpc.EngineLog(s.dir))
+		if eng == nil {
+			err = errors.New("initialize engine: engine is nil")
+		} else if err = eng.Apply(s.ctx, engine.SessionSpec{Node: n, Settings: settings, Tun: tun}); err != nil {
+			err = errors.Join(err, s.discard(s.ctx, eng))
+		}
+	} else {
+		err = eng.Apply(s.ctx, engine.SessionSpec{Node: n, Settings: settings, Tun: tun})
+	}
+	if err != nil {
+		if tun && elevate.Needed(err) {
+			s.requestRestart()
+			err = rpc.ErrElevate
+		}
+		return err
+	}
+
+	started := s.session.started
+	if resetStarted || started.IsZero() {
+		started = time.Now()
+	}
+	s.session = session{eng: eng, node: n, ref: ref, started: started, tun: tun}
+	s.log.Printf("connected to %s (%s %s:%d)", n.Name, n.Protocol, n.Server, n.Port)
+	return nil
+}
+
+func (s *Service) stop(ctx context.Context) error {
+	var errs []error
+	if s.cleanup != nil {
+		if err := s.cleanup.Stop(ctx); err != nil {
+			errs = append(errs, err)
+		} else {
+			s.cleanup = nil
+		}
+	}
+	if s.session.eng != nil && s.session.eng != s.cleanup {
+		if err := s.session.eng.Stop(ctx); err != nil {
+			errs = append(errs, err)
+		} else {
+			s.session = session{}
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func (s *Service) discard(ctx context.Context, eng engine.Engine) error {
+	err := eng.Stop(ctx)
+	if err != nil {
+		s.cleanup = eng
+	}
+	return err
 }

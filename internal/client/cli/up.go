@@ -31,10 +31,11 @@ func (a *app) up(cmd *cobra.Command, args []string) error {
 		return a.connectNode(args[0], mode)
 	}
 
-	st, err := a.client.Status()
+	snapshot, err := a.client.Snapshot()
 	if err != nil {
 		return err
 	}
+	st := snapshot.Status
 	if st.Connected {
 		if mode != nil {
 			return a.switchMode(st, *mode)
@@ -43,10 +44,7 @@ func (a *app) up(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	ref, err := a.client.Active()
-	if err != nil {
-		return err
-	}
+	ref := snapshot.Active
 	if ref.NodeID == "" {
 		return fmt.Errorf("no node selected yet; pick one: %s <id | name>", cmd.CommandPath())
 	}
@@ -84,11 +82,11 @@ func (a *app) connectNode(key string, mode *bool) error {
 func (a *app) connect(n rpc.Node, mode *bool) error {
 	spinText := "Connecting to " + a.clean(n.Name)
 	if mode != nil {
-		if _, err := a.runOp(spinText, func() (rpc.Status, error) { return a.client.SetTun(*mode) }, mode); err != nil {
+		if _, err := a.runOp(spinText, func() (rpc.Snapshot, error) { return a.client.SetTun(*mode) }, mode); err != nil {
 			return err
 		}
 	}
-	st, err := a.runOp(spinText, func() (rpc.Status, error) {
+	st, err := a.runOp(spinText, func() (rpc.Snapshot, error) {
 		return a.client.Connect(n.Ref())
 	}, mode)
 	if err != nil {
@@ -99,18 +97,22 @@ func (a *app) connect(n rpc.Node, mode *bool) error {
 }
 
 // runOp waits out the daemon re-execing itself with tun caps
-func (a *app) runOp(text string, op func() (rpc.Status, error), want *bool) (rpc.Status, error) {
+func (a *app) runOp(text string, op func() (rpc.Snapshot, error), want *bool) (rpc.Status, error) {
 	stop := spin(text)
-	st, err := op()
+	snapshot, err := op()
 	stop()
 	if err == nil || err.Error() != rpc.ErrElevate.Error() {
-		return st, err
+		return snapshot.Status, err
 	}
 	stop = spin("Granting permissions")
 	defer stop()
-	st, err = awaitElevate(a.client.Status, want, 3*time.Minute)
+	st, err := awaitElevate(func() (rpc.Status, error) {
+		snapshot, err := a.client.Snapshot()
+		return snapshot.Status, err
+	}, want, 3*time.Minute)
 	if err == nil && want != nil && (!st.Connected || st.Tun != *want) {
-		return op()
+		snapshot, err := op()
+		return snapshot.Status, err
 	}
 	return st, err
 }
@@ -139,7 +141,7 @@ func (a *app) switchMode(st rpc.Status, tun bool) error {
 		a.report("Already "+state(st), st)
 		return nil
 	}
-	next, err := a.runOp("Switching to "+strings.ToUpper(modeWord(tun)), func() (rpc.Status, error) {
+	next, err := a.runOp("Switching to "+strings.ToUpper(modeWord(tun)), func() (rpc.Snapshot, error) {
 		return a.client.SetTun(tun)
 	}, &tun)
 	if err != nil {
@@ -155,10 +157,11 @@ func (a *app) report(headline string, st rpc.Status) {
 }
 
 func (a *app) resolveNode(key, sub string) (rpc.Node, error) {
-	nodes, err := a.client.Nodes()
+	snapshot, err := a.client.Snapshot()
 	if err != nil {
 		return rpc.Node{}, err
 	}
+	nodes := snapshot.Nodes
 	if sub != "" {
 		nodes = slices.DeleteFunc(nodes, func(n rpc.Node) bool { return n.Sub != sub })
 	}
@@ -173,6 +176,6 @@ func (a *app) completeNode(cmd *cobra.Command, args []string, toComplete string)
 	if c == nil || c.Ping() != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	nodes, err := c.Nodes()
-	return completeNames(nodes, err, func(n rpc.Node) string { return n.Name })
+	snapshot, err := c.Snapshot()
+	return completeNames(snapshot.Nodes, err, func(n rpc.Node) string { return n.Name })
 }

@@ -10,10 +10,11 @@ var downCmd = &cobra.Command{
 }
 
 func (a *app) down(cmd *cobra.Command, args []string) error {
-	st, err := a.client.Status()
+	snapshot, err := a.client.Snapshot()
 	if err != nil {
 		return err
 	}
+	st := snapshot.Status
 	if !st.Connected {
 		done("Already disconnected")
 		return nil

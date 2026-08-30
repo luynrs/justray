@@ -145,8 +145,8 @@ func (a *app) connectDaemon() error {
 			return fmt.Errorf("daemon did not start, see %s", rpc.DaemonLog(dir))
 		}
 	}
-	if s, err := a.client.Settings(); err == nil {
-		a.emoji = s.Emoji == "on"
+	if snapshot, err := a.client.Snapshot(); err == nil {
+		a.emoji = snapshot.Settings.Emoji == "on"
 	}
 	return nil
 }

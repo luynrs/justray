@@ -10,10 +10,11 @@ var statusCmd = &cobra.Command{
 }
 
 func (a *app) status(cmd *cobra.Command, args []string) error {
-	st, err := a.client.Status()
+	snapshot, err := a.client.Snapshot()
 	if err != nil {
 		return err
 	}
+	st := snapshot.Status
 	stateHeadline(st)
 
 	if st.Connected {
@@ -21,8 +22,8 @@ func (a *app) status(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	ref, err := a.client.Active()
-	if err != nil || ref.NodeID == "" {
+	ref := snapshot.Active
+	if ref.NodeID == "" {
 		return nil
 	}
 	n, err := a.resolveNode(ref.NodeID, ref.SubscriptionID)

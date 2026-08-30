@@ -30,8 +30,8 @@ type Server struct {
 	stop   chan struct{}
 }
 
-func New(logger *log.Logger, app *core.Core) *Server {
-	ctx, cancel := context.WithCancel(context.Background())
+func New(ctx context.Context, logger *log.Logger, app *core.Core) *Server {
+	ctx, cancel := context.WithCancel(ctx)
 	return &Server{
 		log: logger, core: app, ctx: ctx, cancel: cancel,
 		sem: make(chan struct{}, 32), active: map[net.Conn]struct{}{}, stop: make(chan struct{}, 1),

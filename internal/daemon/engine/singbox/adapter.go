@@ -26,6 +26,7 @@ import (
 )
 
 type Engine struct {
+	ctx      context.Context
 	settings domain.Settings
 	logPath  string
 
@@ -39,15 +40,15 @@ func New(logPath string) engine.Engine {
 	return &Engine{logPath: logPath}
 }
 
-func (e *Engine) Apply(spec engine.SessionSpec) error {
+func (e *Engine) Apply(ctx context.Context, spec engine.SessionSpec) error {
 	if e.inst == nil {
-		return e.start(spec)
+		return e.start(ctx, spec)
 	}
 	if engine.Rebuilds(e.settings, spec.Settings) {
-		if err := e.Stop(); err != nil {
+		if err := e.Stop(ctx); err != nil {
 			return err
 		}
-		return e.start(spec)
+		return e.start(ctx, spec)
 	}
 	if !reflect.DeepEqual(e.node, spec.Node) {
 		if err := e.swap(spec.Node); err != nil {
@@ -67,8 +68,8 @@ func (e *Engine) Apply(spec engine.SessionSpec) error {
 	return nil
 }
 
-func (e *Engine) start(spec engine.SessionSpec) error {
-	opts, err := Build(spec.Node, spec.Settings, e.logPath, spec.Tun)
+func (e *Engine) start(ctx context.Context, spec engine.SessionSpec) error {
+	opts, err := Build(ctx, spec.Node, spec.Settings, e.logPath, spec.Tun)
 	if err != nil {
 		return err
 	}
@@ -77,16 +78,16 @@ func (e *Engine) start(spec engine.SessionSpec) error {
 		before = interfaceNames()
 	}
 
-	inst, err := startBox(*opts)
+	inst, err := startBox(ctx, *opts)
 	if inst != nil {
 		e.inst, e.node = inst, spec.Node
 		if spec.Tun && runtime.GOOS == "darwin" {
 			e.name = newInterface(before)
 			if e.name == "" {
-				return errors.Join(errors.New("tun interface name unavailable"), e.Stop())
+				return errors.Join(errors.New("tun interface name unavailable"), e.Stop(ctx))
 			}
 		}
-		e.settings, e.tun = spec.Settings, spec.Tun
+		e.ctx, e.settings, e.tun = ctx, spec.Settings, spec.Tun
 	}
 	return err
 }
@@ -101,9 +102,9 @@ func rideOutEBusy(op func() error) error {
 	return err
 }
 
-func startBox(opts option.Options) (*sbox.Box, error) {
+func startBox(ctx context.Context, opts option.Options) (*sbox.Box, error) {
 	for attempt := 0; ; attempt++ {
-		inst, err := sbox.New(sbox.Options{Options: opts, Context: Context(context.Background())})
+		inst, err := sbox.New(sbox.Options{Options: opts, Context: Context(ctx)})
 		if err == nil {
 			err = inst.Start()
 		}
@@ -135,7 +136,7 @@ func (e *Engine) swap(n domain.Node) error {
 }
 
 func (e *Engine) apply(n domain.Node) error {
-	ep, obs, err := Proxy(n, e.settings)
+	ep, obs, err := Proxy(e.ctx, n, e.settings)
 	if err != nil {
 		return err
 	}
@@ -206,7 +207,7 @@ func (e *Engine) tunRemove() error {
 	return nil
 }
 
-func (e *Engine) Stop() error {
+func (e *Engine) Stop(_ context.Context) error {
 	if e.inst == nil {
 		return nil
 	}
@@ -264,7 +265,7 @@ func newInterface(before map[string]struct{}) string {
 }
 
 func (e *Engine) runtimeCtx() context.Context {
-	return service.ContextWith[adapter.NetworkManager](Context(context.Background()), e.inst.Network())
+	return service.ContextWith[adapter.NetworkManager](Context(e.ctx), e.inst.Network())
 }
 
 func waitGone(iface string) bool {
