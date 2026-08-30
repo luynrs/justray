@@ -12,6 +12,7 @@ import (
 
 type loaded struct {
 	snapshot rpc.Snapshot
+	op       string
 	err      error
 }
 
@@ -36,20 +37,27 @@ type tick struct{}
 
 func load(c *rpc.Client) tea.Msg {
 	snapshot, err := c.Snapshot()
-	return loaded{snapshot: snapshot, err: err}
+	return loaded{snapshot: snapshot, op: "sync", err: err}
 }
 
 func act(fn func() (rpc.Snapshot, error)) tea.Cmd {
 	return func() tea.Msg {
 		snapshot, err := fn()
-		return loaded{snapshot: snapshot, err: err}
+		return loaded{snapshot: snapshot, op: "mutation", err: err}
 	}
 }
 
 func probeCmd(c *rpc.Client, sub, id string) tea.Cmd {
 	return func() tea.Msg {
 		snapshot, err := c.Probe(sub, id)
-		return loaded{snapshot: snapshot, err: err}
+		return loaded{snapshot: snapshot, op: "probe", err: err}
+	}
+}
+
+func refreshCmd(fn func() (rpc.Snapshot, error)) tea.Cmd {
+	return func() tea.Msg {
+		snapshot, err := fn()
+		return loaded{snapshot: snapshot, op: "refresh", err: err}
 	}
 }
 
@@ -78,8 +86,8 @@ func watch(ctx context.Context, c *rpc.Client, ch chan<- pushed) tea.Cmd {
 				case <-ctx.Done():
 					return
 				}
-				if backoff < 10*time.Second {
-					backoff *= 2
+				if backoff < 2*time.Second {
+					backoff += 500 * time.Millisecond
 				}
 			}
 		}()

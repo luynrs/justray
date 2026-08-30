@@ -40,20 +40,11 @@ func testService(t *testing.T, eng engine.Engine) *Service {
 	}
 }
 
-func TestStopCleansUpSessionAndTracksFailedEngine(t *testing.T) {
+func TestStopCleansUpSessionOnEngineError(t *testing.T) {
 	eng := &fakeEngine{closeErr: errors.New("close failed")}
 	s := testService(t, eng)
-	if err := s.stop(context.Background()); err == nil || s.session.eng != nil || s.cleanup != eng || s.Status().Connected {
-		t.Fatalf("stop err=%v session=%v cleanup=%v status=%+v", err, s.session.eng, s.cleanup, s.Status())
-	}
-}
-
-func TestStopClosesActiveAfterCleanupFailure(t *testing.T) {
-	cleanup, active := &fakeEngine{closeErr: errors.New("cleanup failed")}, &fakeEngine{}
-	s := testService(t, active)
-	s.cleanup = cleanup
-	if err := s.stop(context.Background()); err == nil || active.closeCalls != 1 || s.session.eng != nil {
-		t.Fatalf("stop err=%v activeCalls=%d session=%v", err, active.closeCalls, s.session.eng)
+	if err := s.stop(context.Background()); err == nil || s.session.eng != nil || s.Status().Connected {
+		t.Fatalf("stop err=%v session=%v status=%+v", err, s.session.eng, s.Status())
 	}
 }
 

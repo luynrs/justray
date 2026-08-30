@@ -24,8 +24,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case msg.String() == "ctrl+c":
 			if m.settings != nil {
-				next, cmd := m.closeSettings()
-				return next, tea.Sequence(cmd, tea.Quit)
+				m.settings = nil
+				return m, tea.Quit
 			}
 			return m.quit()
 		case m.settings != nil:
@@ -77,7 +77,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = ""
 		if msg.err != nil {
 			m.err = msg.err.Error()
-			m.probing, m.refreshing = nil, nil
+			if msg.op == "probe" || msg.op == "" {
+				m.probing = nil
+			}
+			if msg.op == "refresh" || msg.op == "" {
+				m.refreshing = nil
+			}
 			return m, nil
 		}
 		if msg.snapshot.Revision < m.revision {
@@ -88,7 +93,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = msg.snapshot.Status
 		m.since = time.Now().Add(-time.Duration(m.status.Uptime) * time.Second)
 		m.emoji = msg.snapshot.Settings.Emoji == "on"
-		m.live, m.probing, m.refreshing = true, nil, nil
+		m.live = true
+		if msg.op == "probe" || msg.op == "sync" || msg.op == "" {
+			m.probing = nil
+		}
+		if msg.op == "refresh" || msg.op == "sync" || msg.op == "" {
+			m.refreshing = nil
+		}
 		m.clamp()
 
 	case connectResult:
@@ -97,7 +108,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = msg.err.Error()
 			return m, nil
 		}
-		return m, func() tea.Msg { return loaded{snapshot: msg.snapshot} }
+		return m, func() tea.Msg { return loaded{snapshot: msg.snapshot, op: "connect"} }
 
 	case pushed:
 		if msg.live {
@@ -182,7 +193,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "/":
 		return m, m.startFiltering()
 	case "d":
-		if r, ok := m.at(); ok {
+		if r, ok := m.at(); ok && r.SubID() != tree.Default {
 			name := tree.Data{Subs: m.subs}.SubName(r.SubID())
 			m.confirmQ, m.confirmID = "delete "+name+"?", r.SubID()
 		}

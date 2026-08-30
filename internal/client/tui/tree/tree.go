@@ -54,10 +54,15 @@ type Group struct {
 }
 
 func (d Data) Groups() []Group {
+	index := make(map[string][]rpc.Node, len(d.Subs))
+	for _, n := range d.Nodes {
+		index[n.Sub] = append(index[n.Sub], n)
+	}
+
 	out := make([]Group, 0, len(d.Subs))
 	var loose []rpc.Node
 	for _, sub := range d.Subs {
-		nodes := d.SubNodes(sub.ID)
+		nodes := index[sub.ID]
 		if sub.Direct {
 			loose = append(loose, nodes...)
 			continue

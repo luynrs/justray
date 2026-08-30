@@ -175,7 +175,7 @@ func New(s domain.Settings, top int) *Settings {
 	styles.Focused.Text = style.Dim
 	styles.Focused.Placeholder = style.Dim
 	input.SetStyles(styles)
-	input.CharLimit = 64
+	input.CharLimit = 2048
 	return &Settings{top: top, cur: s, orig: s, input: input}
 }
 
@@ -209,8 +209,7 @@ func (s *Settings) key(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	}
 
 	switch msg.String() {
-	case "esc", "q":
-		// first esc reports the problem, a second one leaves without saving
+	case "esc":
 		if s.err != "" {
 			s.abandon = true
 			return true, nil
@@ -219,6 +218,10 @@ func (s *Settings) key(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 			s.err = err.Error()
 			return false, nil
 		}
+		return true, nil
+
+	case "q":
+		s.abandon = true
 		return true, nil
 
 	case "right", "l":

@@ -26,6 +26,19 @@ func (c *Client) dial() (net.Conn, error) {
 	return conn, nil
 }
 
+func timeoutFor(method string) time.Duration {
+	switch method {
+	case "Ping":
+		return time.Second
+	case "Snapshot":
+		return 3 * time.Second
+	case "Probe":
+		return 5 * time.Minute
+	default:
+		return 30 * time.Second
+	}
+}
+
 func call[T any](c *Client, method string, args Args) (T, error) {
 	var out T
 
@@ -34,11 +47,7 @@ func call[T any](c *Client, method string, args Args) (T, error) {
 		return out, err
 	}
 	defer func() { _ = conn.Close() }()
-	timeout := IdleTimeout
-	if method == "Probe" {
-		timeout = 5 * time.Minute
-	}
-	_ = conn.SetDeadline(time.Now().Add(timeout))
+	_ = conn.SetDeadline(time.Now().Add(timeoutFor(method)))
 
 	if err := json.NewEncoder(conn).Encode(Req{method, args}); err != nil {
 		return out, fmt.Errorf("%s: %w", method, err)

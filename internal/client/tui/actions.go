@@ -74,6 +74,9 @@ func (m Model) probe() (tea.Model, tea.Cmd) {
 		m.probing[r.Node.Ref()] = true
 		return m, probeCmd(m.client, r.Node.Sub, r.Node.ID)
 	}
+	if r.Sub.ID == tree.Default {
+		return m, nil
+	}
 	for _, n := range m.data().SubNodes(r.Sub.ID) {
 		m.probing[n.Ref()] = true
 	}
@@ -94,8 +97,11 @@ func (m Model) refresh() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	id := r.SubID()
+	if id == tree.Default {
+		return m, nil
+	}
 	m.refreshing = map[string]bool{id: true}
-	return m, tea.Batch(m.spin.Tick, act(func() (rpc.Snapshot, error) { return m.client.Refresh(id) }))
+	return m, tea.Batch(m.spin.Tick, refreshCmd(func() (rpc.Snapshot, error) { return m.client.Refresh(id) }))
 }
 
 func (m Model) refreshAll() (tea.Model, tea.Cmd) {
@@ -103,12 +109,12 @@ func (m Model) refreshAll() (tea.Model, tea.Cmd) {
 	for _, sub := range m.subs {
 		m.refreshing[sub.ID] = true
 	}
-	return m, tea.Batch(m.spin.Tick, act(m.client.RefreshAll))
+	return m, tea.Batch(m.spin.Tick, refreshCmd(m.client.RefreshAll))
 }
 
 func (m Model) moveSub(dir int) (tea.Model, tea.Cmd) {
 	r, ok := m.at()
-	if !ok || r.Kind != tree.Header {
+	if !ok || r.Kind != tree.Header || r.Sub.ID == tree.Default {
 		return m, nil
 	}
 	id := r.Sub.ID

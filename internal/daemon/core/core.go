@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"slices"
@@ -37,15 +38,14 @@ type Core struct {
 	watchers map[chan rpc.Changed]struct{}
 }
 
-func New(st store.Disk, conn *connection.Service, subs *subscription.Service, logger *log.Logger) *Core {
+func New(st store.Disk, conn *connection.Service, subs *subscription.Service, logger *log.Logger) (*Core, error) {
 	state, err := st.Load()
 	if err != nil {
-		logger.Print(err)
+		return nil, fmt.Errorf("load state: %w", err)
 	}
 	settings, err := state.Settings.Normalize()
 	if err != nil {
-		logger.Print(err)
-		settings, _ = domain.Settings{}.Normalize()
+		return nil, fmt.Errorf("normalize settings: %w", err)
 	}
 	if autostart.Enabled() {
 		settings.Autostart = "on"
@@ -53,7 +53,7 @@ func New(st store.Disk, conn *connection.Service, subs *subscription.Service, lo
 	state.Settings = settings
 	c := &Core{store: st, state: state, probes: map[domain.NodeRef]engine.Result{}, conn: conn, subs: subs, refreshes: map[string]*refreshCall{}, watchers: map[chan rpc.Changed]struct{}{}}
 	c.publish()
-	return c
+	return c, nil
 }
 
 type refreshCall struct {
@@ -173,9 +173,9 @@ func (c *Core) RemoveSubscription(id string) error {
 	if err := c.commit(next); err != nil {
 		return err
 	}
-	c.conn.ForgetIfRemoved(id)
+	cleanupErr := c.conn.ForgetIfRemoved(id)
 	c.publish()
-	return nil
+	return cleanupErr
 }
 
 func (c *Core) MoveSubscription(id string, dir int) error {
@@ -216,10 +216,8 @@ func (c *Core) RefreshSubscriptions(ctx context.Context) ([]rpc.Sub, error) {
 			}
 		}
 	}
-	if err := c.syncAfterRefresh(ctx, next, dropConn); err != nil {
-		return nil, err
-	}
-	return out, refreshErr
+	syncErr := c.syncAfterRefresh(ctx, next, dropConn)
+	return out, errors.Join(refreshErr, syncErr)
 }
 
 func (c *Core) RefreshSubscription(ctx context.Context, id string) (rpc.Sub, error) {
@@ -253,13 +251,14 @@ func (c *Core) syncAfterRefresh(ctx context.Context, next store.PersistentState,
 	if err := c.commit(next); err != nil {
 		return err
 	}
+	var runtimeErr error
 	if dropConn {
-		_, _ = c.conn.Disconnect(ctx)
+		_, runtimeErr = c.conn.Disconnect(ctx)
 	} else {
-		_, _ = c.apply(ctx, next)
+		_, runtimeErr = c.apply(ctx, next)
 	}
 	c.publish()
-	return nil
+	return runtimeErr
 }
 
 func (c *Core) sanitizeRefs(state *store.PersistentState, updated store.Subscription) bool {
@@ -363,19 +362,22 @@ func (c *Core) SetSettings(ctx context.Context, settings domain.Settings) (rpc.S
 		return c.status(c.current()), err
 	}
 	old := c.current().Settings
+	next := c.current()
+	next.Settings = settings
+	if err := c.commit(next); err != nil {
+		return c.status(c.current()), err
+	}
 	if settings.Autostart != old.Autostart {
 		apply := autostart.Enable
 		if settings.Autostart == "off" {
 			apply = autostart.Disable
 		}
 		if err := apply(); err != nil {
-			return c.status(c.current()), err
+			next.Settings.Autostart = old.Autostart
+			_ = c.commit(next)
+			c.publish()
+			return c.status(next), err
 		}
-	}
-	next := c.current()
-	next.Settings = settings
-	if err := c.commit(next); err != nil {
-		return c.status(next), err
 	}
 	_, applyErr := c.apply(ctx, next)
 	c.publish()

@@ -42,7 +42,11 @@ func TestShutdownClosesWatch(t *testing.T) {
 	}
 	logger := log.New(io.Discard, "", 0)
 	st := store.Disk{Dir: dir}
-	srv := New(context.Background(), logger, core.New(st, connection.New(context.Background(), dir, nil, nil, logger), subscription.New(context.Background(), logger), logger))
+	app, err := core.New(st, connection.New(context.Background(), dir, nil, nil, logger), subscription.New(context.Background(), logger), logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := New(context.Background(), logger, app)
 	served := make(chan error, 1)
 	go func() { served <- srv.Serve(ln) }()
 

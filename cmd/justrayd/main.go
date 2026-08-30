@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/luynrs/justray/internal/daemon/connection"
 	"github.com/luynrs/justray/internal/daemon/core"
@@ -69,7 +70,10 @@ func main() {
 	st := store.Disk{Dir: dir}
 	conn := connection.New(ctx, dir, singbox.New, singbox.Probe, logger)
 	subs := subscription.New(ctx, logger)
-	app := core.New(st, conn, subs, logger)
+	app, err := core.New(st, conn, subs, logger)
+	if err != nil {
+		die("initialize core:", err)
+	}
 	srv := server.New(ctx, logger, app)
 	app.Restore()
 
@@ -101,7 +105,11 @@ func main() {
 		app.Shutdown()
 		close(cleaned)
 	}()
-	<-cleaned
+	select {
+	case <-cleaned:
+	case <-time.After(5 * time.Second):
+		logger.Print("shutdown timed out, exiting")
+	}
 	if restart {
 		unlock()
 		unlock = nil

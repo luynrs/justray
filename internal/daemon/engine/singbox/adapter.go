@@ -189,7 +189,10 @@ func (e *Engine) tunAdd() error {
 		if runtime.GOOS == "darwin" {
 			e.name = newInterface(before)
 			if e.name == "" {
-				_ = e.inst.Inbound().Remove("tun-in")
+				if rbErr := e.inst.Inbound().Remove("tun-in"); rbErr != nil {
+					_ = e.Stop(context.WithoutCancel(e.lifetime))
+					return errors.Join(errors.New("tun interface name unavailable"), fmt.Errorf("tun rollback failed: %w", rbErr))
+				}
 				return errors.New("tun interface name unavailable")
 			}
 		}
@@ -205,14 +208,18 @@ func (e *Engine) tunRemove() error {
 	e.tun = false
 	iface := e.interfaceName()
 	e.name = ""
+	var errs []error
 	if iface == "" {
-		return errors.New("tun interface name unavailable")
-	}
-	if !waitGone(iface) {
+		errs = append(errs, errors.New("tun interface name unavailable"))
+	} else if !waitGone(iface) {
 		link.Delete(iface)
 		if !waitGone(iface) {
-			return fmt.Errorf("%s still up after removing tun-in", iface)
+			errs = append(errs, fmt.Errorf("%s still up after removing tun-in", iface))
 		}
+	}
+	if len(errs) > 0 {
+		_ = e.Stop(context.WithoutCancel(e.lifetime))
+		return errors.Join(errs...)
 	}
 	return nil
 }

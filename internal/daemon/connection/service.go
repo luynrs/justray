@@ -29,7 +29,6 @@ type Service struct {
 	dir       string
 
 	session session
-	cleanup engine.Engine
 	restart chan struct{}
 }
 
@@ -81,18 +80,20 @@ func (s *Service) Restore(n domain.Node, ref domain.NodeRef, settings domain.Set
 	}
 }
 
-func (s *Service) ForgetIfRemoved(subID string) {
+func (s *Service) ForgetIfRemoved(subID string) error {
 	if s.session.ref.SubscriptionID != subID {
-		return
+		return nil
 	}
 	name := s.session.node.Name
-	if err := s.stop(context.WithoutCancel(s.ctx)); err != nil {
+	err := s.stop(context.WithoutCancel(s.ctx))
+	if err != nil {
 		s.log.Print(err)
-		return
+		return err
 	}
 	if name != "" {
 		s.log.Printf("disconnected from %s", name)
 	}
+	return nil
 }
 
 func (s *Service) Probe(ctx context.Context, nodes []domain.Node, settings domain.Settings) (map[string]engine.Result, error) {
@@ -168,30 +169,13 @@ func (s *Service) apply(ctx context.Context, n domain.Node, ref domain.NodeRef, 
 }
 
 func (s *Service) stop(ctx context.Context) error {
-	var errs []error
-	if s.cleanup != nil {
-		if err := s.cleanup.Stop(ctx); err != nil {
-			errs = append(errs, err)
-		} else {
-			s.cleanup = nil
-		}
-	}
 	if eng := s.session.eng; eng != nil {
 		s.session = session{}
-		if eng != s.cleanup {
-			if err := eng.Stop(ctx); err != nil {
-				errs = append(errs, err)
-				s.cleanup = eng
-			}
-		}
+		return eng.Stop(ctx)
 	}
-	return errors.Join(errs...)
+	return nil
 }
 
 func (s *Service) discard(ctx context.Context, eng engine.Engine) error {
-	err := eng.Stop(ctx)
-	if err != nil {
-		s.cleanup = eng
-	}
-	return err
+	return eng.Stop(ctx)
 }

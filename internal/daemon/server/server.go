@@ -19,21 +19,23 @@ type Server struct {
 	log  *log.Logger
 	core *core.Core
 
-	ctx    context.Context
-	cancel context.CancelFunc
-	sem    chan struct{}
-	wg     sync.WaitGroup
-	mu     sync.Mutex
-	ln     net.Listener
-	active map[net.Conn]struct{}
-	stop   chan struct{}
+	ctx      context.Context
+	cancel   context.CancelFunc
+	sem      chan struct{}
+	watchSem chan struct{}
+	wg       sync.WaitGroup
+	mu       sync.Mutex
+	ln       net.Listener
+	active   map[net.Conn]struct{}
+	stop     chan struct{}
 }
 
 func New(ctx context.Context, logger *log.Logger, app *core.Core) *Server {
 	ctx, cancel := context.WithCancel(ctx)
 	return &Server{
 		log: logger, core: app, ctx: ctx, cancel: cancel,
-		sem: make(chan struct{}, 32), active: map[net.Conn]struct{}{}, stop: make(chan struct{}, 1),
+		sem: make(chan struct{}, 32), watchSem: make(chan struct{}, 64),
+		active: map[net.Conn]struct{}{}, stop: make(chan struct{}, 1),
 	}
 }
 

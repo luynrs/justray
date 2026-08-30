@@ -1,6 +1,7 @@
 package server
 
 import (
+	"sync"
 	"time"
 
 	"github.com/luynrs/justray/internal/shared/rpc"
@@ -32,15 +33,29 @@ func (s *Server) AutoRefresh() {
 				delete(tried, id)
 			}
 		}
+		var wg sync.WaitGroup
+		sem := make(chan struct{}, 4)
 		for _, id := range stale {
 			if time.Since(tried[id]) < 15*time.Minute {
 				continue
 			}
 			tried[id] = time.Now()
-			if _, err := s.core.RefreshSubscription(s.ctx, id); err != nil {
-				s.log.Print(err)
-			}
+			subID := id
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				select {
+				case sem <- struct{}{}:
+					defer func() { <-sem }()
+				case <-s.ctx.Done():
+					return
+				}
+				if _, err := s.core.RefreshSubscription(s.ctx, subID); err != nil {
+					s.log.Print(err)
+				}
+			}()
 		}
+		wg.Wait()
 	}
 }
 

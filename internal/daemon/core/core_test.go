@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -42,7 +44,10 @@ func TestRefreshRunsOutsideMutationLockAndJoins(t *testing.T) {
 	}
 	logger := log.New(io.Discard, "", 0)
 	subs := subscription.New(context.Background(), logger)
-	app := New(disk, connection.New(context.Background(), "", nil, nil, logger), subs, logger)
+	app, err := New(disk, connection.New(context.Background(), "", nil, nil, logger), subs, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
 	sub := app.current().Subscriptions[0]
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -103,7 +108,10 @@ func TestMoveSubscriptionCommitsCoreState(t *testing.T) {
 		t.Fatal(err)
 	}
 	logger := log.New(io.Discard, "", 0)
-	app := New(disk, connection.New(context.Background(), "", nil, nil, logger), subscription.New(context.Background(), logger), logger)
+	app, err := New(disk, connection.New(context.Background(), "", nil, nil, logger), subscription.New(context.Background(), logger), logger)
+	if err != nil {
+		t.Fatal(err)
+	}
 	initial, changed, cancel := app.Watch()
 	defer cancel()
 	if err := app.MoveSubscription("a", 1); err != nil {
@@ -140,7 +148,10 @@ func TestRefreshSubscriptionPublishesCommittedSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	logger := log.New(io.Discard, "", 0)
-	app := New(disk, connection.New(context.Background(), "", nil, nil, logger), subscription.New(context.Background(), logger), logger)
+	app, err := New(disk, connection.New(context.Background(), "", nil, nil, logger), subscription.New(context.Background(), logger), logger)
+	if err != nil {
+		t.Fatal(err)
+	}
 	initial, changed, cancel := app.Watch()
 	defer cancel()
 	if _, err := app.RefreshSubscription(context.Background(), "sub"); err != nil {
@@ -166,7 +177,10 @@ func TestProbePublishesCoreOwnedResults(t *testing.T) {
 	probe := func(context.Context, []domain.Node, domain.Settings, string) (map[string]engine.Result, error) {
 		return map[string]engine.Result{"node": {Alive: true, MS: 12}}, nil
 	}
-	app := New(disk, connection.New(context.Background(), "", nil, probe, logger), subscription.New(context.Background(), logger), logger)
+	app, err := New(disk, connection.New(context.Background(), "", nil, probe, logger), subscription.New(context.Background(), logger), logger)
+	if err != nil {
+		t.Fatal(err)
+	}
 	initial, changed, cancel := app.Watch()
 	defer cancel()
 	if err := app.Probe(context.Background(), "sub", "node"); err != nil {
@@ -186,7 +200,10 @@ func TestProbePublishesCoreOwnedResults(t *testing.T) {
 func TestSetTunCommitsCoreState(t *testing.T) {
 	disk := store.Disk{Dir: t.TempDir()}
 	logger := log.New(io.Discard, "", 0)
-	app := New(disk, connection.New(context.Background(), "", nil, nil, logger), subscription.New(context.Background(), logger), logger)
+	app, err := New(disk, connection.New(context.Background(), "", nil, nil, logger), subscription.New(context.Background(), logger), logger)
+	if err != nil {
+		t.Fatal(err)
+	}
 	initial, changed, cancel := app.Watch()
 	defer cancel()
 	if _, err := app.SetTun(context.Background(), true); err != nil {
@@ -224,7 +241,11 @@ func testCore(t *testing.T, eng engine.Engine, state store.PersistentState) *Cor
 	}
 	logger := log.New(io.Discard, "", 0)
 	conn := connection.New(context.Background(), "", func(context.Context, string) engine.Engine { return eng }, nil, logger)
-	return New(disk, conn, subscription.New(context.Background(), logger), logger)
+	app, err := New(disk, conn, subscription.New(context.Background(), logger), logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return app
 }
 
 func TestStatusPortActualWhenConnected(t *testing.T) {
@@ -280,5 +301,19 @@ func TestDisconnectDesiredStateCommittedOnRuntimeError(t *testing.T) {
 	}
 	if state, _ := app.store.Load(); app.current().Active != (domain.NodeRef{}) || state.Active != (domain.NodeRef{}) {
 		t.Fatalf("Active not cleared: current=%+v disk=%+v", app.current().Active, state.Active)
+	}
+}
+
+func TestNewFailsOnMalformedConfig(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "configuration.yaml")
+	if err := os.WriteFile(path, []byte("invalid: [yaml: broken"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	logger := log.New(io.Discard, "", 0)
+	conn := connection.New(context.Background(), "", nil, nil, logger)
+	subs := subscription.New(context.Background(), logger)
+	if _, err := New(store.Disk{Dir: dir}, conn, subs, logger); err == nil {
+		t.Fatal("want error on malformed YAML configuration")
 	}
 }

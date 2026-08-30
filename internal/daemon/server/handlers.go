@@ -21,6 +21,12 @@ func (s *Server) handle(conn net.Conn, semHeld *bool) {
 		return
 	}
 	if req.Method == "Watch" {
+		select {
+		case s.watchSem <- struct{}{}:
+			defer func() { <-s.watchSem }()
+		case <-s.ctx.Done():
+			return
+		}
 		if semHeld != nil && *semHeld {
 			<-s.sem
 			*semHeld = false
@@ -36,6 +42,10 @@ func (s *Server) handle(conn net.Conn, semHeld *bool) {
 	_ = conn.SetDeadline(time.Time{})
 	ctx, cancel := context.WithCancel(s.ctx)
 	defer cancel()
+	go func() {
+		_, _ = conn.Read(make([]byte, 1))
+		cancel()
+	}()
 	result, err := s.dispatch(ctx, req)
 	_ = conn.SetDeadline(time.Now().Add(rpc.IdleTimeout))
 	reply(conn, result, err)

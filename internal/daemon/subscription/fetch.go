@@ -69,9 +69,13 @@ func (s *Service) fetch(ctx context.Context, rawURL string) ([]domain.Node, stri
 		return nil, "", none, fmt.Errorf("this subscription requires a device id")
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
+	const maxBody = 10 << 20
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
 	if err != nil {
 		return nil, "", none, err
+	}
+	if len(body) > maxBody {
+		return nil, "", none, fmt.Errorf("subscription response exceeded maximum size (10MB)")
 	}
 	nodes, err := parser.ParseSubscription(body)
 	if err != nil {
