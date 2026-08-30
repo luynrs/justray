@@ -10,10 +10,14 @@ import (
 	"github.com/luynrs/justray/internal/shared/domain"
 )
 
-var reject = option.RuleAction{
-	Action:        C.RuleActionTypeReject,
-	RejectOptions: option.RejectActionOptions{Method: C.RuleActionRejectMethodDefault},
-}
+var (
+	reject = option.RuleAction{
+		Action:        C.RuleActionTypeReject,
+		RejectOptions: option.RejectActionOptions{Method: C.RuleActionRejectMethodDefault},
+	}
+	toDirect = option.RuleAction{Action: C.RuleActionTypeRoute, RouteOptions: option.RouteActionOptions{Outbound: "direct"}}
+	toProxy  = option.RuleAction{Action: C.RuleActionTypeRoute, RouteOptions: option.RouteActionOptions{Outbound: Tag}}
+)
 
 var refuseV6 = option.Rule{Type: C.RuleTypeLogical, LogicalOptions: option.LogicalRule{
 	RawLogicalRule: option.RawLogicalRule{Mode: C.LogicalTypeAnd, Rules: []option.Rule{
@@ -44,7 +48,14 @@ func match(list []string, action option.RuleAction, inbound []string) []option.R
 }
 
 func rules(s domain.Settings, direct []string) []option.Rule {
-	var out []option.Rule
+	out := []option.Rule{{
+		Type: C.RuleTypeDefault,
+		DefaultOptions: option.DefaultRule{
+			RawDefaultRule: option.RawDefaultRule{Inbound: []string{"mixed-in"}},
+			RuleAction:     toProxy,
+		},
+	}}
+
 	if s.DNSHijack == "on" {
 		out = append(out, option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{
 			RawDefaultRule: option.RawDefaultRule{Port: []uint16{53}},
@@ -69,8 +80,6 @@ func rules(s domain.Settings, direct []string) []option.Rule {
 			RuleAction: reject,
 		}})
 	}
-	toDirect := option.RuleAction{Action: C.RuleActionTypeRoute, RouteOptions: option.RouteActionOptions{Outbound: "direct"}}
-	toProxy := option.RuleAction{Action: C.RuleActionTypeRoute, RouteOptions: option.RouteActionOptions{Outbound: Tag}}
 
 	toExcept := toDirect
 	if s.Mode == domain.DirectAll {

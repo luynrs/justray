@@ -13,6 +13,7 @@ import (
 
 	"github.com/luynrs/justray/internal/client/tui/settings"
 	"github.com/luynrs/justray/internal/client/tui/tree"
+	"github.com/luynrs/justray/internal/shared/domain"
 	"github.com/luynrs/justray/internal/shared/rpc"
 )
 
@@ -28,7 +29,7 @@ type Model struct {
 	nodes []rpc.Node
 
 	collapsed  map[string]bool
-	probing    map[string]bool
+	probing    map[domain.NodeRef]bool
 	refreshing map[string]bool
 	spin       spinner.Model
 	cursor     int

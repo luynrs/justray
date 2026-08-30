@@ -2,9 +2,7 @@ package protocols
 
 import (
 	"cmp"
-	"crypto/sha1"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -12,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/luynrs/justray/internal/shared/domain"
 )
 
@@ -24,34 +23,10 @@ func Unbase64(s string) ([]byte, error) {
 	return base64.RawStdEncoding.DecodeString(s)
 }
 
-func id(raw string) string {
-	sum := sha1.Sum([]byte(raw))
-	return hex.EncodeToString(sum[:])[:8]
-}
-
 func NodeID(n domain.Node) string {
-	wg := ""
-	if n.WireGuard != nil {
-		wg = n.WireGuard.PrivateKey + n.WireGuard.PeerPublicKey
-	}
-	tls := ""
-	if n.TLS != nil {
-		tls = n.TLS.SNI + strings.Join(n.TLS.ALPN, ",") + n.TLS.Fingerprint
-	}
-	reality := ""
-	if n.Reality != nil {
-		reality = n.Reality.PublicKey + n.Reality.ShortID
-	}
-	shadowTLS := ""
-	if n.ShadowTLS != nil {
-		shadowTLS = fmt.Sprintf("%d:%s:%s", n.ShadowTLS.Version, n.ShadowTLS.Password, n.ShadowTLS.SNI)
-	}
-	return id(strings.Join([]string{
-		string(n.Protocol), n.Server, strconv.Itoa(n.Port),
-		n.Auth.UUID, n.Auth.Password, n.Auth.Username,
-		n.Transport.Network, n.Transport.Path, n.Transport.Host, n.Transport.ServiceName,
-		tls, reality, wg, shadowTLS,
-	}, "|"))
+	n.ID, n.Name = "", ""
+	data, _ := json.Marshal(n)
+	return fmt.Sprintf("%016x", xxhash.Sum64(data))
 }
 
 func parseURL(proto, uri string) (*url.URL, string, int, error) {

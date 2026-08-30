@@ -142,7 +142,7 @@ func (a *app) showTree(subs []rpc.Sub, nodes []rpc.Node) {
 func (a *app) nodeLine(n rpc.Node, branch string, nameW, infoW int) string {
 	name := style.Pad(a.nodeName(n.Name, ""), nameW)
 	info := style.Dim.Render(style.Pad(a.serverProto(n), infoW))
-	id := style.Dim.Render(n.ID)
+	id := style.Dim.Render(displayID(n.ID))
 	if branch == "" {
 		return fmt.Sprintf("%s  %s  %s", a.nodeName(n.Name, ""), info, id)
 	}

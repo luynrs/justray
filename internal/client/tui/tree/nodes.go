@@ -53,9 +53,9 @@ func latency(n rpc.Node) string {
 
 func (d Data) dot(n rpc.Node) string {
 	switch {
-	case d.connected() && d.Status.NodeID == n.ID:
+	case d.connected() && d.Status.NodeRef == n.Ref():
 		return style.Strong.Render("●")
-	case d.Probing[n.ID]:
+	case d.Probing[n.Ref()]:
 		return style.Pending.Render("○")
 	case !n.Probed:
 		return style.Unknown.Render("○")

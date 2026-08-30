@@ -6,6 +6,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/luynrs/justray/internal/client/tui/tree"
+	"github.com/luynrs/justray/internal/shared/domain"
 	"github.com/luynrs/justray/internal/shared/rpc"
 )
 
@@ -25,9 +26,9 @@ func (m Model) activate() (tea.Model, tea.Cmd) {
 
 	m.connecting = true
 	act := m.client.Disconnect
-	if !m.connected() || m.status.NodeID != r.Node.ID {
-		id := r.Node.ID
-		act = func() (rpc.Status, error) { return m.client.Connect(id) }
+	if !m.connected() || m.status.NodeRef != r.Node.Ref() {
+		ref := r.Node.Ref()
+		act = func() (rpc.Status, error) { return m.client.Connect(ref) }
 	}
 	return m, tea.Batch(m.spin.Tick, connectCmd(func() error { _, err := act(); return err }))
 }
@@ -68,21 +69,21 @@ func (m Model) probe() (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	m.probing = map[string]bool{}
+	m.probing = map[domain.NodeRef]bool{}
 	if r.Kind == tree.Node {
-		m.probing[r.Node.ID] = true
-		return m, probeCmd(m.client, "", r.Node.ID)
+		m.probing[r.Node.Ref()] = true
+		return m, probeCmd(m.client, r.Node.Sub, r.Node.ID)
 	}
 	for _, n := range m.data().SubNodes(r.Sub.ID) {
-		m.probing[n.ID] = true
+		m.probing[n.Ref()] = true
 	}
 	return m, probeCmd(m.client, r.Sub.ID, "")
 }
 
 func (m Model) probeAll() (tea.Model, tea.Cmd) {
-	m.probing = map[string]bool{}
+	m.probing = map[domain.NodeRef]bool{}
 	for _, n := range m.nodes {
-		m.probing[n.ID] = true
+		m.probing[n.Ref()] = true
 	}
 	return m, probeCmd(m.client, "", "")
 }

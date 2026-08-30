@@ -42,7 +42,7 @@ func (s *Server) dispatch(req rpc.Req) (any, error) {
 	case "Status":
 		return s.conn.Status(), nil
 	case "Active":
-		return s.conn.ActiveID()
+		return s.conn.ActiveRef()
 	case "Subs":
 		return s.subs.List()
 	case "AddSub":
@@ -60,7 +60,7 @@ func (s *Server) dispatch(req rpc.Req) (any, error) {
 	case "Probe":
 		return s.conn.Probe(s.ctx, a.Sub, a.ID)
 	case "Connect":
-		return s.conn.Connect(a.ID)
+		return s.conn.Connect(a.ID, a.Sub)
 	case "Disconnect":
 		return s.conn.Disconnect()
 	case "SetTun":
