@@ -47,14 +47,14 @@ func (s *Service) Connect(ctx context.Context, n domain.Node, ref domain.NodeRef
 	if err := ctx.Err(); err != nil {
 		return s.Status(), err
 	}
-	return s.Status(), s.apply(n, ref, settings, tun, true)
+	return s.Status(), s.apply(ctx, n, ref, settings, tun, true)
 }
 
 func (s *Service) Apply(ctx context.Context, n domain.Node, ref domain.NodeRef, settings domain.Settings, tun bool) (rpc.Status, error) {
 	if err := ctx.Err(); err != nil {
 		return s.Status(), err
 	}
-	return s.Status(), s.apply(n, ref, settings, tun, false)
+	return s.Status(), s.apply(ctx, n, ref, settings, tun, false)
 }
 
 func (s *Service) Disconnect(ctx context.Context) (rpc.Status, error) {
@@ -72,7 +72,7 @@ func (s *Service) Disconnect(ctx context.Context) (rpc.Status, error) {
 }
 
 func (s *Service) Restore(n domain.Node, ref domain.NodeRef, settings domain.Settings, tun bool) {
-	if err := s.apply(n, ref, settings, tun, true); err != nil {
+	if err := s.apply(s.ctx, n, ref, settings, tun, true); err != nil {
 		s.log.Print(err)
 	}
 }
@@ -82,7 +82,7 @@ func (s *Service) ForgetIfRemoved(subID string) {
 		return
 	}
 	name := s.session.node.Name
-	if err := s.stop(s.ctx); err != nil {
+	if err := s.stop(context.WithoutCancel(s.ctx)); err != nil {
 		s.log.Print(err)
 		return
 	}
@@ -105,7 +105,7 @@ func (s *Service) requestRestart() {
 }
 
 func (s *Service) Shutdown() {
-	if err := s.stop(s.ctx); err != nil {
+	if err := s.stop(context.WithoutCancel(s.ctx)); err != nil {
 		s.log.Print(err)
 	}
 }
@@ -121,26 +121,26 @@ func (s *Service) Status() rpc.Status {
 	return st
 }
 
-func (s *Service) apply(n domain.Node, ref domain.NodeRef, settings domain.Settings, tun, resetStarted bool) (err error) {
+func (s *Service) apply(ctx context.Context, n domain.Node, ref domain.NodeRef, settings domain.Settings, tun, resetStarted bool) (err error) {
 	if n.TLS != nil && n.TLS.Insecure {
 		return errors.New("insecure TLS node is not allowed")
 	}
 	eng := s.session.eng
 	if eng == nil {
-		if err = s.stop(s.ctx); err != nil {
+		if err = s.stop(context.WithoutCancel(s.ctx)); err != nil {
 			return err
 		}
 		if err = rpc.ClearLog(rpc.EngineLog(s.dir)); err != nil {
 			s.log.Print(err)
 		}
-		eng = s.newEngine(rpc.EngineLog(s.dir))
+		eng = s.newEngine(s.ctx, rpc.EngineLog(s.dir))
 		if eng == nil {
 			err = errors.New("initialize engine: engine is nil")
-		} else if err = eng.Apply(s.ctx, engine.SessionSpec{Node: n, Settings: settings, Tun: tun}); err != nil {
-			err = errors.Join(err, s.discard(s.ctx, eng))
+		} else if err = eng.Apply(ctx, engine.SessionSpec{Node: n, Settings: settings, Tun: tun}); err != nil {
+			err = errors.Join(err, s.discard(context.WithoutCancel(s.ctx), eng))
 		}
 	} else {
-		err = eng.Apply(s.ctx, engine.SessionSpec{Node: n, Settings: settings, Tun: tun})
+		err = eng.Apply(ctx, engine.SessionSpec{Node: n, Settings: settings, Tun: tun})
 	}
 	if err != nil {
 		if eng != nil && !eng.Running() {

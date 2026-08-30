@@ -31,6 +31,6 @@ type Result struct {
 	MS    int
 }
 
-type New func(logPath string) Engine
+type New func(context.Context, string) Engine
 
 type Probe func(context.Context, []domain.Node, domain.Settings, string) (map[string]Result, error)

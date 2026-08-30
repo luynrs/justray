@@ -26,7 +26,7 @@ import (
 )
 
 type Engine struct {
-	ctx      context.Context
+	lifetime context.Context
 	settings domain.Settings
 	logPath  string
 
@@ -36,11 +36,14 @@ type Engine struct {
 	node domain.Node
 }
 
-func New(logPath string) engine.Engine {
-	return &Engine{logPath: logPath}
+func New(ctx context.Context, logPath string) engine.Engine {
+	return &Engine{lifetime: ctx, logPath: logPath}
 }
 
 func (e *Engine) Apply(ctx context.Context, spec engine.SessionSpec) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if e.inst == nil {
 		return e.start(ctx, spec)
 	}
@@ -51,7 +54,7 @@ func (e *Engine) Apply(ctx context.Context, spec engine.SessionSpec) error {
 		return e.start(ctx, spec)
 	}
 	if !reflect.DeepEqual(e.node, spec.Node) {
-		if err := e.swap(spec.Node); err != nil {
+		if err := e.swap(ctx, spec.Node); err != nil {
 			return err
 		}
 	}
@@ -73,12 +76,15 @@ func (e *Engine) start(ctx context.Context, spec engine.SessionSpec) error {
 	if err != nil {
 		return err
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	var before map[string]struct{}
 	if spec.Tun && runtime.GOOS == "darwin" {
 		before = interfaceNames()
 	}
 
-	inst, err := startBox(ctx, *opts)
+	inst, err := startBox(e.lifetime, *opts)
 	if inst != nil {
 		e.inst, e.node = inst, spec.Node
 		if spec.Tun && runtime.GOOS == "darwin" {
@@ -87,7 +93,7 @@ func (e *Engine) start(ctx context.Context, spec engine.SessionSpec) error {
 				return errors.Join(errors.New("tun interface name unavailable"), e.Stop(ctx))
 			}
 		}
-		e.ctx, e.settings, e.tun = ctx, spec.Settings, spec.Tun
+		e.settings, e.tun = spec.Settings, spec.Tun
 	}
 	return err
 }
@@ -124,9 +130,9 @@ func startBox(ctx context.Context, opts option.Options) (*sbox.Box, error) {
 	}
 }
 
-func (e *Engine) swap(n domain.Node) error {
-	if err := e.apply(n); err != nil {
-		if rbErr := e.apply(e.node); rbErr != nil {
+func (e *Engine) swap(ctx context.Context, n domain.Node) error {
+	if err := e.apply(ctx, n); err != nil {
+		if rbErr := e.apply(ctx, e.node); rbErr != nil {
 			e.inst.LogFactory().NewLogger("outbound/"+Tag).Error("swap rollback failed, instance left without a proxy outbound: ", rbErr)
 		}
 		return err
@@ -135,13 +141,13 @@ func (e *Engine) swap(n domain.Node) error {
 	return nil
 }
 
-func (e *Engine) apply(n domain.Node) error {
-	ep, obs, err := Proxy(e.ctx, n, e.settings)
+func (e *Engine) apply(ctx context.Context, n domain.Node) error {
+	ep, obs, err := Proxy(ctx, n, e.settings)
 	if err != nil {
 		return err
 	}
 
-	ctx := e.runtimeCtx()
+	runtimeCtx := e.runtimeCtx()
 	router := e.inst.Router()
 	logger := e.inst.LogFactory().NewLogger("outbound/" + Tag)
 
@@ -149,10 +155,10 @@ func (e *Engine) apply(n domain.Node) error {
 	_ = e.inst.Outbound().Remove(Tag)
 	_ = e.inst.Outbound().Remove(Tag + "-stls")
 	if ep != nil {
-		return e.inst.Endpoint().Create(ctx, router, logger, ep.Tag, ep.Type, ep.Options)
+		return e.inst.Endpoint().Create(runtimeCtx, router, logger, ep.Tag, ep.Type, ep.Options)
 	}
 	for _, ob := range obs {
-		if err := e.inst.Outbound().Create(ctx, router, logger, ob.Tag, ob.Type, ob.Options); err != nil {
+		if err := e.inst.Outbound().Create(runtimeCtx, router, logger, ob.Tag, ob.Type, ob.Options); err != nil {
 			return err
 		}
 	}
@@ -269,7 +275,7 @@ func newInterface(before map[string]struct{}) string {
 }
 
 func (e *Engine) runtimeCtx() context.Context {
-	return service.ContextWith[adapter.NetworkManager](Context(e.ctx), e.inst.Network())
+	return service.ContextWith[adapter.NetworkManager](Context(e.lifetime), e.inst.Network())
 }
 
 func waitGone(iface string) bool {

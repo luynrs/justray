@@ -69,9 +69,9 @@ func TestSetTunFailureDoesNotChangeRuntimeState(t *testing.T) {
 func TestStartClosesEngineOnFailure(t *testing.T) {
 	eng := &fakeEngine{startErr: errors.New("start failed")}
 	s := testService(t, nil)
-	s.newEngine = func(string) engine.Engine { return eng }
+	s.newEngine = func(context.Context, string) engine.Engine { return eng }
 	settings, _ := domain.Settings{}.Normalize()
-	if err := s.apply(domain.Node{ID: "n1"}, domain.NodeRef{NodeID: "n1"}, settings, false, true); err == nil || eng.closeCalls != 1 {
+	if err := s.apply(context.Background(), domain.Node{ID: "n1"}, domain.NodeRef{NodeID: "n1"}, settings, false, true); err == nil || eng.closeCalls != 1 {
 		t.Fatalf("start err=%v closeCalls=%d", err, eng.closeCalls)
 	}
 }

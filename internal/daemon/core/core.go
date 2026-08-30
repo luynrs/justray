@@ -307,14 +307,18 @@ func (c *Core) Connect(ctx context.Context, nodeID, subscriptionID string) (rpc.
 func (c *Core) Disconnect(ctx context.Context) (rpc.Status, error) {
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
+	status, applyErr := c.conn.Disconnect(ctx)
+	if applyErr != nil {
+		c.publish()
+		return status, applyErr
+	}
 	next := c.current()
 	next.Active = domain.NodeRef{}
 	if err := c.commit(next); err != nil {
 		return c.status(next), err
 	}
-	status, applyErr := c.conn.Disconnect(ctx)
 	c.publish()
-	return status, applyErr
+	return status, nil
 }
 
 func (c *Core) SetTun(ctx context.Context, enable bool) (rpc.Status, error) {

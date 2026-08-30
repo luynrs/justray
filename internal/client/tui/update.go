@@ -101,7 +101,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case pushed:
 		if msg.live {
-			if msg.revision > m.revision {
+			if msg.revision > m.revision || !m.live {
 				return m, tea.Batch(next(m.statusCh), func() tea.Msg { return load(m.client) })
 			}
 			return m, next(m.statusCh)
