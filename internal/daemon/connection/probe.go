@@ -9,7 +9,7 @@ import (
 )
 
 func (s *Service) Nodes() ([]rpc.Node, error) {
-	subs, err := s.store.Subscriptions()
+	state, err := s.store.Load()
 	if err != nil {
 		return nil, err
 	}
@@ -17,7 +17,7 @@ func (s *Service) Nodes() ([]rpc.Node, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := []rpc.Node{} // never nil: the TUI tells "no nodes" from "not loaded yet"
-	for _, sub := range subs {
+	for _, sub := range state.Subscriptions {
 		for _, n := range sub.Nodes {
 			ref := domain.NodeRef{SubscriptionID: sub.ID, NodeID: n.ID}
 			item := rpc.Node{
@@ -36,7 +36,7 @@ func (s *Service) Nodes() ([]rpc.Node, error) {
 
 // Probe pings one node if id is set, else every node in sub, else all of them.
 func (s *Service) Probe(ctx context.Context, sub, id string) ([]rpc.Node, error) {
-	subs, err := s.store.Subscriptions()
+	state, err := s.store.Load()
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +44,7 @@ func (s *Service) Probe(ctx context.Context, sub, id string) ([]rpc.Node, error)
 	live := map[domain.NodeRef]bool{}
 	var refs []domain.NodeRef
 	var targets []domain.Node
-	for _, x := range subs {
+	for _, x := range state.Subscriptions {
 		for _, n := range x.Nodes {
 			ref := domain.NodeRef{SubscriptionID: x.ID, NodeID: n.ID}
 			live[ref] = true

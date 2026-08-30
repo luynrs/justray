@@ -58,7 +58,7 @@ func TestSetTunFailureDoesNotCommitState(t *testing.T) {
 	if _, err := s.SetTun(true); err == nil {
 		t.Fatal("SetTun succeeded")
 	}
-	state, err := s.store.State()
+	state, err := s.store.Load()
 	if err != nil || s.tun || state.Tun {
 		t.Fatalf("tun committed after failure: desired=%v persisted=%v err=%v", s.tun, state.Tun, err)
 	}

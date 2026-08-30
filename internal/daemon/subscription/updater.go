@@ -83,7 +83,7 @@ func (s *Service) Commit(updated []store.Subscription) (int, error) {
 	if committed == 0 {
 		return 0, nil
 	}
-	return committed, s.store.Save(subs)
+	return committed, s.save(subs)
 }
 
 func (s *Service) fill(ctx context.Context, sub *store.Subscription) error {

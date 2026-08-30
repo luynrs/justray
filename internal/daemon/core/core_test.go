@@ -33,7 +33,7 @@ func TestRefreshRunsOutsideMutationLockAndJoins(t *testing.T) {
 	defer func() { http.DefaultTransport = transport }()
 
 	disk := store.Disk{Dir: t.TempDir()}
-	if err := disk.Save([]store.Subscription{{ID: "sub", URL: srv.URL}}); err != nil {
+	if err := disk.Save(store.PersistentState{Subscriptions: []store.Subscription{{ID: "sub", URL: srv.URL}}}); err != nil {
 		t.Fatal(err)
 	}
 	subs := subscription.New(disk, log.New(io.Discard, "", 0))

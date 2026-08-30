@@ -21,94 +21,87 @@ type Subscription struct {
 	Traffic   domain.Traffic `yaml:"traffic,omitempty"`
 }
 
-type State struct {
-	Active    string          `yaml:"active"`
-	ActiveSub string          `yaml:"active_subscription,omitempty"`
-	Last      string          `yaml:"last,omitempty"`
-	LastSub   string          `yaml:"last_subscription,omitempty"`
-	Tun       bool            `yaml:"tun,omitempty"`
-	Settings  domain.Settings `yaml:"settings,omitempty"`
+type PersistentState struct {
+	Subscriptions []Subscription
+	Active        domain.NodeRef
+	Last          domain.NodeRef
+	Tun           bool
+	Settings      domain.Settings
 }
 
-// Disk reads and writes subscriptions.yaml and configuration.yaml
+// Disk reads and writes the daemon's persistent state.
 type Disk struct{ Dir string }
 
 type file struct {
-	Subscriptions []Subscription `yaml:"subscriptions"`
+	Subscriptions *[]Subscription `yaml:"subscriptions"`
+	Active        string          `yaml:"active"`
+	ActiveSub     string          `yaml:"active_subscription,omitempty"`
+	Last          string          `yaml:"last,omitempty"`
+	LastSub       string          `yaml:"last_subscription,omitempty"`
+	Tun           bool            `yaml:"tun,omitempty"`
+	Settings      domain.Settings `yaml:"settings,omitempty"`
 }
 
-func (d Disk) Subscriptions() ([]Subscription, error) {
-	data, err := os.ReadFile(subsPath(d.Dir))
+func (d Disk) Load() (PersistentState, error) {
+	state := PersistentState{Settings: domain.Settings{General: domain.General{RefreshEvery: domain.DefaultRefresh}}}
+	data, err := os.ReadFile(statePath(d.Dir))
 	if err != nil {
-		return nil, skipMissing(err)
+		if err := skipMissing(err); err != nil {
+			return state, err
+		}
+		return d.loadSubscriptions(state)
 	}
 	var f file
 	if err := yaml.Unmarshal(data, &f); err != nil {
-		return nil, err
+		return state, err
 	}
-	return f.Subscriptions, nil
+	state.Active = domain.NodeRef{SubscriptionID: f.ActiveSub, NodeID: f.Active}
+	state.Last = domain.NodeRef{SubscriptionID: f.LastSub, NodeID: f.Last}
+	state.Tun, state.Settings = f.Tun, f.Settings
+	if f.Subscriptions != nil {
+		state.Subscriptions = *f.Subscriptions
+		return state, nil
+	}
+	return d.loadSubscriptions(state)
 }
 
-func (d Disk) Save(subs []Subscription) error {
-	data, err := yaml.Marshal(file{subs})
+func (d Disk) loadSubscriptions(state PersistentState) (PersistentState, error) {
+	data, err := os.ReadFile(subsPath(d.Dir))
+	if err != nil {
+		return state, skipMissing(err)
+	}
+	var f struct {
+		Subscriptions []Subscription `yaml:"subscriptions"`
+	}
+	if err := yaml.Unmarshal(data, &f); err != nil {
+		return state, err
+	}
+	state.Subscriptions = f.Subscriptions
+	return state, nil
+}
+
+func (d Disk) Save(state PersistentState) error {
+	if state.Subscriptions == nil {
+		state.Subscriptions = []Subscription{}
+	}
+	f := file{
+		Subscriptions: &state.Subscriptions,
+		Active:        state.Active.NodeID,
+		ActiveSub:     state.Active.SubscriptionID,
+		Last:          state.Last.NodeID,
+		LastSub:       state.Last.SubscriptionID,
+		Tun:           state.Tun,
+		Settings:      state.Settings,
+	}
+	data, err := yaml.Marshal(f)
 	if err != nil {
 		return err
 	}
-	return write(subsPath(d.Dir), data)
-}
-
-func (d Disk) State() (State, error) {
-	data, err := os.ReadFile(statePath(d.Dir))
-	if err != nil {
-		return State{Settings: domain.Settings{General: domain.General{RefreshEvery: domain.DefaultRefresh}}}, skipMissing(err)
-	}
-	var s State
-	return s, yaml.Unmarshal(data, &s)
-}
-
-func (d Disk) Active() (domain.NodeRef, error) {
-	s, err := d.State()
-	return domain.NodeRef{SubscriptionID: s.ActiveSub, NodeID: s.Active}, err
-}
-
-// SetActive persists the node to restore on start; connecting also records it as Last
-func (d Disk) SetActive(ref domain.NodeRef) error {
-	return d.update(func(s *State) {
-		s.Active, s.ActiveSub = ref.NodeID, ref.SubscriptionID
-		if ref.NodeID != "" {
-			s.Last, s.LastSub = ref.NodeID, ref.SubscriptionID
-		}
-	})
-}
-
-func (d Disk) Last() (domain.NodeRef, error) {
-	s, err := d.State()
-	return domain.NodeRef{SubscriptionID: s.LastSub, NodeID: s.Last}, err
-}
-
-func (d Disk) SetLast(ref domain.NodeRef) error {
-	return d.update(func(s *State) { s.Last, s.LastSub = ref.NodeID, ref.SubscriptionID })
-}
-
-func (d Disk) SetTun(on bool) error {
-	return d.update(func(s *State) { s.Tun = on })
-}
-
-func (d Disk) SetSettings(in domain.Settings) error {
-	return d.update(func(s *State) { s.Settings = in })
-}
-
-func (d Disk) update(edit func(*State)) error {
-	s, err := d.State()
-	if err != nil {
+	if err := write(statePath(d.Dir), data); err != nil {
 		return err
 	}
-	edit(&s)
-	data, err := yaml.Marshal(s)
-	if err != nil {
-		return err
-	}
-	return write(statePath(d.Dir), data)
+	_ = os.Remove(subsPath(d.Dir))
+	return nil
 }
 
 func skipMissing(err error) error {

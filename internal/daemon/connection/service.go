@@ -36,7 +36,7 @@ type Service struct {
 }
 
 func New(dir string, st store.Disk, newEngine engine.New, probe engine.Probe, logger *log.Logger) *Service {
-	state, err := st.State()
+	state, err := st.Load()
 	if err != nil {
 		logger.Print(err)
 	}
@@ -98,7 +98,12 @@ func (s *Service) SetSettings(in domain.Settings) (Status, error) {
 			return s.Status(), err
 		}
 	}
-	if err := s.store.SetSettings(in); err != nil {
+	state, err := s.store.Load()
+	if err != nil {
+		return s.Status(), err
+	}
+	state.Settings = in
+	if err := s.store.Save(state); err != nil {
 		return s.Status(), err
 	}
 
@@ -128,11 +133,11 @@ func (s *Service) Connect(queryID, subID string) (Status, error) {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
 
-	subs, err := s.store.Subscriptions()
+	state, err := s.store.Load()
 	if err != nil {
 		return Status{}, err
 	}
-	n, ref, err := find(subs, domain.NodeRef{SubscriptionID: subID, NodeID: queryID})
+	n, ref, err := find(state.Subscriptions, domain.NodeRef{SubscriptionID: subID, NodeID: queryID})
 	if err != nil {
 		return Status{}, err
 	}
@@ -202,7 +207,12 @@ func (s *Service) requestRestart() {
 }
 
 func (s *Service) commitTun(enable bool) (Status, error) {
-	if err := s.store.SetTun(enable); err != nil {
+	state, err := s.store.Load()
+	if err != nil {
+		return s.finish(err)
+	}
+	state.Tun = enable
+	if err := s.store.Save(state); err != nil {
 		return s.finish(err)
 	}
 	s.mu.Lock()
@@ -222,11 +232,11 @@ func (s *Service) Shutdown() {
 
 // ActiveRef returns the connected node, the last one used, or zero if none.
 func (s *Service) ActiveRef() (domain.NodeRef, error) {
-	ref, err := s.store.Active()
-	if ref.NodeID != "" || err != nil {
-		return ref, err
+	state, err := s.store.Load()
+	if err != nil || state.Active.NodeID != "" {
+		return state.Active, err
 	}
-	return s.store.Last()
+	return state.Last, nil
 }
 
 func (s *Service) Status() Status {

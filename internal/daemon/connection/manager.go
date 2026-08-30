@@ -19,16 +19,11 @@ func (s *Service) Restore() {
 	defer s.opMu.Unlock()
 	defer s.broadcast()
 
-	ref, err := s.store.Active()
-	if err != nil || ref.NodeID == "" {
+	state, err := s.store.Load()
+	if err != nil || state.Active.NodeID == "" {
 		return
 	}
-	subs, err := s.store.Subscriptions()
-	if err != nil {
-		s.log.Print(err)
-		return
-	}
-	n, ref, err := find(subs, ref)
+	n, ref, err := find(state.Subscriptions, state.Active)
 	if err != nil {
 		return
 	}
@@ -45,14 +40,21 @@ func (s *Service) ForgetIfRemoved(subID string, nodes []domain.Node) {
 	gone := func(ref domain.NodeRef) bool {
 		return ref.NodeID != "" && (ref.SubscriptionID == subID || ref.SubscriptionID == "" && slices.ContainsFunc(nodes, func(n domain.Node) bool { return n.ID == ref.NodeID }))
 	}
-	if active, err := s.store.Active(); err == nil && gone(active) {
-		if err := s.store.SetActive(domain.NodeRef{}); err != nil {
-			s.log.Print(err)
+	state, err := s.store.Load()
+	if err != nil {
+		s.log.Print(err)
+	} else {
+		changed := false
+		if gone(state.Active) {
+			state.Active, changed = domain.NodeRef{}, true
 		}
-	}
-	if last, err := s.store.Last(); err == nil && gone(last) {
-		if err := s.store.SetLast(domain.NodeRef{}); err != nil {
-			s.log.Print(err)
+		if gone(state.Last) {
+			state.Last, changed = domain.NodeRef{}, true
+		}
+		if changed {
+			if err := s.store.Save(state); err != nil {
+				s.log.Print(err)
+			}
 		}
 	}
 
@@ -176,7 +178,15 @@ func (s *Service) discard(eng engine.Engine) error {
 }
 
 func (s *Service) persistActive(ref domain.NodeRef) {
-	if err := s.store.SetActive(ref); err != nil {
+	state, err := s.store.Load()
+	if err == nil {
+		state.Active = ref
+		if ref.NodeID != "" {
+			state.Last = ref
+		}
+		err = s.store.Save(state)
+	}
+	if err != nil {
 		s.log.Print(err)
 	}
 }

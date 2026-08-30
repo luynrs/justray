@@ -39,7 +39,10 @@ func (s *Service) List() ([]rpc.Sub, error) {
 	return out, nil
 }
 
-func (s *Service) All() ([]store.Subscription, error) { return s.store.Subscriptions() }
+func (s *Service) All() ([]store.Subscription, error) {
+	state, err := s.store.Load()
+	return state.Subscriptions, err
+}
 
 func (s *Service) Get(id string) (store.Subscription, error) {
 	subs, err := s.All()
@@ -72,7 +75,7 @@ func (s *Service) Add(sub store.Subscription) (rpc.Sub, error) {
 	if err != nil {
 		return rpc.Sub{}, err
 	}
-	return Info(sub), s.store.Save(append(subs, sub))
+	return Info(sub), s.save(append(subs, sub))
 }
 
 // Remove deletes a subscription and returns it
@@ -87,7 +90,7 @@ func (s *Service) Remove(id string) (store.Subscription, error) {
 	}
 	removed := subs[i]
 	kept := slices.Delete(subs, i, i+1)
-	return removed, s.store.Save(kept)
+	return removed, s.save(kept)
 }
 
 func (s *Service) MoveSub(id string, dir int) error {
@@ -104,7 +107,16 @@ func (s *Service) MoveSub(id string, dir int) error {
 		return nil
 	}
 	subs[i], subs[j] = subs[j], subs[i]
-	return s.store.Save(subs)
+	return s.save(subs)
+}
+
+func (s *Service) save(subs []store.Subscription) error {
+	state, err := s.store.Load()
+	if err != nil {
+		return err
+	}
+	state.Subscriptions = subs
+	return s.store.Save(state)
 }
 
 func check(rawURL string) error {
