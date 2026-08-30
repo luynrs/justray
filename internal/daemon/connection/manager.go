@@ -119,7 +119,7 @@ func (s *Service) start(n domain.Node, ref domain.NodeRef) (err error) {
 	}
 
 	s.mu.Lock()
-	s.session = session{eng: eng, node: n, sub: sub, started: time.Now(), tun: tun}
+	s.session = session{eng: eng, node: n, ref: ref, started: time.Now(), tun: tun}
 	s.mu.Unlock()
 
 	s.persistActive(ref)
@@ -175,8 +175,8 @@ func (s *Service) discard(eng engine.Engine) error {
 	return err
 }
 
-func (s *Service) persistActive(id string) {
-	if err := s.store.SetActive(id); err != nil {
+func (s *Service) persistActive(ref domain.NodeRef) {
+	if err := s.store.SetActive(ref); err != nil {
 		s.log.Print(err)
 	}
 }
