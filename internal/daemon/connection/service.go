@@ -60,33 +60,24 @@ func (s *Service) ApplySettings(in domain.Settings) (Status, error) {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
 
-	old := s.current()
 	s.mu.Lock()
+	old, cur, tun := s.settings, s.session, s.tun
 	s.settings = in
-	cur := s.session
 	s.mu.Unlock()
 
-	if cur.eng == nil || !engineChanged(old, in) {
+	if cur.eng == nil {
 		return s.finish(nil)
 	}
-	if err := s.stop(); err != nil {
-		return s.finish(err)
-	}
-	return s.finish(s.start(cur.node, cur.ref))
-}
-
-func engineChanged(x, y domain.Settings) bool {
-	x.ProbeURL, y.ProbeURL = "", ""
-	x.RefreshEvery, y.RefreshEvery = 0, 0
-	x.Autostart, y.Autostart = "", ""
-	x.Emoji, y.Emoji = "", ""
-	return !x.Equal(y)
+	return s.finish(s.apply(cur.node, cur.ref, in, tun, engine.Rebuilds(old, in)))
 }
 
 func (s *Service) Connect(n domain.Node, ref domain.NodeRef) (Status, error) {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
-	return s.finish(s.start(n, ref))
+	s.mu.Lock()
+	settings, tun := s.settings, s.tun
+	s.mu.Unlock()
+	return s.finish(s.apply(n, ref, settings, tun, true))
 }
 
 func (s *Service) Disconnect() (Status, error) {
@@ -112,16 +103,11 @@ func (s *Service) SetTun(enable bool) (Status, error) {
 	defer s.opMu.Unlock()
 
 	s.mu.Lock()
-	cur := s.session
+	cur, settings := s.session, s.settings
 	s.mu.Unlock()
-
 	var err error
 	if cur.eng != nil && enable != cur.tun {
-		if enable {
-			err = cur.eng.TunAdd()
-		} else {
-			err = cur.eng.TunRemove()
-		}
+		err = s.apply(cur.node, cur.ref, settings, enable, false)
 	}
 
 	if err != nil {
@@ -132,9 +118,6 @@ func (s *Service) SetTun(enable bool) (Status, error) {
 		return s.finish(err)
 	}
 
-	s.mu.Lock()
-	s.session.tun = enable
-	s.mu.Unlock()
 	s.mu.Lock()
 	s.tun = enable
 	s.mu.Unlock()

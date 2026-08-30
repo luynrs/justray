@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"reflect"
 	"runtime"
 	"strings"
 	"syscall"
@@ -34,30 +35,58 @@ type Engine struct {
 	node domain.Node
 }
 
-func New(s domain.Settings, logPath string) engine.Engine {
-	return &Engine{settings: s, logPath: logPath}
+func New(logPath string) engine.Engine {
+	return &Engine{logPath: logPath}
 }
 
-func (e *Engine) Start(n domain.Node, tun bool) error {
-	opts, err := Build(n, e.settings, e.logPath, tun)
+func (e *Engine) Apply(spec engine.SessionSpec) error {
+	if e.inst == nil {
+		return e.start(spec)
+	}
+	if engine.Rebuilds(e.settings, spec.Settings) {
+		if err := e.Stop(); err != nil {
+			return err
+		}
+		return e.start(spec)
+	}
+	if !reflect.DeepEqual(e.node, spec.Node) {
+		if err := e.swap(spec.Node); err != nil {
+			return err
+		}
+	}
+	if spec.Tun != e.tun {
+		if spec.Tun {
+			if err := e.tunAdd(); err != nil {
+				return err
+			}
+		} else if err := e.tunRemove(); err != nil {
+			return err
+		}
+	}
+	e.settings = spec.Settings
+	return nil
+}
+
+func (e *Engine) start(spec engine.SessionSpec) error {
+	opts, err := Build(spec.Node, spec.Settings, e.logPath, spec.Tun)
 	if err != nil {
 		return err
 	}
 	var before map[string]struct{}
-	if tun && runtime.GOOS == "darwin" {
+	if spec.Tun && runtime.GOOS == "darwin" {
 		before = interfaceNames()
 	}
 
 	inst, err := startBox(*opts)
 	if inst != nil {
-		e.inst, e.node = inst, n
-		if tun && runtime.GOOS == "darwin" {
+		e.inst, e.node = inst, spec.Node
+		if spec.Tun && runtime.GOOS == "darwin" {
 			e.name = newInterface(before)
 			if e.name == "" {
-				return errors.Join(errors.New("tun interface name unavailable"), e.Close())
+				return errors.Join(errors.New("tun interface name unavailable"), e.Stop())
 			}
 		}
-		e.tun = tun
+		e.settings, e.tun = spec.Settings, spec.Tun
 	}
 	return err
 }
@@ -94,7 +123,7 @@ func startBox(opts option.Options) (*sbox.Box, error) {
 	}
 }
 
-func (e *Engine) Swap(n domain.Node) error {
+func (e *Engine) swap(n domain.Node) error {
 	if err := e.apply(n); err != nil {
 		if rbErr := e.apply(e.node); rbErr != nil {
 			e.inst.LogFactory().NewLogger("outbound/"+Tag).Error("swap rollback failed, instance left without a proxy outbound: ", rbErr)
@@ -129,7 +158,7 @@ func (e *Engine) apply(n domain.Node) error {
 	return nil
 }
 
-func (e *Engine) TunAdd() error {
+func (e *Engine) tunAdd() error {
 	var before map[string]struct{}
 	if runtime.GOOS == "darwin" {
 		before = interfaceNames()
@@ -157,7 +186,7 @@ func (e *Engine) TunAdd() error {
 	return err
 }
 
-func (e *Engine) TunRemove() error {
+func (e *Engine) tunRemove() error {
 	err := e.inst.Inbound().Remove("tun-in")
 	if err != nil {
 		return err
@@ -177,7 +206,7 @@ func (e *Engine) TunRemove() error {
 	return nil
 }
 
-func (e *Engine) Close() error {
+func (e *Engine) Stop() error {
 	if e.inst == nil {
 		return nil
 	}

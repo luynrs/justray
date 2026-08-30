@@ -15,11 +15,13 @@ type fakeEngine struct {
 	closeCalls                 int
 }
 
-func (e *fakeEngine) Start(domain.Node, bool) error { return e.startErr }
-func (*fakeEngine) Swap(domain.Node) error          { return nil }
-func (e *fakeEngine) TunAdd() error                 { return e.tunErr }
-func (*fakeEngine) TunRemove() error                { return nil }
-func (e *fakeEngine) Close() error                  { e.closeCalls++; return e.closeErr }
+func (e *fakeEngine) Apply(spec engine.SessionSpec) error {
+	if spec.Tun {
+		return e.tunErr
+	}
+	return e.startErr
+}
+func (e *fakeEngine) Stop() error { e.closeCalls++; return e.closeErr }
 
 func testService(t *testing.T, eng engine.Engine) *Service {
 	t.Helper()
@@ -65,8 +67,8 @@ func TestSetTunFailureDoesNotChangeRuntimeState(t *testing.T) {
 func TestStartClosesEngineOnFailure(t *testing.T) {
 	eng := &fakeEngine{startErr: errors.New("start failed")}
 	s := testService(t, nil)
-	s.newEngine = func(domain.Settings, string) engine.Engine { return eng }
-	if err := s.start(domain.Node{ID: "n1"}, domain.NodeRef{NodeID: "n1"}); err == nil || eng.closeCalls != 1 {
+	s.newEngine = func(string) engine.Engine { return eng }
+	if err := s.apply(domain.Node{ID: "n1"}, domain.NodeRef{NodeID: "n1"}, s.current(), false, true); err == nil || eng.closeCalls != 1 {
 		t.Fatalf("start err=%v closeCalls=%d", err, eng.closeCalls)
 	}
 }

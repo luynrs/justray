@@ -14,7 +14,10 @@ func (s *Service) Restore(n domain.Node, ref domain.NodeRef) {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
 	defer s.broadcast()
-	if err := s.start(n, ref); err != nil {
+	s.mu.Lock()
+	settings, tun := s.settings, s.tun
+	s.mu.Unlock()
+	if err := s.apply(n, ref, settings, tun, true); err != nil {
 		s.log.Print(err)
 	}
 }
@@ -42,26 +45,15 @@ func (s *Service) ForgetIfRemoved(subID string) {
 	s.broadcast()
 }
 
-func (s *Service) start(n domain.Node, ref domain.NodeRef) (err error) {
+func (s *Service) apply(n domain.Node, ref domain.NodeRef, settings domain.Settings, tun, resetStarted bool) (err error) {
 	if n.TLS != nil && n.TLS.Insecure {
 		return errors.New("insecure TLS node is not allowed")
 	}
 	s.mu.Lock()
-	tun, cur := s.tun, s.session
+	cur := s.session
 	s.mu.Unlock()
-
 	eng := cur.eng
-	hot := cur.eng != nil
-	if hot {
-		err = cur.eng.Swap(n)
-		if err == nil && tun != cur.tun {
-			reconcile := cur.eng.TunRemove
-			if tun {
-				reconcile = cur.eng.TunAdd
-			}
-			err = reconcile()
-		}
-	} else {
+	if eng == nil {
 		if err = s.stop(); err != nil {
 			return err
 		}
@@ -70,12 +62,14 @@ func (s *Service) start(n domain.Node, ref domain.NodeRef) (err error) {
 			s.log.Print(err)
 		}
 
-		eng = s.newEngine(s.current(), rpc.EngineLog(s.dir))
+		eng = s.newEngine(rpc.EngineLog(s.dir))
 		if eng == nil {
 			err = errors.New("initialize engine: engine is nil")
-		} else if err = eng.Start(n, tun); err != nil {
+		} else if err = eng.Apply(engine.SessionSpec{Node: n, Settings: settings, Tun: tun}); err != nil {
 			err = errors.Join(err, s.discard(eng))
 		}
+	} else {
+		err = eng.Apply(engine.SessionSpec{Node: n, Settings: settings, Tun: tun})
 	}
 	if err != nil {
 		if tun && elevate.Needed(err) {
@@ -85,8 +79,12 @@ func (s *Service) start(n domain.Node, ref domain.NodeRef) (err error) {
 		return err
 	}
 
+	started := cur.started
+	if resetStarted || started.IsZero() {
+		started = time.Now()
+	}
 	s.mu.Lock()
-	s.session = session{eng: eng, node: n, ref: ref, started: time.Now(), tun: tun}
+	s.session = session{eng: eng, node: n, ref: ref, started: started, tun: tun}
 	s.mu.Unlock()
 
 	s.log.Printf("connected to %s (%s %s:%d)", n.Name, n.Protocol, n.Server, n.Port)
@@ -99,7 +97,7 @@ func (s *Service) stop() error {
 	s.mu.Unlock()
 	var errs []error
 	if cleanup != nil {
-		if err := cleanup.Close(); err != nil {
+		if err := cleanup.Stop(); err != nil {
 			errs = append(errs, err)
 		} else {
 			s.mu.Lock()
@@ -110,7 +108,7 @@ func (s *Service) stop() error {
 		}
 	}
 	if eng != nil && eng != cleanup {
-		if err := eng.Close(); err != nil {
+		if err := eng.Stop(); err != nil {
 			errs = append(errs, err)
 		} else {
 			s.mu.Lock()
@@ -128,7 +126,7 @@ func (s *Service) clear() error {
 }
 
 func (s *Service) discard(eng engine.Engine) error {
-	err := eng.Close()
+	err := eng.Stop()
 	if err != nil {
 		s.mu.Lock()
 		s.cleanup = eng
