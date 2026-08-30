@@ -1,4 +1,3 @@
-// Package server is the RPC transport over the unix socket
 package server
 
 import (

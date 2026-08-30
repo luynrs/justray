@@ -1,4 +1,3 @@
-// Package tui is the client terminal UI
 package tui
 
 import (

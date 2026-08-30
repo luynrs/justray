@@ -1,4 +1,3 @@
-// Package core owns daemon operations and their serialization.
 package core
 
 import (
