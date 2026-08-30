@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log"
 	"net/http"
@@ -203,5 +204,81 @@ func TestSetTunCommitsCoreState(t *testing.T) {
 	state, err := disk.Load()
 	if err != nil || !state.Tun {
 		t.Fatalf("state=%+v err=%v", state, err)
+	}
+}
+
+type fakeEngine struct {
+	closeErr error
+	stopped  bool
+}
+
+func (e *fakeEngine) Apply(context.Context, engine.SessionSpec) error { return nil }
+func (e *fakeEngine) Stop(context.Context) error                      { e.stopped = true; return e.closeErr }
+func (e *fakeEngine) Running() bool                                   { return !e.stopped }
+
+func testCore(t *testing.T, eng engine.Engine, state store.PersistentState) *Core {
+	t.Helper()
+	disk := store.Disk{Dir: t.TempDir()}
+	if err := disk.Save(state); err != nil {
+		t.Fatal(err)
+	}
+	logger := log.New(io.Discard, "", 0)
+	conn := connection.New(context.Background(), "", func(context.Context, string) engine.Engine { return eng }, nil, logger)
+	return New(disk, conn, subscription.New(context.Background(), logger), logger)
+}
+
+func TestStatusPortActualWhenConnected(t *testing.T) {
+	settings, _ := domain.Settings{}.Normalize()
+	settings.Port = 1080
+	app := testCore(t, &fakeEngine{}, store.PersistentState{
+		Settings:      settings,
+		Subscriptions: []store.Subscription{{ID: "sub", Nodes: []domain.Node{{ID: "n1"}}}},
+	})
+	if st := app.Snapshot().Status; st.Connected || st.Port != 1080 {
+		t.Fatalf("want disconnected port 1080, got %+v", st)
+	}
+	if st, err := app.Connect(context.Background(), "n1", "sub"); err != nil || !st.Connected || st.Port != 1080 {
+		t.Fatalf("want connected port 1080, got st=%+v err=%v", st, err)
+	}
+	if st, err := app.Disconnect(context.Background()); err != nil || st.Connected || st.Port != 1080 {
+		t.Fatalf("want disconnected port 1080, got st=%+v err=%v", st, err)
+	}
+}
+
+func TestContextCancelledCheckedAfterOpMu(t *testing.T) {
+	settings, _ := domain.Settings{}.Normalize()
+	app := testCore(t, &fakeEngine{}, store.PersistentState{
+		Settings:      settings,
+		Subscriptions: []store.Subscription{{ID: "sub", Nodes: []domain.Node{{ID: "n1"}}}},
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	for _, fn := range []func() error{
+		func() error { _, err := app.Connect(ctx, "n1", "sub"); return err },
+		func() error { _, err := app.Disconnect(ctx); return err },
+		func() error { _, err := app.SetTun(ctx, true); return err },
+		func() error { _, err := app.SetSettings(ctx, settings); return err },
+		func() error { _, err := app.AddSubscription(ctx, "https://example.com/sub"); return err },
+	} {
+		if err := fn(); !errors.Is(err, context.Canceled) {
+			t.Fatalf("want context.Canceled, got %v", err)
+		}
+	}
+}
+
+func TestDisconnectDesiredStateCommittedOnRuntimeError(t *testing.T) {
+	settings, _ := domain.Settings{}.Normalize()
+	app := testCore(t, &fakeEngine{closeErr: io.ErrUnexpectedEOF}, store.PersistentState{
+		Settings:      settings,
+		Subscriptions: []store.Subscription{{ID: "sub", Nodes: []domain.Node{{ID: "n1"}}}},
+	})
+	if _, err := app.Connect(context.Background(), "n1", "sub"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.Disconnect(context.Background()); err == nil {
+		t.Fatal("want error on disconnect")
+	}
+	if state, _ := app.store.Load(); app.current().Active != (domain.NodeRef{}) || state.Active != (domain.NodeRef{}) {
+		t.Fatalf("Active not cleared: current=%+v disk=%+v", app.current().Active, state.Active)
 	}
 }

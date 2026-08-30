@@ -18,6 +18,7 @@ type session struct {
 	ref     domain.NodeRef
 	started time.Time
 	tun     bool
+	port    int
 }
 
 type Service struct {
@@ -47,14 +48,16 @@ func (s *Service) Connect(ctx context.Context, n domain.Node, ref domain.NodeRef
 	if err := ctx.Err(); err != nil {
 		return s.Status(), err
 	}
-	return s.Status(), s.apply(ctx, n, ref, settings, tun, true)
+	err := s.apply(ctx, n, ref, settings, tun, true)
+	return s.Status(), err
 }
 
 func (s *Service) Apply(ctx context.Context, n domain.Node, ref domain.NodeRef, settings domain.Settings, tun bool) (rpc.Status, error) {
 	if err := ctx.Err(); err != nil {
 		return s.Status(), err
 	}
-	return s.Status(), s.apply(ctx, n, ref, settings, tun, false)
+	err := s.apply(ctx, n, ref, settings, tun, false)
+	return s.Status(), err
 }
 
 func (s *Service) Disconnect(ctx context.Context) (rpc.Status, error) {
@@ -62,7 +65,8 @@ func (s *Service) Disconnect(ctx context.Context) (rpc.Status, error) {
 		return s.Status(), err
 	}
 	name := s.session.node.Name
-	if err := s.stop(ctx); err != nil {
+	err := s.stop(ctx)
+	if err != nil {
 		return s.Status(), err
 	}
 	if name != "" {
@@ -117,6 +121,7 @@ func (s *Service) Status() rpc.Status {
 		st.NodeRef, st.NodeName = s.session.ref, s.session.node.Name
 		st.Uptime = int64(time.Since(s.session.started).Seconds())
 		st.Tun = s.session.tun
+		st.Port = s.session.port
 	}
 	return st
 }
@@ -157,7 +162,7 @@ func (s *Service) apply(ctx context.Context, n domain.Node, ref domain.NodeRef, 
 	if resetStarted || started.IsZero() {
 		started = time.Now()
 	}
-	s.session = session{eng: eng, node: n, ref: ref, started: started, tun: tun}
+	s.session = session{eng: eng, node: n, ref: ref, started: started, tun: tun, port: settings.Port}
 	s.log.Printf("connected to %s (%s %s:%d)", n.Name, n.Protocol, n.Server, n.Port)
 	return nil
 }
@@ -171,11 +176,13 @@ func (s *Service) stop(ctx context.Context) error {
 			s.cleanup = nil
 		}
 	}
-	if s.session.eng != nil && s.session.eng != s.cleanup {
-		if err := s.session.eng.Stop(ctx); err != nil {
-			errs = append(errs, err)
-		} else {
-			s.session = session{}
+	if eng := s.session.eng; eng != nil {
+		s.session = session{}
+		if eng != s.cleanup {
+			if err := eng.Stop(ctx); err != nil {
+				errs = append(errs, err)
+				s.cleanup = eng
+			}
 		}
 	}
 	return errors.Join(errs...)

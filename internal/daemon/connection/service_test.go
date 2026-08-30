@@ -14,6 +14,7 @@ import (
 type fakeEngine struct {
 	startErr, tunErr, closeErr error
 	closeCalls                 int
+	stopped                    bool
 }
 
 func (e *fakeEngine) Apply(_ context.Context, spec engine.SessionSpec) error {
@@ -22,47 +23,45 @@ func (e *fakeEngine) Apply(_ context.Context, spec engine.SessionSpec) error {
 	}
 	return e.startErr
 }
-func (e *fakeEngine) Stop(context.Context) error { e.closeCalls++; return e.closeErr }
-func (e *fakeEngine) Running() bool              { return e.closeCalls == 0 && e.startErr == nil }
+func (e *fakeEngine) Stop(context.Context) error {
+	e.closeCalls++
+	e.stopped = true
+	return e.closeErr
+}
+func (e *fakeEngine) Running() bool { return !e.stopped && e.startErr == nil }
 
 func testService(t *testing.T, eng engine.Engine) *Service {
 	t.Helper()
 	return &Service{
-		ctx:     context.Background(),
-		log:     log.New(io.Discard, "", 0),
-		session: session{eng: eng},
+		ctx:       context.Background(),
+		log:       log.New(io.Discard, "", 0),
+		session:   session{eng: eng},
+		newEngine: func(context.Context, string) engine.Engine { return eng },
 	}
 }
 
-func TestStopRetainsEngineAfterCloseFailure(t *testing.T) {
+func TestStopCleansUpSessionAndTracksFailedEngine(t *testing.T) {
 	eng := &fakeEngine{closeErr: errors.New("close failed")}
 	s := testService(t, eng)
-	if err := s.stop(context.Background()); err == nil || s.session.eng != eng {
-		t.Fatalf("stop: err=%v engine=%v", err, s.session.eng)
+	if err := s.stop(context.Background()); err == nil || s.session.eng != nil || s.cleanup != eng || s.Status().Connected {
+		t.Fatalf("stop err=%v session=%v cleanup=%v status=%+v", err, s.session.eng, s.cleanup, s.Status())
 	}
 }
 
 func TestStopClosesActiveAfterCleanupFailure(t *testing.T) {
-	cleanup := &fakeEngine{closeErr: errors.New("cleanup failed")}
-	active := &fakeEngine{}
+	cleanup, active := &fakeEngine{closeErr: errors.New("cleanup failed")}, &fakeEngine{}
 	s := testService(t, active)
 	s.cleanup = cleanup
-	if err := s.stop(context.Background()); err == nil {
-		t.Fatal("stop succeeded")
-	}
-	if active.closeCalls != 1 || s.session.eng != nil {
-		t.Fatalf("active engine was not closed: calls=%d session=%v", active.closeCalls, s.session.eng)
+	if err := s.stop(context.Background()); err == nil || active.closeCalls != 1 || s.session.eng != nil {
+		t.Fatalf("stop err=%v activeCalls=%d session=%v", err, active.closeCalls, s.session.eng)
 	}
 }
 
 func TestSetTunFailureDoesNotChangeRuntimeState(t *testing.T) {
 	s := testService(t, &fakeEngine{tunErr: errors.New("tun failed")})
 	settings, _ := domain.Settings{}.Normalize()
-	if _, err := s.Apply(context.Background(), domain.Node{ID: "n1"}, domain.NodeRef{NodeID: "n1"}, settings, true); err == nil {
-		t.Fatal("Apply succeeded")
-	}
-	if s.session.tun {
-		t.Fatal("runtime TUN changed after failure")
+	if _, err := s.Apply(context.Background(), domain.Node{ID: "n1"}, domain.NodeRef{NodeID: "n1"}, settings, true); err == nil || s.session.tun {
+		t.Fatalf("Apply err=%v tun=%v", err, s.session.tun)
 	}
 }
 
@@ -76,11 +75,26 @@ func TestStartClosesEngineOnFailure(t *testing.T) {
 	}
 }
 
+func TestStatusPortMatchesActiveSession(t *testing.T) {
+	eng := &fakeEngine{}
+	s := testService(t, nil)
+	s.newEngine = func(context.Context, string) engine.Engine { return eng }
+	settings, _ := domain.Settings{}.Normalize()
+	settings.Port = 1085
+	st, err := s.Connect(context.Background(), domain.Node{ID: "n1"}, domain.NodeRef{NodeID: "n1"}, settings, false)
+	if err != nil || !st.Connected || st.Port != 1085 || s.Status().Port != 1085 {
+		t.Fatalf("Connect st=%+v status=%+v err=%v", st, s.Status(), err)
+	}
+	if st, err = s.Disconnect(context.Background()); err != nil || st.Connected || st.Port != 0 {
+		t.Fatalf("Disconnect st=%+v err=%v", st, err)
+	}
+}
+
 func TestShutdownClosesEngine(t *testing.T) {
 	eng := &fakeEngine{}
 	s := testService(t, eng)
 	s.Shutdown()
 	if eng.closeCalls != 1 {
-		t.Fatalf("Shutdown did not close engine: calls=%d", eng.closeCalls)
+		t.Fatalf("Shutdown calls=%d", eng.closeCalls)
 	}
 }
