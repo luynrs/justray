@@ -117,11 +117,6 @@ func (m Model) moveSub(dir int) (tea.Model, tea.Cmd) {
 	if i < 0 || j < 0 || j >= len(m.subs) {
 		return m, nil
 	}
-	subs := slices.Clone(m.subs)
-	subs[i], subs[j] = subs[j], subs[i]
-	m.subs = subs
-	m.toHeader(id)
-	m.clamp()
 	return m, act(func() (rpc.Snapshot, error) { return m.client.MoveSub(id, dir) })
 }
 

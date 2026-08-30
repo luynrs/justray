@@ -133,12 +133,15 @@ func (s *Server) requestShutdown() {
 }
 
 func (s *Server) serve(conn net.Conn) {
+	semHeld := true
 	defer func() {
 		s.mu.Lock()
 		delete(s.active, conn)
 		s.mu.Unlock()
-		<-s.sem
+		if semHeld {
+			<-s.sem
+		}
 		s.wg.Done()
 	}()
-	s.handle(conn)
+	s.handle(conn, &semHeld)
 }

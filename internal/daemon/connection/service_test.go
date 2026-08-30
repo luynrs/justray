@@ -23,6 +23,7 @@ func (e *fakeEngine) Apply(_ context.Context, spec engine.SessionSpec) error {
 	return e.startErr
 }
 func (e *fakeEngine) Stop(context.Context) error { e.closeCalls++; return e.closeErr }
+func (e *fakeEngine) Running() bool              { return e.closeCalls == 0 && e.startErr == nil }
 
 func testService(t *testing.T, eng engine.Engine) *Service {
 	t.Helper()

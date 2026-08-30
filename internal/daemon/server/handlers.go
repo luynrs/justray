@@ -11,7 +11,7 @@ import (
 	"github.com/luynrs/justray/internal/shared/rpc"
 )
 
-func (s *Server) handle(conn net.Conn) {
+func (s *Server) handle(conn net.Conn, semHeld *bool) {
 	defer func() { _ = conn.Close() }()
 	_ = conn.SetReadDeadline(time.Now().Add(rpc.IdleTimeout))
 
@@ -21,6 +21,10 @@ func (s *Server) handle(conn net.Conn) {
 		return
 	}
 	if req.Method == "Watch" {
+		if semHeld != nil && *semHeld {
+			<-s.sem
+			*semHeld = false
+		}
 		s.watch(conn)
 		return
 	}

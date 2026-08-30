@@ -233,6 +233,10 @@ func (e *Engine) Stop(_ context.Context) error {
 	return nil
 }
 
+func (e *Engine) Running() bool {
+	return e.inst != nil
+}
+
 func (e *Engine) interfaceName() string {
 	if runtime.GOOS == "darwin" {
 		return e.name

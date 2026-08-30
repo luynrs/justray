@@ -14,6 +14,7 @@ import (
 	"github.com/luynrs/justray/internal/daemon/engine/singbox/outbound"
 	"github.com/luynrs/justray/internal/shared/domain"
 )
+
 var (
 	dnsMu    sync.Mutex
 	dnsCache = map[string]dnsEntry{}

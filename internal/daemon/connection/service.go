@@ -112,10 +112,11 @@ func (s *Service) Shutdown() {
 
 func (s *Service) Status() rpc.Status {
 	st := rpc.Status{}
-	if s.session.eng != nil {
+	if s.session.eng != nil && s.session.eng.Running() {
 		st.Connected = true
 		st.NodeRef, st.NodeName = s.session.ref, s.session.node.Name
 		st.Uptime = int64(time.Since(s.session.started).Seconds())
+		st.Tun = s.session.tun
 	}
 	return st
 }
@@ -142,6 +143,9 @@ func (s *Service) apply(n domain.Node, ref domain.NodeRef, settings domain.Setti
 		err = eng.Apply(s.ctx, engine.SessionSpec{Node: n, Settings: settings, Tun: tun})
 	}
 	if err != nil {
+		if eng != nil && !eng.Running() {
+			s.session = session{}
+		}
 		if tun && elevate.Needed(err) {
 			s.requestRestart()
 			err = rpc.ErrElevate

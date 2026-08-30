@@ -80,6 +80,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.probing, m.refreshing = nil, nil
 			return m, nil
 		}
+		if msg.snapshot.Revision < m.revision {
+			return m, nil
+		}
 		m.revision = msg.snapshot.Revision
 		m.subs, m.nodes = msg.snapshot.Subscriptions, msg.snapshot.Nodes
 		m.status = msg.snapshot.Status

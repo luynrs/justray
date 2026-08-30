@@ -9,6 +9,7 @@ import (
 type Engine interface {
 	Apply(context.Context, SessionSpec) error
 	Stop(context.Context) error
+	Running() bool
 }
 
 type SessionSpec struct {

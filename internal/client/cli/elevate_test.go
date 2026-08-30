@@ -31,8 +31,8 @@ func TestAwaitElevate(t *testing.T) {
 
 	t.Run("waits out the restart", func(t *testing.T) {
 		status := replies(
-			errors.New("connection reset"),        // old daemon, still on its way out
-			errors.New("connection refused"),      // prompt still open
+			errors.New("connection reset"),         // old daemon, still on its way out
+			errors.New("connection refused"),       // prompt still open
 			rpc.Status{Connected: true, Tun: true}, // restored
 		)
 		st, err := awaitElevate(status, &tun, time.Second)
