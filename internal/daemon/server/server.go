@@ -11,16 +11,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/luynrs/justray/internal/daemon/connection"
+	"github.com/luynrs/justray/internal/daemon/core"
 	"github.com/luynrs/justray/internal/daemon/platform/lock"
 	"github.com/luynrs/justray/internal/daemon/platform/owner"
-	"github.com/luynrs/justray/internal/daemon/subscription"
 )
 
 type Server struct {
 	log  *log.Logger
-	conn *connection.Service
-	subs *subscription.Service
+	core *core.Core
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -32,10 +30,10 @@ type Server struct {
 	stop   chan struct{}
 }
 
-func New(logger *log.Logger, conn *connection.Service, subs *subscription.Service) *Server {
+func New(logger *log.Logger, app *core.Core) *Server {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Server{
-		log: logger, conn: conn, subs: subs, ctx: ctx, cancel: cancel,
+		log: logger, core: app, ctx: ctx, cancel: cancel,
 		sem: make(chan struct{}, 32), active: map[net.Conn]struct{}{}, stop: make(chan struct{}, 1),
 	}
 }

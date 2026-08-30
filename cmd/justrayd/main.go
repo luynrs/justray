@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/luynrs/justray/internal/daemon/connection"
+	"github.com/luynrs/justray/internal/daemon/core"
 	"github.com/luynrs/justray/internal/daemon/engine/singbox"
 	"github.com/luynrs/justray/internal/daemon/platform/elevate"
 	"github.com/luynrs/justray/internal/daemon/server"
@@ -65,8 +66,9 @@ func main() {
 	st := store.Disk{Dir: dir}
 	conn := connection.New(dir, st, singbox.New, singbox.Probe, logger)
 	subs := subscription.New(st, logger)
-	srv := server.New(logger, conn, subs)
-	conn.Restore()
+	app := core.New(conn, subs)
+	srv := server.New(logger, app)
+	app.Restore()
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
@@ -82,7 +84,7 @@ func main() {
 	select {
 	case s := <-sig:
 		logger.Printf("shutting down (%s)", s)
-	case <-conn.RestartRequested():
+	case <-app.RestartRequested():
 		restart = true
 		logger.Print("shutting down for elevated restart")
 	case <-srv.ShutdownRequested():
@@ -94,7 +96,7 @@ func main() {
 	cleaned := make(chan struct{})
 	go func() {
 		srv.Shutdown()
-		conn.Shutdown()
+		app.Shutdown()
 		close(cleaned)
 	}()
 	<-cleaned

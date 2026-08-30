@@ -40,53 +40,43 @@ func (s *Server) dispatch(req rpc.Req) (any, error) {
 	case "Ping":
 		return "pong", nil
 	case "Status":
-		return s.conn.Status(), nil
+		return s.core.Status(), nil
 	case "Active":
-		return s.conn.ActiveRef()
+		return s.core.ActiveRef()
 	case "Subs":
-		return s.subs.List()
+		return s.core.Subscriptions()
 	case "AddSub":
-		return s.subs.Add(s.ctx, a.URL)
+		return s.core.AddSubscription(s.ctx, a.URL)
 	case "RemoveSub":
-		return nil, s.removeSub(a.ID)
+		return nil, s.core.RemoveSubscription(a.ID)
 	case "MoveSub":
-		return nil, s.subs.MoveSub(a.ID, a.Dir)
+		return nil, s.core.MoveSubscription(a.ID, a.Dir)
 	case "RefreshAll":
-		return s.subs.RefreshAll(s.ctx)
+		return s.core.RefreshSubscriptions(s.ctx)
 	case "Refresh":
-		return s.subs.Refresh(s.ctx, a.ID)
+		return s.core.RefreshSubscription(s.ctx, a.ID)
 	case "Nodes":
-		return s.conn.Nodes()
+		return s.core.Nodes()
 	case "Probe":
-		return s.conn.Probe(s.ctx, a.Sub, a.ID)
+		return s.core.Probe(s.ctx, a.Sub, a.ID)
 	case "Connect":
-		return s.conn.Connect(a.ID, a.Sub)
+		return s.core.Connect(a.ID, a.Sub)
 	case "Disconnect":
-		return s.conn.Disconnect()
+		return s.core.Disconnect()
 	case "SetTun":
-		return s.conn.SetTun(a.Tun)
+		return s.core.SetTun(a.Tun)
 	case "Settings":
-		return s.conn.Settings(), nil
+		return s.core.Settings(), nil
 	case "SetSettings":
-		return s.conn.SetSettings(a.Settings)
+		return s.core.SetSettings(a.Settings)
 	}
 	return nil, fmt.Errorf("unknown method %q", req.Method)
-}
-
-// removeSub drops the live connection when the deleted sub owned it
-func (s *Server) removeSub(id string) error {
-	sub, err := s.subs.Remove(id)
-	if err != nil {
-		return err
-	}
-	s.conn.ForgetIfRemoved(sub.ID, sub.Nodes)
-	return nil
 }
 
 func (s *Server) watch(conn net.Conn) {
 	_ = conn.SetDeadline(time.Time{}) // stays open
 
-	initial, ch, cancel := s.conn.Watch()
+	initial, ch, cancel := s.core.Watch()
 	defer cancel()
 
 	gone := make(chan struct{})

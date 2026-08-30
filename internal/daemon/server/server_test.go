@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/luynrs/justray/internal/daemon/connection"
+	"github.com/luynrs/justray/internal/daemon/core"
 	"github.com/luynrs/justray/internal/daemon/store"
 	"github.com/luynrs/justray/internal/daemon/subscription"
 	"github.com/luynrs/justray/internal/shared/rpc"
@@ -39,7 +40,7 @@ func TestShutdownClosesWatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	logger := log.New(io.Discard, "", 0)
-	srv := New(logger, connection.New(dir, store.Disk{Dir: dir}, nil, nil, logger), subscription.New(store.Disk{Dir: dir}, logger))
+	srv := New(logger, core.New(connection.New(dir, store.Disk{Dir: dir}, nil, nil, logger), subscription.New(store.Disk{Dir: dir}, logger)))
 	served := make(chan error, 1)
 	go func() { served <- srv.Serve(ln) }()
 

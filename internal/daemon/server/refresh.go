@@ -11,7 +11,7 @@ func (s *Server) AutoRefresh(done <-chan struct{}) {
 		case <-time.After(time.Minute):
 		}
 
-		every := time.Duration(s.conn.RefreshEvery()) * time.Hour
+		every := time.Duration(s.core.RefreshEvery()) * time.Hour
 		if every == 0 {
 			continue
 		}
@@ -30,7 +30,7 @@ func (s *Server) AutoRefresh(done <-chan struct{}) {
 				continue
 			}
 			tried[id] = time.Now()
-			if _, err := s.subs.Refresh(s.ctx, id); err != nil {
+			if _, err := s.core.RefreshSubscription(s.ctx, id); err != nil {
 				s.log.Print(err)
 			}
 		}
@@ -38,7 +38,7 @@ func (s *Server) AutoRefresh(done <-chan struct{}) {
 }
 
 func (s *Server) stale(every time.Duration) []string {
-	list, err := s.subs.List()
+	list, err := s.core.Subscriptions()
 	if err != nil {
 		s.log.Printf("auto refresh: %v", err)
 		return nil
