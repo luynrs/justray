@@ -3,7 +3,6 @@ package subscription
 import (
 	"context"
 	"fmt"
-	"slices"
 	"sync"
 	"time"
 
@@ -63,27 +62,6 @@ func (s *Service) Refresh(ctx context.Context, sub store.Subscription) (store.Su
 		return sub, err
 	}
 	return sub, nil
-}
-
-func (s *Service) Commit(updated []store.Subscription) (int, error) {
-	if len(updated) == 0 {
-		return 0, nil
-	}
-	subs, err := s.All()
-	if err != nil {
-		return 0, err
-	}
-	committed := 0
-	for _, u := range updated {
-		if i := slices.IndexFunc(subs, func(x store.Subscription) bool { return x.ID == u.ID }); i >= 0 {
-			subs[i] = u
-			committed++
-		}
-	}
-	if committed == 0 {
-		return 0, nil
-	}
-	return committed, s.save(subs)
 }
 
 func (s *Service) fill(ctx context.Context, sub *store.Subscription) error {

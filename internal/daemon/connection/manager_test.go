@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/luynrs/justray/internal/daemon/engine"
-	"github.com/luynrs/justray/internal/daemon/store"
 	"github.com/luynrs/justray/internal/shared/domain"
 )
 
@@ -26,7 +25,7 @@ func testService(t *testing.T, eng engine.Engine) *Service {
 	t.Helper()
 	settings, _ := domain.Settings{}.Normalize()
 	return &Service{
-		store: store.Disk{Dir: t.TempDir()}, log: log.New(io.Discard, "", 0),
+		log:      log.New(io.Discard, "", 0),
 		settings: settings, session: session{eng: eng},
 		watchers: map[chan Status]struct{}{}, probes: map[domain.NodeRef]engine.Result{},
 	}
@@ -53,14 +52,13 @@ func TestStopClosesActiveAfterCleanupFailure(t *testing.T) {
 	}
 }
 
-func TestSetTunFailureDoesNotCommitState(t *testing.T) {
+func TestSetTunFailureDoesNotChangeRuntimeState(t *testing.T) {
 	s := testService(t, &fakeEngine{tunErr: errors.New("tun failed")})
 	if _, err := s.SetTun(true); err == nil {
 		t.Fatal("SetTun succeeded")
 	}
-	state, err := s.store.Load()
-	if err != nil || s.tun || state.Tun {
-		t.Fatalf("tun committed after failure: desired=%v persisted=%v err=%v", s.tun, state.Tun, err)
+	if s.tun {
+		t.Fatal("tun changed after failure")
 	}
 }
 
@@ -70,23 +68,6 @@ func TestStartClosesEngineOnFailure(t *testing.T) {
 	s.newEngine = func(domain.Settings, string) engine.Engine { return eng }
 	if err := s.start(domain.Node{ID: "n1"}, domain.NodeRef{NodeID: "n1"}); err == nil || eng.closeCalls != 1 {
 		t.Fatalf("start err=%v closeCalls=%d", err, eng.closeCalls)
-	}
-}
-
-func TestFind(t *testing.T) {
-	subs := []store.Subscription{
-		{ID: "a", Nodes: []domain.Node{{ID: "0123456789abcdef"}}},
-		{ID: "b", Nodes: []domain.Node{{ID: "0123fedcba987654"}}},
-	}
-	if _, _, err := find(subs, domain.NodeRef{NodeID: "ffff"}); err == nil || err.Error() != `node "ffff" not found` {
-		t.Fatalf("missing node: %v", err)
-	}
-	if _, _, err := find(subs, domain.NodeRef{NodeID: "0123"}); err == nil || err.Error() != `ambiguous node ID "0123"` {
-		t.Fatalf("ambiguous node: %v", err)
-	}
-	_, ref, err := find(subs, domain.NodeRef{NodeID: "01234567"})
-	if err != nil || ref != (domain.NodeRef{SubscriptionID: "a", NodeID: "0123456789abcdef"}) {
-		t.Fatalf("unique node: ref=%+v err=%v", ref, err)
 	}
 }
 

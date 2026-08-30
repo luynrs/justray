@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"slices"
 
 	"github.com/luynrs/justray/internal/daemon/store"
 	"github.com/luynrs/justray/internal/shared/parser"
@@ -14,45 +13,16 @@ import (
 )
 
 type Service struct {
-	store  store.Disk
 	device http.Header
 	log    *log.Logger
 }
 
-func New(st store.Disk, logger *log.Logger) *Service {
+func New(logger *log.Logger) *Service {
 	device, err := deviceHeaders()
 	if err != nil && logger != nil {
 		logger.Print(err)
 	}
-	return &Service{store: st, device: device, log: logger}
-}
-
-func (s *Service) List() ([]rpc.Sub, error) {
-	subs, err := s.All()
-	if err != nil {
-		return nil, err
-	}
-	out := make([]rpc.Sub, len(subs))
-	for i, sub := range subs {
-		out[i] = Info(sub)
-	}
-	return out, nil
-}
-
-func (s *Service) All() ([]store.Subscription, error) {
-	state, err := s.store.Load()
-	return state.Subscriptions, err
-}
-
-func (s *Service) Get(id string) (store.Subscription, error) {
-	subs, err := s.All()
-	if err != nil {
-		return store.Subscription{}, err
-	}
-	if i := slices.IndexFunc(subs, func(sub store.Subscription) bool { return sub.ID == id }); i >= 0 {
-		return subs[i], nil
-	}
-	return store.Subscription{}, fmt.Errorf("subscription %q not found", id)
+	return &Service{device: device, log: logger}
 }
 
 func (s *Service) PrepareAdd(ctx context.Context, rawURL string) (store.Subscription, error) {
@@ -68,55 +38,6 @@ func (s *Service) PrepareAdd(ctx context.Context, rawURL string) (store.Subscrip
 		sub.Name = host(rawURL)
 	}
 	return sub, nil
-}
-
-func (s *Service) Add(sub store.Subscription) (rpc.Sub, error) {
-	subs, err := s.All()
-	if err != nil {
-		return rpc.Sub{}, err
-	}
-	return Info(sub), s.save(append(subs, sub))
-}
-
-// Remove deletes a subscription and returns it
-func (s *Service) Remove(id string) (store.Subscription, error) {
-	subs, err := s.All()
-	if err != nil {
-		return store.Subscription{}, err
-	}
-	i := slices.IndexFunc(subs, func(sub store.Subscription) bool { return sub.ID == id })
-	if i < 0 {
-		return store.Subscription{}, fmt.Errorf("subscription %q not found", id)
-	}
-	removed := subs[i]
-	kept := slices.Delete(subs, i, i+1)
-	return removed, s.save(kept)
-}
-
-func (s *Service) MoveSub(id string, dir int) error {
-	subs, err := s.All()
-	if err != nil {
-		return err
-	}
-	i := slices.IndexFunc(subs, func(sub store.Subscription) bool { return sub.ID == id })
-	if i < 0 {
-		return fmt.Errorf("subscription %q not found", id)
-	}
-	j := i + dir
-	if j < 0 || j >= len(subs) {
-		return nil
-	}
-	subs[i], subs[j] = subs[j], subs[i]
-	return s.save(subs)
-}
-
-func (s *Service) save(subs []store.Subscription) error {
-	state, err := s.store.Load()
-	if err != nil {
-		return err
-	}
-	state.Subscriptions = subs
-	return s.store.Save(state)
 }
 
 func check(rawURL string) error {

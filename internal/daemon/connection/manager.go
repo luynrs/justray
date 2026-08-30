@@ -2,61 +2,27 @@ package connection
 
 import (
 	"errors"
-	"fmt"
-	"slices"
-	"strings"
 	"time"
 
 	"github.com/luynrs/justray/internal/daemon/engine"
 	"github.com/luynrs/justray/internal/daemon/platform/elevate"
-	"github.com/luynrs/justray/internal/daemon/store"
 	"github.com/luynrs/justray/internal/shared/domain"
 	"github.com/luynrs/justray/internal/shared/rpc"
 )
 
-func (s *Service) Restore() {
+func (s *Service) Restore(n domain.Node, ref domain.NodeRef) {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
 	defer s.broadcast()
-
-	state, err := s.store.Load()
-	if err != nil || state.Active.NodeID == "" {
-		return
-	}
-	n, ref, err := find(state.Subscriptions, state.Active)
-	if err != nil {
-		return
-	}
 	if err := s.start(n, ref); err != nil {
 		s.log.Print(err)
 	}
 }
 
-// ForgetIfRemoved drops the active node when its subscription is deleted.
-func (s *Service) ForgetIfRemoved(subID string, nodes []domain.Node) {
+// ForgetIfRemoved drops the live connection when its subscription is deleted.
+func (s *Service) ForgetIfRemoved(subID string) {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
-
-	gone := func(ref domain.NodeRef) bool {
-		return ref.NodeID != "" && (ref.SubscriptionID == subID || ref.SubscriptionID == "" && slices.ContainsFunc(nodes, func(n domain.Node) bool { return n.ID == ref.NodeID }))
-	}
-	state, err := s.store.Load()
-	if err != nil {
-		s.log.Print(err)
-	} else {
-		changed := false
-		if gone(state.Active) {
-			state.Active, changed = domain.NodeRef{}, true
-		}
-		if gone(state.Last) {
-			state.Last, changed = domain.NodeRef{}, true
-		}
-		if changed {
-			if err := s.store.Save(state); err != nil {
-				s.log.Print(err)
-			}
-		}
-	}
 
 	s.mu.Lock()
 	live := s.session.ref.SubscriptionID == subID
@@ -113,7 +79,6 @@ func (s *Service) start(n domain.Node, ref domain.NodeRef) (err error) {
 	}
 	if err != nil {
 		if tun && elevate.Needed(err) {
-			s.persistActive(ref)
 			s.requestRestart()
 			err = rpc.ErrElevate
 		}
@@ -124,7 +89,6 @@ func (s *Service) start(n domain.Node, ref domain.NodeRef) (err error) {
 	s.session = session{eng: eng, node: n, ref: ref, started: time.Now(), tun: tun}
 	s.mu.Unlock()
 
-	s.persistActive(ref)
 	s.log.Printf("connected to %s (%s %s:%d)", n.Name, n.Protocol, n.Server, n.Port)
 	return nil
 }
@@ -160,11 +124,7 @@ func (s *Service) stop() error {
 }
 
 func (s *Service) clear() error {
-	if err := s.stop(); err != nil {
-		return err
-	}
-	s.persistActive(domain.NodeRef{})
-	return nil
+	return s.stop()
 }
 
 func (s *Service) discard(eng engine.Engine) error {
@@ -175,44 +135,4 @@ func (s *Service) discard(eng engine.Engine) error {
 		s.mu.Unlock()
 	}
 	return err
-}
-
-func (s *Service) persistActive(ref domain.NodeRef) {
-	state, err := s.store.Load()
-	if err == nil {
-		state.Active = ref
-		if ref.NodeID != "" {
-			state.Last = ref
-		}
-		err = s.store.Save(state)
-	}
-	if err != nil {
-		s.log.Print(err)
-	}
-}
-
-func find(subs []store.Subscription, query domain.NodeRef) (domain.Node, domain.NodeRef, error) {
-	var node domain.Node
-	var ref domain.NodeRef
-	if query.NodeID == "" {
-		return node, ref, errors.New("node not found")
-	}
-	for _, sub := range subs {
-		if query.SubscriptionID != "" && sub.ID != query.SubscriptionID {
-			continue
-		}
-		for _, n := range sub.Nodes {
-			if !strings.HasPrefix(n.ID, query.NodeID) {
-				continue
-			}
-			if ref.NodeID != "" {
-				return domain.Node{}, domain.NodeRef{}, fmt.Errorf("ambiguous node ID %q", query.NodeID)
-			}
-			node, ref = n, domain.NodeRef{SubscriptionID: sub.ID, NodeID: n.ID}
-		}
-	}
-	if ref.NodeID == "" {
-		return node, ref, fmt.Errorf("node %q not found", query.NodeID)
-	}
-	return node, ref, nil
 }

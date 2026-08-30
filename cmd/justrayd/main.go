@@ -64,9 +64,9 @@ func main() {
 	logger.Printf("justrayd %s listening on %s", version.String(), socket)
 
 	st := store.Disk{Dir: dir}
-	conn := connection.New(dir, st, singbox.New, singbox.Probe, logger)
-	subs := subscription.New(st, logger)
-	app := core.New(conn, subs)
+	conn := connection.New(dir, singbox.New, singbox.Probe, logger)
+	subs := subscription.New(logger)
+	app := core.New(st, conn, subs, logger)
 	srv := server.New(logger, app)
 	app.Restore()
 
