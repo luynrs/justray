@@ -13,12 +13,7 @@ import (
 	"github.com/luynrs/justray/internal/shared/rpc"
 )
 
-func (s *Service) RefreshAll(ctx context.Context) ([]rpc.Sub, error) {
-	subs, err := s.store.Subscriptions()
-	if err != nil {
-		return nil, err
-	}
-
+func (s *Service) RefreshAll(ctx context.Context, subs []store.Subscription, refresh func(context.Context, store.Subscription) (store.Subscription, error)) ([]rpc.Sub, []store.Subscription, error) {
 	errs := make([]error, len(subs))
 	jobs := make(chan int)
 	var wg sync.WaitGroup
@@ -27,7 +22,7 @@ func (s *Service) RefreshAll(ctx context.Context) ([]rpc.Sub, error) {
 		go func() {
 			defer wg.Done()
 			for i := range jobs {
-				errs[i] = s.fill(ctx, &subs[i])
+				subs[i], errs[i] = refresh(ctx, subs[i])
 			}
 		}()
 	}
@@ -37,7 +32,7 @@ func (s *Service) RefreshAll(ctx context.Context) ([]rpc.Sub, error) {
 		case <-ctx.Done():
 			close(jobs)
 			wg.Wait()
-			return nil, ctx.Err()
+			return nil, nil, ctx.Err()
 		}
 	}
 	close(jobs)
@@ -48,7 +43,7 @@ func (s *Service) RefreshAll(ctx context.Context) ([]rpc.Sub, error) {
 	var failed error
 	for i, err := range errs {
 		// on failure subs[i] keeps its pre-refresh data
-		out[i] = info(subs[i])
+		out[i] = Info(subs[i])
 		if err != nil {
 			failed = err
 			s.log.Print(err)
@@ -57,49 +52,38 @@ func (s *Service) RefreshAll(ctx context.Context) ([]rpc.Sub, error) {
 		updated = append(updated, subs[i])
 	}
 
-	s.storeMu.Lock()
-	defer s.storeMu.Unlock()
-	if err := s.merge(updated); err != nil {
-		return nil, err
-	}
 	if failed != nil {
-		return out, fmt.Errorf("%d of %d subscriptions failed, last: %w", len(subs)-len(updated), len(subs), failed)
+		return out, updated, fmt.Errorf("%d of %d subscriptions failed, last: %w", len(subs)-len(updated), len(subs), failed)
 	}
-	return out, nil
+	return out, updated, nil
 }
 
-func (s *Service) Refresh(ctx context.Context, id string) (rpc.Sub, error) {
-	subs, err := s.store.Subscriptions()
-	if err != nil {
-		return rpc.Sub{}, err
+func (s *Service) Refresh(ctx context.Context, sub store.Subscription) (store.Subscription, error) {
+	if err := s.fill(ctx, &sub); err != nil {
+		return sub, err
 	}
-	i := slices.IndexFunc(subs, func(sub store.Subscription) bool { return sub.ID == id })
-	if i < 0 {
-		return rpc.Sub{}, fmt.Errorf("subscription %q not found", id)
-	}
-	if err := s.fill(ctx, &subs[i]); err != nil {
-		return rpc.Sub{}, err
-	}
-
-	s.storeMu.Lock()
-	defer s.storeMu.Unlock()
-	if err := s.merge(subs[i : i+1]); err != nil {
-		return rpc.Sub{}, err
-	}
-	return info(subs[i]), nil
+	return sub, nil
 }
 
-func (s *Service) merge(updated []store.Subscription) error {
-	subs, err := s.store.Subscriptions()
-	if err != nil {
-		return err
+func (s *Service) Commit(updated []store.Subscription) (int, error) {
+	if len(updated) == 0 {
+		return 0, nil
 	}
+	subs, err := s.All()
+	if err != nil {
+		return 0, err
+	}
+	committed := 0
 	for _, u := range updated {
 		if i := slices.IndexFunc(subs, func(x store.Subscription) bool { return x.ID == u.ID }); i >= 0 {
 			subs[i] = u
+			committed++
 		}
 	}
-	return s.store.Save(subs)
+	if committed == 0 {
+		return 0, nil
+	}
+	return committed, s.store.Save(subs)
 }
 
 func (s *Service) fill(ctx context.Context, sub *store.Subscription) error {

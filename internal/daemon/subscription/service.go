@@ -1,4 +1,3 @@
-// Package subscription owns subscriptions.yaml
 package subscription
 
 import (
@@ -8,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
-	"sync"
 
 	"github.com/luynrs/justray/internal/daemon/store"
 	"github.com/luynrs/justray/internal/shared/parser"
@@ -19,8 +17,6 @@ type Service struct {
 	store  store.Disk
 	device http.Header
 	log    *log.Logger
-
-	storeMu sync.Mutex
 }
 
 func New(st store.Disk, logger *log.Logger) *Service {
@@ -32,46 +28,56 @@ func New(st store.Disk, logger *log.Logger) *Service {
 }
 
 func (s *Service) List() ([]rpc.Sub, error) {
-	subs, err := s.store.Subscriptions()
+	subs, err := s.All()
 	if err != nil {
 		return nil, err
 	}
 	out := make([]rpc.Sub, len(subs))
 	for i, sub := range subs {
-		out[i] = info(sub)
+		out[i] = Info(sub)
 	}
 	return out, nil
 }
 
-func (s *Service) Add(ctx context.Context, rawURL string) (rpc.Sub, error) {
+func (s *Service) All() ([]store.Subscription, error) { return s.store.Subscriptions() }
+
+func (s *Service) Get(id string) (store.Subscription, error) {
+	subs, err := s.All()
+	if err != nil {
+		return store.Subscription{}, err
+	}
+	if i := slices.IndexFunc(subs, func(sub store.Subscription) bool { return sub.ID == id }); i >= 0 {
+		return subs[i], nil
+	}
+	return store.Subscription{}, fmt.Errorf("subscription %q not found", id)
+}
+
+func (s *Service) PrepareAdd(ctx context.Context, rawURL string) (store.Subscription, error) {
 	if err := check(rawURL); err != nil {
-		return rpc.Sub{}, err
+		return store.Subscription{}, err
 	}
 
 	sub := store.Subscription{ID: store.NewID(), URL: rawURL}
 	if err := s.fill(ctx, &sub); err != nil {
-		return rpc.Sub{}, err
+		return store.Subscription{}, err
 	}
 	if sub.Name == "" {
 		sub.Name = host(rawURL)
 	}
+	return sub, nil
+}
 
-	s.storeMu.Lock()
-	defer s.storeMu.Unlock()
-
-	subs, err := s.store.Subscriptions()
+func (s *Service) Add(sub store.Subscription) (rpc.Sub, error) {
+	subs, err := s.All()
 	if err != nil {
 		return rpc.Sub{}, err
 	}
-	return info(sub), s.store.Save(append(subs, sub))
+	return Info(sub), s.store.Save(append(subs, sub))
 }
 
 // Remove deletes a subscription and returns it
 func (s *Service) Remove(id string) (store.Subscription, error) {
-	s.storeMu.Lock()
-	defer s.storeMu.Unlock()
-
-	subs, err := s.store.Subscriptions()
+	subs, err := s.All()
 	if err != nil {
 		return store.Subscription{}, err
 	}
@@ -85,10 +91,7 @@ func (s *Service) Remove(id string) (store.Subscription, error) {
 }
 
 func (s *Service) MoveSub(id string, dir int) error {
-	s.storeMu.Lock()
-	defer s.storeMu.Unlock()
-
-	subs, err := s.store.Subscriptions()
+	subs, err := s.All()
 	if err != nil {
 		return err
 	}
@@ -128,7 +131,7 @@ func host(rawURL string) string {
 	return rawURL
 }
 
-func info(sub store.Subscription) rpc.Sub {
+func Info(sub store.Subscription) rpc.Sub {
 	return rpc.Sub{
 		ID: sub.ID, Name: sub.Name,
 		Nodes: len(sub.Nodes), UpdatedAt: sub.UpdatedAt,
