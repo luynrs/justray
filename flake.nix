@@ -39,7 +39,7 @@
             fileset = pkgs.lib.fileset.unions [ ./go.mod ./go.sum ./cmd ./internal ./LICENSE ];
           };
 
-          vendorHash = "sha256-0hOEtAKxSP1b2TVFgIBkG+5zQM8oV3d7jwuuGi7AZ7Y=";
+          vendorHash = "sha256-K3IquEOFkc9E3E6xZTeZhMvz/2oWDz8oa6R4YHs/wsk=";
           proxyVendor = true;
 
           subPackages = [ "cmd/justray" "cmd/justrayd" ];
