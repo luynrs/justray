@@ -22,9 +22,11 @@ func EnsureDir(dir string) error {
 	return os.Chmod(dir, 0o700)
 }
 
-func Socket(dir string) string    { return filepath.Join(dir, "ipc", "justrayd.sock") }
-func DaemonLog(dir string) string { return filepath.Join(dir, "logs", "daemon.log") }
-func EngineLog(dir string) string { return filepath.Join(dir, "logs", "engine.log") }
+func Socket(dir string) string        { return filepath.Join(dir, "ipc", "justrayd.sock") }
+func DaemonLog(dir string) string     { return filepath.Join(dir, "logs", "daemon.log") }
+func EngineLog(dir string) string     { return filepath.Join(dir, "logs", "engine.log") }
+func Subscriptions(dir string) string { return filepath.Join(dir, "subscriptions.yaml") }
+func Configuration(dir string) string { return filepath.Join(dir, "configuration.yaml") }
 
 func ClearLog(path string) error {
 	if err := os.Truncate(path, 0); err != nil && !os.IsNotExist(err) {

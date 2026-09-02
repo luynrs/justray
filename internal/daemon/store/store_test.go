@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/luynrs/justray/internal/shared/domain"
+	"github.com/luynrs/justray/internal/shared/rpc"
 )
 
 func TestPersistentStateRoundtrip(t *testing.T) {
@@ -41,10 +42,10 @@ func TestPersistentStateRoundtrip(t *testing.T) {
 
 func TestLoadMigratesSplitFiles(t *testing.T) {
 	d := Disk{Dir: t.TempDir()}
-	if err := os.WriteFile(statePath(d.Dir), []byte("active: node\nactive_subscription: sub\nlast: old\nlast_subscription: old-sub\ntun: true\nsettings:\n  general:\n    refresh_hours: 12\n"), 0o600); err != nil {
+	if err := os.WriteFile(rpc.Configuration(d.Dir), []byte("active: node\nactive_subscription: sub\nlast: old\nlast_subscription: old-sub\ntun: true\nsettings:\n  general:\n    refresh_hours: 12\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(subsPath(d.Dir), []byte("subscriptions:\n  - id: sub\n    name: test\n    url: https://example.com/sub\n"), 0o600); err != nil {
+	if err := os.WriteFile(rpc.Subscriptions(d.Dir), []byte("subscriptions:\n  - id: sub\n    name: test\n    url: https://example.com/sub\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	state, err := d.Load()
@@ -57,7 +58,7 @@ func TestLoadMigratesSplitFiles(t *testing.T) {
 	if err := d.Save(state); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(subsPath(d.Dir)); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(rpc.Subscriptions(d.Dir)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("legacy subscriptions file: %v", err)
 	}
 }
@@ -67,7 +68,7 @@ func TestEmptySnapshotDoesNotReadLegacyFile(t *testing.T) {
 	if err := d.Save(PersistentState{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(subsPath(d.Dir), []byte("subscriptions:\n  - id: legacy\n"), 0o600); err != nil {
+	if err := os.WriteFile(rpc.Subscriptions(d.Dir), []byte("subscriptions:\n  - id: legacy\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	state, err := d.Load()

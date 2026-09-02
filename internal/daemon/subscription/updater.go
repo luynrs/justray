@@ -9,21 +9,18 @@ import (
 	"github.com/luynrs/justray/internal/daemon/store"
 	"github.com/luynrs/justray/internal/shared/domain"
 	"github.com/luynrs/justray/internal/shared/parser"
-	"github.com/luynrs/justray/internal/shared/rpc"
 )
 
-func (s *Service) RefreshAll(ctx context.Context, subs []store.Subscription, refresh func(context.Context, store.Subscription) (store.Subscription, error)) ([]rpc.Sub, []store.Subscription, error) {
+func (s *Service) RefreshAll(ctx context.Context, subs []store.Subscription, refresh func(context.Context, store.Subscription) (store.Subscription, error)) ([]store.Subscription, error) {
 	errs := make([]error, len(subs))
 	jobs := make(chan int)
 	var wg sync.WaitGroup
 	for range min(8, len(subs)) {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for i := range jobs {
 				subs[i], errs[i] = refresh(ctx, subs[i])
 			}
-		}()
+		})
 	}
 	for i := range subs {
 		select {
@@ -31,17 +28,14 @@ func (s *Service) RefreshAll(ctx context.Context, subs []store.Subscription, ref
 		case <-ctx.Done():
 			close(jobs)
 			wg.Wait()
-			return nil, nil, ctx.Err()
+			return nil, ctx.Err()
 		}
 	}
 	close(jobs)
 	wg.Wait()
 
-	out := make([]rpc.Sub, len(subs))
 	updated := make([]store.Subscription, 0, len(subs))
 	for i, err := range errs {
-		// on failure subs[i] keeps its pre-refresh data
-		out[i] = Info(subs[i])
 		if err != nil {
 			s.log.Print(err)
 			continue
@@ -50,42 +44,38 @@ func (s *Service) RefreshAll(ctx context.Context, subs []store.Subscription, ref
 	}
 
 	if failed := len(subs) - len(updated); failed > 0 {
-		return out, updated, fmt.Errorf("subscription refresh failed (%d/%d)", failed, len(subs))
+		return updated, fmt.Errorf("subscription refresh failed (%d/%d)", failed, len(subs))
 	}
-	return out, updated, nil
+	return updated, nil
 }
 
 func (s *Service) Refresh(ctx context.Context, sub store.Subscription) (store.Subscription, error) {
-	if err := s.fill(ctx, &sub); err != nil {
+	if err := check(sub.URL); err != nil {
 		return sub, err
 	}
-	return sub, nil
-}
-
-func (s *Service) fill(ctx context.Context, sub *store.Subscription) error {
 	if parser.IsLink(sub.URL) {
 		n, err := parser.ParseURI(sub.URL)
 		if err != nil {
-			return err
+			return sub, err
 		}
 		nodes := []domain.Node{n}
 		if err := validateNodes(nodes); err != nil {
-			return err
+			return sub, err
 		}
 		sub.Nodes, sub.Name, sub.Traffic = nodes, n.Name, domain.Traffic{}
 		sub.UpdatedAt = time.Now().UTC()
-		return nil
+		return sub, nil
 	}
 
 	nodes, name, traffic, err := s.fetch(ctx, sub.URL)
 	if err != nil {
-		return err
+		return sub, err
 	}
 	sub.Nodes, sub.Traffic, sub.UpdatedAt = nodes, traffic, time.Now().UTC()
 	if name != "" { // change name if it changed on server
 		sub.Name = name
 	}
-	return nil
+	return sub, nil
 }
 
 func validateNodes(nodes []domain.Node) error {

@@ -37,11 +37,7 @@ func (a *app) subAdd(cmd *cobra.Command, args []string) error {
 	}
 	sub := snapshot.Subscriptions[len(snapshot.Subscriptions)-1]
 	done("Added " + a.clean(sub.Name))
-	f := [][2]string{{"ID", sub.ID}, {"Nodes", strconv.Itoa(sub.Nodes)}}
-	if t := style.Usage(sub.Traffic); t != "" {
-		f = append(f, [2]string{"Traffic", t})
-	}
-	fields(f...)
+	fields([2]string{"ID", sub.ID}, [2]string{"Nodes", strconv.Itoa(sub.Nodes)}, [2]string{"Traffic", style.Usage(sub.Traffic)})
 	return nil
 }
 
@@ -121,7 +117,7 @@ func (a *app) showTree(subs []rpc.Sub, nodes []rpc.Node) {
 			out(style.Name.Render(a.clean(g.Sub.Name)))
 		} else {
 			out(style.Name.Render(a.clean(g.Sub.Name)) + "  " + style.Dim.Render(g.Sub.ID))
-			out(subMeta(g.Sub))
+			out(style.Usage(g.Sub.Traffic) + style.Dim.Render(" · updated "+style.Since(g.Sub.UpdatedAt)))
 		}
 
 		nameW, infoW := 0, 0
@@ -143,20 +139,9 @@ func (a *app) nodeLine(n rpc.Node, branch string, nameW, infoW int) string {
 	name := style.Pad(a.nodeName(n.Name, ""), nameW)
 	info := style.Dim.Render(style.Pad(a.serverProto(n), infoW))
 	id := style.Dim.Render(displayID(n.ID))
-	if branch == "" {
-		return fmt.Sprintf("%s  %s  %s", a.nodeName(n.Name, ""), info, id)
-	}
 	return fmt.Sprintf("%s %s  %s  %s", style.Dim.Render(branch), name, info, id)
 }
 
 func (a *app) serverProto(n rpc.Node) string {
 	return fmt.Sprintf("%s:%d · %s", a.clean(n.Server), n.Port, n.Protocol)
-}
-
-func subMeta(s rpc.Sub) string {
-	meta := style.Usage(s.Traffic)
-	if meta != "" {
-		meta += style.Dim.Render(" · ")
-	}
-	return meta + style.Dim.Render("updated "+style.Since(s.UpdatedAt))
 }

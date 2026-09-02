@@ -40,27 +40,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.mouse(msg)
 
 	case tea.PasteMsg:
-		if m.editing {
+		if m.editor.Focused() {
 			var cmd tea.Cmd
 			m.editor, cmd = m.editor.Update(msg)
 			return m, cmd
 		}
-
-	case settingsLoaded:
-		if msg.err != nil {
-			m.err = msg.err.Error()
-			return m, nil
-		}
-		s, err := msg.s.Normalize()
-		if err != nil {
-			m.err = err.Error()
-			return m, nil
-		}
-		m.emoji = s.Emoji == "on"
-		if msg.open {
-			m.settings = settings.New(s, topLines)
-		}
-		return m, nil
 
 	case tick:
 		return m, tickCmd()
@@ -75,12 +59,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case loaded:
 		m.err = ""
+		if msg.op == "connect" {
+			m.connecting = false
+		}
 		if msg.err != nil {
 			m.err = msg.err.Error()
-			if msg.op == "probe" || msg.op == "" {
+			if msg.op == "probe" {
 				m.probing = nil
 			}
-			if msg.op == "refresh" || msg.op == "" {
+			if msg.op == "refresh" {
 				m.refreshing = nil
 			}
 			return m, nil
@@ -95,29 +82,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.since = time.Now().Add(-time.Duration(m.status.Uptime) * time.Second)
 		m.emoji = msg.snapshot.Settings.Emoji == "on"
 		m.live = true
-		if msg.op == "probe" || msg.op == "sync" || msg.op == "" {
+		if msg.op == "probe" || msg.op == "sync" {
 			m.probing = nil
 		}
-		if msg.op == "refresh" || msg.op == "sync" || msg.op == "" {
+		if msg.op == "refresh" || msg.op == "sync" {
 			m.refreshing = nil
 		}
 		if selectedOK && selected.Kind == tree.Header {
 			m.toHeader(selected.Sub.ID)
 		}
 		m.clamp()
-
-	case connectResult:
-		m.connecting = false
-		if msg.err != nil {
-			m.err = msg.err.Error()
-			return m, nil
+		if msg.op == "settings" {
+			m.settings = settings.New(msg.snapshot.Settings, topLines)
 		}
-		return m, func() tea.Msg { return loaded{snapshot: msg.snapshot, op: "connect"} }
 
 	case pushed:
 		if msg.live {
 			if msg.revision > m.revision || !m.live {
-				return m, tea.Batch(next(m.statusCh), func() tea.Msg { return load(m.client) })
+				return m, tea.Batch(next(m.statusCh), snapshotCmd("sync", m.client.Snapshot))
 			}
 			return m, next(m.statusCh)
 		}
@@ -135,30 +117,28 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		id := m.confirmID
 		m.confirmQ, m.confirmID = "", ""
 		if k == "y" {
-			return m, act(func() (rpc.Snapshot, error) { return m.client.RemoveSub(id) })
+			return m, snapshotCmd("mutation", func() (rpc.Snapshot, error) { return m.client.RemoveSub(id) })
 		}
 		return m, nil
 
-	case m.editing:
+	case m.editor.Focused():
 		switch k {
 		case "esc":
-			m.editing = false
 			m.editor.Blur()
 			return m, nil
 		case "enter":
-			m.editing = false
 			m.editor.Blur()
 			url := strings.TrimSpace(m.editor.Value())
 			if url == "" {
 				return m, nil
 			}
-			return m, act(func() (rpc.Snapshot, error) { return m.client.AddSub(url) })
+			return m, snapshotCmd("mutation", func() (rpc.Snapshot, error) { return m.client.AddSub(url) })
 		}
 		var cmd tea.Cmd
 		m.editor, cmd = m.editor.Update(msg)
 		return m, cmd
 
-	case m.filtering:
+	case m.filter.Focused():
 		return m.filterKey(msg)
 	}
 
@@ -188,26 +168,21 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "m":
 		return m.setTun(!m.status.Tun)
 	case "a":
-		m.editing = true
 		m.editor.SetValue("")
 		return m, tea.Batch(m.editor.Focus(), textinput.Blink)
 	case "o":
-		return m, settingsCmd(m.client, true)
+		return m, snapshotCmd("settings", m.client.Snapshot)
 	case "/":
 		return m, m.startFiltering()
 	case "d":
 		if r, ok := m.at(); ok {
-			id, name := r.SubID(), r.Sub.Name
-			if r.Kind == tree.Node {
-				name = tree.Data{Subs: m.subs}.SubName(id)
-			}
-			m.confirmQ, m.confirmID = "delete "+name+"?", id
+			m.confirmQ, m.confirmID = "delete "+r.Sub.Name+"?", r.Sub.ID
 		}
 	case "q":
 		return m.quit()
 	case "esc":
-		if m.query != "" {
-			m.query = ""
+		if m.filter.Value() != "" {
+			m.filter.SetValue("")
 			m.clamp()
 		}
 	}
@@ -217,32 +192,28 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 func (m Model) filterKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
-		m.filtering, m.query = false, ""
+		m.filter.SetValue("")
 		m.filter.Blur()
 		m.clamp()
 		return m, nil
 	case "enter":
-		m.filtering = false
 		m.filter.Blur()
 		m.clamp()
 		return m, nil
 	}
 	var cmd tea.Cmd
 	m.filter, cmd = m.filter.Update(msg)
-	m.query = m.filter.Value()
 	m.clamp()
 	return m, cmd
 }
 
 func (m *Model) startFiltering() tea.Cmd {
-	m.filtering = true
-	m.filter.SetValue(m.query)
 	m.filter.CursorEnd()
 	return tea.Batch(m.filter.Focus(), textinput.Blink)
 }
 
 func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	if m.editing || m.confirmID != "" {
+	if m.editor.Focused() || m.confirmID != "" {
 		return m, nil
 	}
 	mouse := msg.Mouse()
@@ -253,7 +224,7 @@ func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.MouseWheelMsg:
-		if m.filtering || (mouse.Button != tea.MouseWheelUp && mouse.Button != tea.MouseWheelDown) {
+		if m.filter.Focused() || (mouse.Button != tea.MouseWheelUp && mouse.Button != tea.MouseWheelDown) {
 			return m, nil
 		}
 		if time.Since(m.wheel) < 20*time.Millisecond {
@@ -313,5 +284,5 @@ func (m Model) closeSettings() (Model, tea.Cmd) {
 	}
 	m.emoji = next.Emoji == "on"
 	m.connecting = true
-	return m, tea.Batch(m.spin.Tick, connectCmd(func() (rpc.Snapshot, error) { return m.client.SetSettings(next) }))
+	return m, tea.Batch(m.spin.Tick, snapshotCmd("connect", func() (rpc.Snapshot, error) { return m.client.SetSettings(next) }))
 }

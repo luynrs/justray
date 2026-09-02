@@ -3,8 +3,6 @@ package server
 import (
 	"sync"
 	"time"
-
-	"github.com/luynrs/justray/internal/shared/rpc"
 )
 
 func (s *Server) AutoRefresh() {
@@ -23,10 +21,11 @@ func (s *Server) AutoRefresh() {
 		if every == 0 {
 			continue
 		}
-		stale := stale(snapshot.Subscriptions, every)
-		active := make(map[string]struct{}, len(stale))
-		for _, id := range stale {
-			active[id] = struct{}{}
+		active := map[string]struct{}{}
+		for _, sub := range snapshot.Subscriptions {
+			if !sub.Direct && time.Since(sub.UpdatedAt) >= every {
+				active[sub.ID] = struct{}{}
+			}
 		}
 		for id := range tried {
 			if _, ok := active[id]; !ok {
@@ -35,36 +34,23 @@ func (s *Server) AutoRefresh() {
 		}
 		var wg sync.WaitGroup
 		sem := make(chan struct{}, 4)
-		for _, id := range stale {
+		for id := range active {
 			if time.Since(tried[id]) < 15*time.Minute {
 				continue
 			}
 			tried[id] = time.Now()
-			subID := id
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				select {
 				case sem <- struct{}{}:
 					defer func() { <-sem }()
 				case <-s.ctx.Done():
 					return
 				}
-				if _, err := s.core.RefreshSubscription(s.ctx, subID); err != nil {
+				if err := s.core.RefreshSubscription(s.ctx, id); err != nil {
 					s.log.Print(err)
 				}
-			}()
+			})
 		}
 		wg.Wait()
 	}
-}
-
-func stale(list []rpc.Sub, every time.Duration) []string {
-	var out []string
-	for _, sub := range list {
-		if !sub.Direct && time.Since(sub.UpdatedAt) >= every {
-			out = append(out, sub.ID)
-		}
-	}
-	return out
 }

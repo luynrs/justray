@@ -9,6 +9,7 @@ import (
 
 	"github.com/luynrs/justray/internal/daemon/platform/owner"
 	"github.com/luynrs/justray/internal/shared/domain"
+	"github.com/luynrs/justray/internal/shared/rpc"
 	"gopkg.in/yaml.v3"
 )
 
@@ -44,7 +45,7 @@ type file struct {
 
 func (d Disk) Load() (PersistentState, error) {
 	state := PersistentState{Settings: domain.Settings{General: domain.General{RefreshEvery: domain.DefaultRefresh}}}
-	data, err := os.ReadFile(statePath(d.Dir))
+	data, err := os.ReadFile(rpc.Configuration(d.Dir))
 	if err != nil {
 		if err := skipMissing(err); err != nil {
 			return state, err
@@ -66,7 +67,7 @@ func (d Disk) Load() (PersistentState, error) {
 }
 
 func (d Disk) loadSubscriptions(state PersistentState) (PersistentState, error) {
-	data, err := os.ReadFile(subsPath(d.Dir))
+	data, err := os.ReadFile(rpc.Subscriptions(d.Dir))
 	if err != nil {
 		return state, skipMissing(err)
 	}
@@ -97,10 +98,10 @@ func (d Disk) Save(state PersistentState) error {
 	if err != nil {
 		return err
 	}
-	if err := write(statePath(d.Dir), data); err != nil {
+	if err := write(rpc.Configuration(d.Dir), data); err != nil {
 		return err
 	}
-	_ = os.Remove(subsPath(d.Dir))
+	_ = os.Remove(rpc.Subscriptions(d.Dir))
 	return nil
 }
 
@@ -147,6 +148,3 @@ func NewID() string {
 	rand.Read(b[:]) // documented never to fail
 	return hex.EncodeToString(b[:])
 }
-
-func subsPath(dir string) string  { return filepath.Join(dir, "subscriptions.yaml") }
-func statePath(dir string) string { return filepath.Join(dir, "configuration.yaml") }

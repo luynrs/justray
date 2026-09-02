@@ -106,9 +106,8 @@ func (s *Server) Serve(ln net.Listener) error {
 			return nil
 		}
 		s.active[conn] = struct{}{}
-		s.wg.Add(1)
+		s.wg.Go(func() { s.serve(conn) })
 		s.mu.Unlock()
-		go s.serve(conn)
 	}
 }
 
@@ -127,13 +126,6 @@ func (s *Server) Shutdown() {
 
 func (s *Server) ShutdownRequested() <-chan struct{} { return s.stop }
 
-func (s *Server) requestShutdown() {
-	select {
-	case s.stop <- struct{}{}:
-	default:
-	}
-}
-
 func (s *Server) serve(conn net.Conn) {
 	semHeld := true
 	defer func() {
@@ -143,7 +135,6 @@ func (s *Server) serve(conn net.Conn) {
 		if semHeld {
 			<-s.sem
 		}
-		s.wg.Done()
 	}()
 	s.handle(conn, &semHeld)
 }

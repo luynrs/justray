@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"slices"
 	"strings"
 	"sync"
@@ -39,7 +38,7 @@ type Core struct {
 	watchers map[chan rpc.Changed]struct{}
 }
 
-func New(st store.Disk, conn *connection.Service, subs *subscription.Service, logger *log.Logger) (*Core, error) {
+func New(st store.Disk, conn *connection.Service, subs *subscription.Service) (*Core, error) {
 	state, err := st.Load()
 	if err != nil {
 		return nil, fmt.Errorf("load state: %w", err)
@@ -133,23 +132,23 @@ func (c *Core) Probe(ctx context.Context, sub, id string) error {
 	return nil
 }
 
-func (c *Core) AddSubscription(ctx context.Context, rawURL string) (rpc.Sub, error) {
+func (c *Core) AddSubscription(ctx context.Context, rawURL string) error {
 	sub, err := c.subs.PrepareAdd(ctx, rawURL)
 	if err != nil {
-		return rpc.Sub{}, err
+		return err
 	}
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
 	if err := ctx.Err(); err != nil {
-		return rpc.Sub{}, err
+		return err
 	}
 	next := c.current()
 	next.Subscriptions = append(next.Subscriptions, sub)
 	if err := c.commit(next); err != nil {
-		return rpc.Sub{}, err
+		return err
 	}
 	c.publish()
-	return subscription.Info(sub), nil
+	return nil
 }
 
 func (c *Core) RemoveSubscription(id string) error {
@@ -157,11 +156,8 @@ func (c *Core) RemoveSubscription(id string) error {
 	defer c.opMu.Unlock()
 	next := c.current()
 	var removed []store.Subscription
-	match := func(s store.Subscription) bool {
-		return (id == "default" && parser.IsLink(s.URL)) || s.ID == id
-	}
 	next.Subscriptions = slices.DeleteFunc(next.Subscriptions, func(s store.Subscription) bool {
-		if match(s) {
+		if id == "default" && parser.IsLink(s.URL) || s.ID == id {
 			removed = append(removed, s)
 			return true
 		}
@@ -215,16 +211,16 @@ func (c *Core) MoveSubscription(id string, dir int) error {
 	return nil
 }
 
-func (c *Core) RefreshSubscriptions(ctx context.Context) ([]rpc.Sub, error) {
+func (c *Core) RefreshSubscriptions(ctx context.Context) error {
 	subs := slices.DeleteFunc(c.current().Subscriptions, func(sub store.Subscription) bool { return parser.IsLink(sub.URL) })
 	if len(subs) == 0 {
-		return nil, nil
+		return nil
 	}
-	out, updated, refreshErr := c.subs.RefreshAll(ctx, subs, c.refresh)
+	updated, refreshErr := c.subs.RefreshAll(ctx, subs, c.refresh)
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return err
 	}
 	next := c.current()
 	var dropConn bool
@@ -237,37 +233,37 @@ func (c *Core) RefreshSubscriptions(ctx context.Context) ([]rpc.Sub, error) {
 		}
 	}
 	syncErr := c.syncAfterRefresh(ctx, next, dropConn)
-	return out, errors.Join(refreshErr, syncErr)
+	return errors.Join(refreshErr, syncErr)
 }
 
-func (c *Core) RefreshSubscription(ctx context.Context, id string) (rpc.Sub, error) {
+func (c *Core) RefreshSubscription(ctx context.Context, id string) error {
 	state := c.current()
 	i := slices.IndexFunc(state.Subscriptions, func(sub store.Subscription) bool { return sub.ID == id })
 	if i < 0 {
-		return rpc.Sub{}, fmt.Errorf("subscription %q not found", id)
+		return fmt.Errorf("subscription %q not found", id)
 	}
 	if parser.IsLink(state.Subscriptions[i].URL) {
-		return subscription.Info(state.Subscriptions[i]), nil
+		return nil
 	}
 	sub, err := c.refresh(ctx, state.Subscriptions[i])
 	if err != nil {
-		return rpc.Sub{}, err
+		return err
 	}
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
 	if err := ctx.Err(); err != nil {
-		return rpc.Sub{}, err
+		return err
 	}
 	next := c.current()
 	i = slices.IndexFunc(next.Subscriptions, func(current store.Subscription) bool { return current.ID == id })
 	if i < 0 {
-		return rpc.Sub{}, fmt.Errorf("subscription %q not found", id)
+		return fmt.Errorf("subscription %q not found", id)
 	}
 	next.Subscriptions[i] = sub
 	if err := c.syncAfterRefresh(ctx, next, c.sanitizeRefs(&next, sub)); err != nil {
-		return rpc.Sub{}, err
+		return err
 	}
-	return subscription.Info(sub), nil
+	return nil
 }
 
 func (c *Core) syncAfterRefresh(ctx context.Context, next store.PersistentState, dropConn bool) error {
@@ -276,9 +272,9 @@ func (c *Core) syncAfterRefresh(ctx context.Context, next store.PersistentState,
 	}
 	var runtimeErr error
 	if dropConn {
-		_, runtimeErr = c.conn.Disconnect(ctx)
+		runtimeErr = c.conn.Disconnect(ctx)
 	} else {
-		_, runtimeErr = c.apply(ctx, next)
+		runtimeErr = c.apply(ctx, next)
 	}
 	c.publish()
 	return runtimeErr
@@ -322,73 +318,73 @@ func (c *Core) refresh(ctx context.Context, sub store.Subscription) (store.Subsc
 	return call.sub, call.err
 }
 
-func (c *Core) Connect(ctx context.Context, nodeID, subscriptionID string) (rpc.Status, error) {
+func (c *Core) Connect(ctx context.Context, nodeID, subscriptionID string) error {
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
 	if err := ctx.Err(); err != nil {
-		return c.status(c.current()), err
+		return err
 	}
 	next := c.current()
 	n, ref, err := find(next.Subscriptions, domain.NodeRef{SubscriptionID: subscriptionID, NodeID: nodeID})
 	if err != nil {
-		return c.status(next), err
+		return err
 	}
 	next.Active, next.Last = ref, ref
 	if saveErr := c.commit(next); saveErr != nil {
-		return c.status(next), saveErr
+		return saveErr
 	}
-	_, applyErr := c.conn.Connect(ctx, n, ref, next.Settings, next.Tun)
+	applyErr := c.conn.Connect(ctx, n, ref, next.Settings, next.Tun)
 	c.publish()
-	return c.status(next), applyErr
+	return applyErr
 }
 
-func (c *Core) Disconnect(ctx context.Context) (rpc.Status, error) {
+func (c *Core) Disconnect(ctx context.Context) error {
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
 	if err := ctx.Err(); err != nil {
-		return c.status(c.current()), err
+		return err
 	}
 	next := c.current()
 	next.Active = domain.NodeRef{}
 	if err := c.commit(next); err != nil {
-		return c.status(next), err
+		return err
 	}
-	_, applyErr := c.conn.Disconnect(ctx)
+	applyErr := c.conn.Disconnect(ctx)
 	c.publish()
-	return c.status(next), applyErr
+	return applyErr
 }
 
-func (c *Core) SetTun(ctx context.Context, enable bool) (rpc.Status, error) {
+func (c *Core) SetTun(ctx context.Context, enable bool) error {
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
 	if err := ctx.Err(); err != nil {
-		return c.status(c.current()), err
+		return err
 	}
 	next := c.current()
 	next.Tun = enable
 	if err := c.commit(next); err != nil {
-		return c.status(next), err
+		return err
 	}
-	_, applyErr := c.apply(ctx, next)
+	applyErr := c.apply(ctx, next)
 	c.publish()
-	return c.status(next), applyErr
+	return applyErr
 }
 
-func (c *Core) SetSettings(ctx context.Context, settings domain.Settings) (rpc.Status, error) {
+func (c *Core) SetSettings(ctx context.Context, settings domain.Settings) error {
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
 	if err := ctx.Err(); err != nil {
-		return c.status(c.current()), err
+		return err
 	}
 	settings, err := settings.Normalize()
 	if err != nil {
-		return c.status(c.current()), err
+		return err
 	}
-	old := c.current().Settings
 	next := c.current()
+	old := next.Settings
 	next.Settings = settings
 	if err := c.commit(next); err != nil {
-		return c.status(c.current()), err
+		return err
 	}
 	if settings.Autostart != old.Autostart {
 		apply := autostart.Enable
@@ -399,12 +395,12 @@ func (c *Core) SetSettings(ctx context.Context, settings domain.Settings) (rpc.S
 			next.Settings.Autostart = old.Autostart
 			_ = c.commit(next)
 			c.publish()
-			return c.status(next), err
+			return err
 		}
 	}
-	_, applyErr := c.apply(ctx, next)
+	applyErr := c.apply(ctx, next)
 	c.publish()
-	return c.status(next), applyErr
+	return applyErr
 }
 
 func (c *Core) current() store.PersistentState {
@@ -429,7 +425,7 @@ func (c *Core) publish() {
 	state := c.current()
 	subs := make([]rpc.Sub, len(state.Subscriptions))
 	for i, sub := range state.Subscriptions {
-		subs[i] = subscription.Info(sub)
+		subs[i] = rpc.Sub{ID: sub.ID, Name: sub.Name, Nodes: len(sub.Nodes), UpdatedAt: sub.UpdatedAt, Traffic: sub.Traffic, Direct: parser.IsLink(sub.URL)}
 	}
 	active := state.Active
 	if active.NodeID == "" {
@@ -454,13 +450,13 @@ func (c *Core) publish() {
 	c.watchMu.Unlock()
 }
 
-func (c *Core) apply(ctx context.Context, state store.PersistentState) (rpc.Status, error) {
+func (c *Core) apply(ctx context.Context, state store.PersistentState) error {
 	if !c.conn.Status().Connected {
-		return c.status(state), nil
+		return nil
 	}
 	node, ref, err := find(state.Subscriptions, state.Active)
 	if err != nil {
-		return c.status(state), err
+		return err
 	}
 	return c.conn.Apply(ctx, node, ref, state.Settings, state.Tun)
 }

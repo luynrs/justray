@@ -23,9 +23,6 @@ type Row struct {
 }
 
 func (r Row) SubID() string {
-	if r.Kind == Node {
-		return r.Node.Sub
-	}
 	return r.Sub.ID
 }
 
@@ -77,6 +74,10 @@ func (d Data) Groups() []Group {
 
 func (d Data) Rows() []Row {
 	q := strings.ToLower(strings.TrimSpace(d.Query))
+	subs := make(map[string]rpc.Sub, len(d.Subs))
+	for _, sub := range d.Subs {
+		subs[sub.ID] = sub
+	}
 
 	var rows []Row
 	for _, g := range d.Groups() {
@@ -97,30 +98,11 @@ func (d Data) Rows() []Row {
 		}
 		for _, n := range nodes {
 			if q != "" || !d.Collapsed[g.Sub.ID] || (d.connected() && d.Status.NodeRef == n.Ref()) {
-				rows = append(rows, Row{Kind: Node, Node: n})
+				rows = append(rows, Row{Kind: Node, Sub: subs[n.Sub], Node: n})
 			}
 		}
 	}
 	return rows
-}
-
-func (d Data) SubNodes(subID string) []rpc.Node {
-	var out []rpc.Node
-	for _, n := range d.Nodes {
-		if n.Sub == subID {
-			out = append(out, n)
-		}
-	}
-	return out
-}
-
-func (d Data) SubName(id string) string {
-	for _, s := range d.Subs {
-		if s.ID == id {
-			return s.Name
-		}
-	}
-	return ""
 }
 
 func matching(nodes []rpc.Node, q string) []rpc.Node {

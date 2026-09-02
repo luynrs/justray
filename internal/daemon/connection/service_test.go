@@ -23,7 +23,7 @@ func (e *fakeEngine) Apply(_ context.Context, spec engine.SessionSpec) error {
 	}
 	return e.startErr
 }
-func (e *fakeEngine) Stop(context.Context) error {
+func (e *fakeEngine) Stop() error {
 	e.closeCalls++
 	e.stopped = true
 	return e.closeErr
@@ -43,7 +43,7 @@ func testService(t *testing.T, eng engine.Engine) *Service {
 func TestStopCleansUpSessionOnEngineError(t *testing.T) {
 	eng := &fakeEngine{closeErr: errors.New("close failed")}
 	s := testService(t, eng)
-	if err := s.stop(context.Background()); err == nil || s.session.eng != nil || s.Status().Connected {
+	if err := s.stop(); err == nil || s.session.eng != nil || s.Status().Connected {
 		t.Fatalf("stop err=%v session=%v status=%+v", err, s.session.eng, s.Status())
 	}
 }
@@ -51,7 +51,7 @@ func TestStopCleansUpSessionOnEngineError(t *testing.T) {
 func TestSetTunFailureDoesNotChangeRuntimeState(t *testing.T) {
 	s := testService(t, &fakeEngine{tunErr: errors.New("tun failed")})
 	settings, _ := domain.Settings{}.Normalize()
-	if _, err := s.Apply(context.Background(), domain.Node{ID: "n1"}, domain.NodeRef{NodeID: "n1"}, settings, true); err == nil || s.session.tun {
+	if err := s.Apply(context.Background(), domain.Node{ID: "n1"}, domain.NodeRef{NodeID: "n1"}, settings, true); err == nil || s.session.tun {
 		t.Fatalf("Apply err=%v tun=%v", err, s.session.tun)
 	}
 }
@@ -72,12 +72,17 @@ func TestStatusPortMatchesActiveSession(t *testing.T) {
 	s.newEngine = func(context.Context, string) engine.Engine { return eng }
 	settings, _ := domain.Settings{}.Normalize()
 	settings.Port = 1085
-	st, err := s.Connect(context.Background(), domain.Node{ID: "n1"}, domain.NodeRef{NodeID: "n1"}, settings, false)
-	if err != nil || !st.Connected || st.Port != 1085 || s.Status().Port != 1085 {
-		t.Fatalf("Connect st=%+v status=%+v err=%v", st, s.Status(), err)
+	if err := s.Connect(context.Background(), domain.Node{ID: "n1"}, domain.NodeRef{NodeID: "n1"}, settings, false); err != nil {
+		t.Fatal(err)
 	}
-	if st, err = s.Disconnect(context.Background()); err != nil || st.Connected || st.Port != 0 {
-		t.Fatalf("Disconnect st=%+v err=%v", st, err)
+	if st := s.Status(); !st.Connected || st.Port != 1085 {
+		t.Fatalf("Connect status=%+v", st)
+	}
+	if err := s.Disconnect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if st := s.Status(); st.Connected || st.Port != 0 {
+		t.Fatalf("Disconnect status=%+v", st)
 	}
 }
 

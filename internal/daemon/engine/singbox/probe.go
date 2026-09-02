@@ -52,9 +52,7 @@ func Probe(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath 
 			wg.Wait()
 			return nil, ctx.Err()
 		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			defer func() { <-sem }()
 
 			ms, err := delay(ctx, dialer, s.ProbeURL)
@@ -64,7 +62,7 @@ func Probe(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath 
 			mu.Lock()
 			out[n.ID] = engine.Result{Alive: err == nil, MS: ms}
 			mu.Unlock()
-		}()
+		})
 	}
 	wg.Wait()
 	return out, nil

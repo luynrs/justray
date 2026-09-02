@@ -17,7 +17,6 @@ import (
 type field struct {
 	name   string
 	bare   bool   // the row is its own value, like a routing rule
-	header bool   // a list heading, not a setting
 	hint   string // the editor placeholder, and the value shown while unset
 	get    func(domain.Settings) string
 	set    func(*domain.Settings, string) error
@@ -159,7 +158,6 @@ type Settings struct {
 	tab     int
 	cursor  int
 	scroll  int
-	editing bool
 	abandon bool
 	input   textinput.Model
 	cur     domain.Settings
@@ -194,7 +192,7 @@ func (s *Settings) Update(msg tea.Msg) (closed bool, cmd tea.Cmd) {
 	case tea.MouseMsg:
 		return false, s.mouse(msg)
 	case tea.PasteMsg:
-		if s.editing {
+		if s.input.Focused() {
 			var cmd tea.Cmd
 			s.input, cmd = s.input.Update(msg)
 			return false, cmd
@@ -204,7 +202,7 @@ func (s *Settings) Update(msg tea.Msg) (closed bool, cmd tea.Cmd) {
 }
 
 func (s *Settings) key(msg tea.KeyPressMsg) (bool, tea.Cmd) {
-	if s.editing {
+	if s.input.Focused() {
 		return false, s.editKey(msg)
 	}
 
@@ -250,7 +248,7 @@ func (s *Settings) key(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 }
 
 func (s *Settings) mouse(msg tea.MouseMsg) tea.Cmd {
-	if s.editing {
+	if s.input.Focused() {
 		return nil
 	}
 	mouse := msg.Mouse()
@@ -277,7 +275,7 @@ func (s *Settings) mouse(msg tea.MouseMsg) tea.Cmd {
 			}
 			return nil
 		}
-		if rows := s.rows(); h.row < len(rows) && rows[h.row].header {
+		if rows := s.rows(); h.row < len(rows) && rows[h.row].set == nil {
 			return nil
 		}
 		if h.row == s.cursor {
@@ -311,7 +309,7 @@ func (s *Settings) activate() tea.Cmd {
 		return nil
 	}
 
-	s.editing, s.err = true, ""
+	s.err = ""
 	s.input.Placeholder = f.hint
 	s.input.SetValue(f.get(s.cur))
 	s.input.CursorEnd()
@@ -321,21 +319,21 @@ func (s *Settings) activate() tea.Cmd {
 func (s *Settings) editKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch msg.String() {
 	case "esc":
-		s.editing, s.err = false, ""
+		s.err = ""
 		s.input.Blur()
 		return nil
 
 	case "enter":
 		f, ok := s.at()
 		if !ok {
-			s.editing = false
+			s.input.Blur()
 			return nil
 		}
 		if err := f.set(&s.cur, s.input.Value()); err != nil {
 			s.err = err.Error()
 			return nil
 		}
-		s.editing, s.err = false, ""
+		s.err = ""
 		s.input.Blur()
 		s.move(0)
 		return nil
@@ -379,7 +377,7 @@ func (s *Settings) rows() []field {
 func (s *Settings) listRows(l list) []field {
 	entries := *l.at(&s.cur)
 	out := make([]field, 0, len(entries)+2)
-	out = append(out, field{name: l.title, header: true})
+	out = append(out, field{name: l.title})
 
 	for i := range entries {
 		set := func(v *domain.Settings, in string) error {
@@ -449,7 +447,7 @@ func (s *Settings) move(delta int) {
 	if step == 0 {
 		step = 1
 	}
-	for n := 0; n < len(rows) && rows[i].header; n++ {
+	for n := 0; n < len(rows) && rows[i].set == nil; n++ {
 		next := i + step
 		if next < 0 || next >= len(rows) {
 			step = -step

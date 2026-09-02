@@ -1,7 +1,5 @@
 package main
 
-// CLIENT ENTRYPOINT
-
 import (
 	"os"
 

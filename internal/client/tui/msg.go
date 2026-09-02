@@ -6,7 +6,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/luynrs/justray/internal/shared/domain"
 	"github.com/luynrs/justray/internal/shared/rpc"
 )
 
@@ -21,45 +20,14 @@ type pushed struct {
 	live     bool
 }
 
-type connectResult struct {
-	snapshot rpc.Snapshot
-	err      error
-}
-
-func connectCmd(fn func() (rpc.Snapshot, error)) tea.Cmd {
+func snapshotCmd(op string, fn func() (rpc.Snapshot, error)) tea.Cmd {
 	return func() tea.Msg {
 		snapshot, err := fn()
-		return connectResult{snapshot: snapshot, err: err}
+		return loaded{snapshot: snapshot, op: op, err: err}
 	}
 }
 
 type tick struct{}
-
-func load(c *rpc.Client) tea.Msg {
-	snapshot, err := c.Snapshot()
-	return loaded{snapshot: snapshot, op: "sync", err: err}
-}
-
-func act(fn func() (rpc.Snapshot, error)) tea.Cmd {
-	return func() tea.Msg {
-		snapshot, err := fn()
-		return loaded{snapshot: snapshot, op: "mutation", err: err}
-	}
-}
-
-func probeCmd(c *rpc.Client, sub, id string) tea.Cmd {
-	return func() tea.Msg {
-		snapshot, err := c.Probe(sub, id)
-		return loaded{snapshot: snapshot, op: "probe", err: err}
-	}
-}
-
-func refreshCmd(fn func() (rpc.Snapshot, error)) tea.Cmd {
-	return func() tea.Msg {
-		snapshot, err := fn()
-		return loaded{snapshot: snapshot, op: "refresh", err: err}
-	}
-}
 
 func watch(ctx context.Context, c *rpc.Client, ch chan<- pushed) tea.Cmd {
 	return func() tea.Msg {
@@ -101,17 +69,4 @@ func next(ch <-chan pushed) tea.Cmd {
 
 func tickCmd() tea.Cmd {
 	return tea.Tick(time.Second, func(time.Time) tea.Msg { return tick{} })
-}
-
-type settingsLoaded struct {
-	s    domain.Settings
-	err  error
-	open bool
-}
-
-func settingsCmd(c *rpc.Client, open bool) tea.Cmd {
-	return func() tea.Msg {
-		snapshot, err := c.Snapshot()
-		return settingsLoaded{s: snapshot.Settings, err: err, open: open}
-	}
 }

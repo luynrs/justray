@@ -15,7 +15,7 @@ func (s *Settings) View(width, height int) string {
 }
 
 func (s *Settings) Hints() [][2]string {
-	if s.editing {
+	if s.input.Focused() {
 		return [][2]string{{"↵", "Apply"}, {"esc", "Cancel"}}
 	}
 	out := [2]string{"esc", "Back"}
@@ -131,11 +131,11 @@ func (s *Settings) fieldBlock(f field, i, width int) (lines, choices []string) {
 	}
 
 	switch {
-	case f.header:
+	case f.set == nil:
 		lines, choices = []string{bar + f.name}, []string{""}
 	case f.bare:
 		text := style.Dim.Render(f.name)
-		if selected && s.editing {
+		if selected && s.input.Focused() {
 			text = s.input.View()
 		}
 		lines, choices = []string{bar + text}, []string{""}
@@ -159,7 +159,7 @@ func (s *Settings) fieldBlock(f field, i, width int) (lines, choices []string) {
 }
 
 func (s *Settings) valueLines(f field, selected bool, bar string) (lines, choices []string) {
-	if selected && s.editing {
+	if selected && s.input.Focused() {
 		return []string{bar + s.input.View()}, []string{""}
 	}
 

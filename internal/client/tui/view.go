@@ -50,7 +50,7 @@ func (m Model) content() string {
 	}
 
 	body := m.tree()
-	if m.editing {
+	if m.editor.Focused() {
 		body = m.titleLine() + "\n\n" + m.editor.View()
 	}
 	return style.Fit(body, m.h-footerLines) + "\n" + m.footer()
@@ -58,7 +58,7 @@ func (m Model) content() string {
 
 func (m Model) titleLine() string {
 	left := style.Title.Render("JustRay") + " " + style.Dim.Render(version.String())
-	if m.settings == nil && (m.filtering || m.query != "") {
+	if m.settings == nil && (m.filter.Focused() || m.filter.Value() != "") {
 		left += " " + style.Dim.Render("~ Search:") + " " + m.filter.View()
 	}
 
@@ -86,8 +86,8 @@ func (m Model) tree() string {
 		for i, r := range rows[m.scroll:min(m.scroll+h, len(rows))] {
 			lines = append(lines, m.clip(data.Render(r, m.scroll+i == cursor, m.w)))
 		}
-	case m.query != "":
-		lines = append(lines, m.clip("    "+style.Dim.Render(fmt.Sprintf("No matches for %q", m.query))))
+	case m.filter.Value() != "":
+		lines = append(lines, m.clip("    "+style.Dim.Render(fmt.Sprintf("No matches for %q", m.filter.Value()))))
 	default:
 		lines = append(lines, m.clip("    "+style.Dim.Render("No subscriptions yet.")))
 	}
@@ -101,7 +101,7 @@ func (m Model) keys() [][2]string {
 		return m.settings.Hints()
 	case m.confirmID != "":
 		return [][2]string{{"y", "Delete"}, {"any", "Cancel"}}
-	case m.editing:
+	case m.editor.Focused():
 		return [][2]string{{"↵", "Add"}, {"esc", "Cancel"}}
 	}
 	return [][2]string{

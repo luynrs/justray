@@ -15,7 +15,7 @@ func Get() []netip.Prefix {
 	}
 	var out []netip.Prefix
 	seen := map[netip.Addr]bool{}
-	for _, line := range strings.Split(string(b), "\n") {
+	for line := range strings.Lines(string(b)) {
 		f := strings.Fields(line)
 		if len(f) != 2 || f[0] != "nameserver" {
 			continue

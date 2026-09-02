@@ -70,7 +70,7 @@ func main() {
 	st := store.Disk{Dir: dir}
 	conn := connection.New(ctx, dir, singbox.New, singbox.Probe, logger)
 	subs := subscription.New(ctx, logger)
-	app, err := core.New(st, conn, subs, logger)
+	app, err := core.New(st, conn, subs)
 	if err != nil {
 		die(err)
 	}

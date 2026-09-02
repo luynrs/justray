@@ -8,7 +8,7 @@ import (
 
 type Engine interface {
 	Apply(context.Context, SessionSpec) error
-	Stop(context.Context) error
+	Stop() error
 	Running() bool
 }
 

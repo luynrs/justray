@@ -44,7 +44,7 @@ func TestRefreshRunsOutsideMutationLockAndJoins(t *testing.T) {
 	}
 	logger := log.New(io.Discard, "", 0)
 	subs := subscription.New(context.Background(), logger)
-	app, err := New(disk, connection.New(context.Background(), "", nil, nil, logger), subs, logger)
+	app, err := New(disk, connection.New(context.Background(), "", nil, nil, logger), subs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestMoveSubscriptionCommitsCoreState(t *testing.T) {
 		t.Fatal(err)
 	}
 	logger := log.New(io.Discard, "", 0)
-	app, err := New(disk, connection.New(context.Background(), "", nil, nil, logger), subscription.New(context.Background(), logger), logger)
+	app, err := New(disk, connection.New(context.Background(), "", nil, nil, logger), subscription.New(context.Background(), logger))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,13 +148,13 @@ func TestRefreshSubscriptionPublishesCommittedSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	logger := log.New(io.Discard, "", 0)
-	app, err := New(disk, connection.New(context.Background(), "", nil, nil, logger), subscription.New(context.Background(), logger), logger)
+	app, err := New(disk, connection.New(context.Background(), "", nil, nil, logger), subscription.New(context.Background(), logger))
 	if err != nil {
 		t.Fatal(err)
 	}
 	initial, changed, cancel := app.Watch()
 	defer cancel()
-	if _, err := app.RefreshSubscription(context.Background(), "sub"); err != nil {
+	if err := app.RefreshSubscription(context.Background(), "sub"); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -177,7 +177,7 @@ func TestProbePublishesCoreOwnedResults(t *testing.T) {
 	probe := func(context.Context, []domain.Node, domain.Settings, string) (map[string]engine.Result, error) {
 		return map[string]engine.Result{"node": {Alive: true, MS: 12}}, nil
 	}
-	app, err := New(disk, connection.New(context.Background(), "", nil, probe, logger), subscription.New(context.Background(), logger), logger)
+	app, err := New(disk, connection.New(context.Background(), "", nil, probe, logger), subscription.New(context.Background(), logger))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,13 +200,13 @@ func TestProbePublishesCoreOwnedResults(t *testing.T) {
 func TestSetTunCommitsCoreState(t *testing.T) {
 	disk := store.Disk{Dir: t.TempDir()}
 	logger := log.New(io.Discard, "", 0)
-	app, err := New(disk, connection.New(context.Background(), "", nil, nil, logger), subscription.New(context.Background(), logger), logger)
+	app, err := New(disk, connection.New(context.Background(), "", nil, nil, logger), subscription.New(context.Background(), logger))
 	if err != nil {
 		t.Fatal(err)
 	}
 	initial, changed, cancel := app.Watch()
 	defer cancel()
-	if _, err := app.SetTun(context.Background(), true); err != nil {
+	if err := app.SetTun(context.Background(), true); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -230,7 +230,7 @@ type fakeEngine struct {
 }
 
 func (e *fakeEngine) Apply(context.Context, engine.SessionSpec) error { return nil }
-func (e *fakeEngine) Stop(context.Context) error                      { e.stopped = true; return e.closeErr }
+func (e *fakeEngine) Stop() error                                     { e.stopped = true; return e.closeErr }
 func (e *fakeEngine) Running() bool                                   { return !e.stopped }
 
 func testCore(t *testing.T, eng engine.Engine, state store.PersistentState) *Core {
@@ -241,7 +241,7 @@ func testCore(t *testing.T, eng engine.Engine, state store.PersistentState) *Cor
 	}
 	logger := log.New(io.Discard, "", 0)
 	conn := connection.New(context.Background(), "", func(context.Context, string) engine.Engine { return eng }, nil, logger)
-	app, err := New(disk, conn, subscription.New(context.Background(), logger), logger)
+	app, err := New(disk, conn, subscription.New(context.Background(), logger))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,11 +258,17 @@ func TestStatusPortActualWhenConnected(t *testing.T) {
 	if st := app.Snapshot().Status; st.Connected || st.Port != 1080 {
 		t.Fatalf("want disconnected port 1080, got %+v", st)
 	}
-	if st, err := app.Connect(context.Background(), "n1", "sub"); err != nil || !st.Connected || st.Port != 1080 {
-		t.Fatalf("want connected port 1080, got st=%+v err=%v", st, err)
+	if err := app.Connect(context.Background(), "n1", "sub"); err != nil {
+		t.Fatal(err)
 	}
-	if st, err := app.Disconnect(context.Background()); err != nil || st.Connected || st.Port != 1080 {
-		t.Fatalf("want disconnected port 1080, got st=%+v err=%v", st, err)
+	if st := app.Snapshot().Status; !st.Connected || st.Port != 1080 {
+		t.Fatalf("want connected port 1080, got %+v", st)
+	}
+	if err := app.Disconnect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if st := app.Snapshot().Status; st.Connected || st.Port != 1080 {
+		t.Fatalf("want disconnected port 1080, got %+v", st)
 	}
 }
 
@@ -275,11 +281,11 @@ func TestContextCancelledCheckedAfterOpMu(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	for _, fn := range []func() error{
-		func() error { _, err := app.Connect(ctx, "n1", "sub"); return err },
-		func() error { _, err := app.Disconnect(ctx); return err },
-		func() error { _, err := app.SetTun(ctx, true); return err },
-		func() error { _, err := app.SetSettings(ctx, settings); return err },
-		func() error { _, err := app.AddSubscription(ctx, "https://example.com/sub"); return err },
+		func() error { return app.Connect(ctx, "n1", "sub") },
+		func() error { return app.Disconnect(ctx) },
+		func() error { return app.SetTun(ctx, true) },
+		func() error { return app.SetSettings(ctx, settings) },
+		func() error { return app.AddSubscription(ctx, "https://example.com/sub") },
 	} {
 		if err := fn(); !errors.Is(err, context.Canceled) {
 			t.Fatalf("want context.Canceled, got %v", err)
@@ -293,10 +299,10 @@ func TestDisconnectDesiredStateCommittedOnRuntimeError(t *testing.T) {
 		Settings:      settings,
 		Subscriptions: []store.Subscription{{ID: "sub", Nodes: []domain.Node{{ID: "n1"}}}},
 	})
-	if _, err := app.Connect(context.Background(), "n1", "sub"); err != nil {
+	if err := app.Connect(context.Background(), "n1", "sub"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := app.Disconnect(context.Background()); err == nil {
+	if err := app.Disconnect(context.Background()); err == nil {
 		t.Fatal("want error on disconnect")
 	}
 	if state, _ := app.store.Load(); app.current().Active != (domain.NodeRef{}) || state.Active != (domain.NodeRef{}) {
@@ -313,7 +319,7 @@ func TestNewFailsOnMalformedConfig(t *testing.T) {
 	logger := log.New(io.Discard, "", 0)
 	conn := connection.New(context.Background(), "", nil, nil, logger)
 	subs := subscription.New(context.Background(), logger)
-	if _, err := New(store.Disk{Dir: dir}, conn, subs, logger); err == nil {
+	if _, err := New(store.Disk{Dir: dir}, conn, subs); err == nil {
 		t.Fatal("want error on malformed YAML configuration")
 	}
 }

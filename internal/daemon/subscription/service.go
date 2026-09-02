@@ -9,7 +9,6 @@ import (
 
 	"github.com/luynrs/justray/internal/daemon/store"
 	"github.com/luynrs/justray/internal/shared/parser"
-	"github.com/luynrs/justray/internal/shared/rpc"
 )
 
 type Service struct {
@@ -26,12 +25,8 @@ func New(ctx context.Context, logger *log.Logger) *Service {
 }
 
 func (s *Service) PrepareAdd(ctx context.Context, rawURL string) (store.Subscription, error) {
-	if err := check(rawURL); err != nil {
-		return store.Subscription{}, err
-	}
-
-	sub := store.Subscription{ID: store.NewID(), URL: rawURL}
-	if err := s.fill(ctx, &sub); err != nil {
+	sub, err := s.Refresh(ctx, store.Subscription{ID: store.NewID(), URL: rawURL})
+	if err != nil {
 		return store.Subscription{}, err
 	}
 	if sub.Name == "" {
@@ -59,12 +54,4 @@ func host(rawURL string) string {
 		return u.Host
 	}
 	return rawURL
-}
-
-func Info(sub store.Subscription) rpc.Sub {
-	return rpc.Sub{
-		ID: sub.ID, Name: sub.Name,
-		Nodes: len(sub.Nodes), UpdatedAt: sub.UpdatedAt,
-		Traffic: sub.Traffic, Direct: parser.IsLink(sub.URL),
-	}
 }

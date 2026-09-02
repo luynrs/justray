@@ -36,13 +36,10 @@ type Model struct {
 	wheel      time.Time
 
 	editor    textinput.Model
-	editing   bool
 	confirmQ  string
 	confirmID string
 	settings  *settings.Settings
-	filtering bool
 	filter    textinput.Model
-	query     string
 
 	status     rpc.Status
 	revision   uint64
@@ -81,7 +78,7 @@ func New(c *rpc.Client) Model {
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(func() tea.Msg { return load(m.client) }, watch(m.watchCtx, m.client, m.statusCh), next(m.statusCh), tickCmd(), m.spin.Tick)
+	return tea.Batch(snapshotCmd("sync", m.client.Snapshot), watch(m.watchCtx, m.client, m.statusCh), next(m.statusCh), tickCmd(), m.spin.Tick)
 }
 
 func (m Model) data() tree.Data {
@@ -91,7 +88,7 @@ func (m Model) data() tree.Data {
 		Collapsed:  m.collapsed,
 		Probing:    m.probing,
 		Refreshing: m.refreshing,
-		Query:      m.query,
+		Query:      m.filter.Value(),
 		Status:     m.status,
 		Live:       m.live,
 		Emoji:      m.emoji,

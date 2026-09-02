@@ -51,7 +51,7 @@ func (e *Engine) Apply(ctx context.Context, spec engine.SessionSpec) error {
 	tunChanged := spec.Tun != e.tun
 
 	if engine.Rebuilds(e.settings, spec.Settings) || (nodeChanged && tunChanged) {
-		if err := e.Stop(ctx); err != nil {
+		if err := e.Stop(); err != nil {
 			return err
 		}
 		return e.start(ctx, spec)
@@ -96,7 +96,7 @@ func (e *Engine) start(ctx context.Context, spec engine.SessionSpec) error {
 	if spec.Tun && runtime.GOOS == "darwin" {
 		e.name = newInterface(before)
 		if e.name == "" {
-			return errors.Join(errors.New("tun interface name unavailable"), e.Stop(ctx))
+			return errors.Join(errors.New("tun interface name unavailable"), e.Stop())
 		}
 	}
 	return nil
@@ -137,7 +137,7 @@ func startBox(ctx context.Context, opts option.Options) (*sbox.Box, error) {
 func (e *Engine) swap(ctx context.Context, n domain.Node) error {
 	if err := e.apply(ctx, n); err != nil {
 		if rbErr := e.apply(ctx, e.node); rbErr != nil {
-			_ = e.Stop(ctx)
+			_ = e.Stop()
 			return errors.Join(err, fmt.Errorf("swap rollback failed: %w", rbErr))
 		}
 		return err
@@ -190,7 +190,7 @@ func (e *Engine) tunAdd() error {
 			e.name = newInterface(before)
 			if e.name == "" {
 				if rbErr := e.inst.Inbound().Remove("tun-in"); rbErr != nil {
-					_ = e.Stop(context.WithoutCancel(e.lifetime))
+					_ = e.Stop()
 					return errors.Join(errors.New("tun interface name unavailable"), fmt.Errorf("tun rollback failed: %w", rbErr))
 				}
 				return errors.New("tun interface name unavailable")
@@ -218,13 +218,13 @@ func (e *Engine) tunRemove() error {
 		}
 	}
 	if len(errs) > 0 {
-		_ = e.Stop(context.WithoutCancel(e.lifetime))
+		_ = e.Stop()
 		return errors.Join(errs...)
 	}
 	return nil
 }
 
-func (e *Engine) Stop(_ context.Context) error {
+func (e *Engine) Stop() error {
 	if e.inst == nil {
 		return nil
 	}

@@ -19,8 +19,6 @@ func out(s string) { _, _ = lipgloss.Println(s) }
 
 func done(text string) { out(style.Alive.Bold(true).Render("✓") + " " + text) }
 
-func label(text string) string { return style.Dim.Render(text + ":") }
-
 func fields(pairs ...[2]string) { out(fieldLines(pairs...)) }
 
 func fieldLines(pairs ...[2]string) string {
@@ -30,14 +28,13 @@ func fieldLines(pairs ...[2]string) string {
 	}
 	lines := make([]string, len(pairs))
 	for i, p := range pairs {
-		lines[i] = "  " + style.Pad(label(p[0]), w+1) + " " + p[1]
+		lines[i] = "  " + style.Pad(style.Dim.Render(p[0]+":"), w+1) + " " + p[1]
 	}
 	return strings.Join(lines, "\n")
 }
 
 func state(st rpc.Status) string {
-	switch {
-	case st.Connected:
+	if st.Connected {
 		text := "connected via " + strings.ToUpper(modeWord(st.Tun))
 		if st.Uptime > 0 {
 			text += " for " + style.Uptime(time.Duration(st.Uptime)*time.Second)
@@ -53,19 +50,12 @@ func stateHeadline(st rpc.Status) {
 		done(upperFirst(text))
 		return
 	}
-	color := style.Dim
-	out(color.Render("·") + " " + upperFirst(text))
-}
-
-func (a *app) statusFields(st rpc.Status, n rpc.Node) [][2]string {
-	f := [][2]string{{"Node", a.nodeName(st.NodeName, st.NodeRef.NodeID)}}
-	f = append(f, a.nodeFields(n)...)
-	return f
+	out(style.Dim.Render("·") + " " + upperFirst(text))
 }
 
 func (a *app) nodeDetails(st rpc.Status) {
 	n, _ := a.resolveNode(st.NodeRef.NodeID, st.NodeRef.SubscriptionID)
-	fields(a.statusFields(st, n)...)
+	fields(append([][2]string{{"Node", a.nodeName(st.NodeName, st.NodeRef.NodeID)}}, a.nodeFields(n)...)...)
 }
 
 func (a *app) nodeFields(n rpc.Node) [][2]string {

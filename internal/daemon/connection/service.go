@@ -43,35 +43,26 @@ func New(ctx context.Context, dir string, newEngine engine.New, probe engine.Pro
 	}
 }
 
-func (s *Service) Connect(ctx context.Context, n domain.Node, ref domain.NodeRef, settings domain.Settings, tun bool) (rpc.Status, error) {
-	if err := ctx.Err(); err != nil {
-		return s.Status(), err
-	}
-	err := s.apply(ctx, n, ref, settings, tun, true)
-	return s.Status(), err
+func (s *Service) Connect(ctx context.Context, n domain.Node, ref domain.NodeRef, settings domain.Settings, tun bool) error {
+	return s.apply(ctx, n, ref, settings, tun, true)
 }
 
-func (s *Service) Apply(ctx context.Context, n domain.Node, ref domain.NodeRef, settings domain.Settings, tun bool) (rpc.Status, error) {
-	if err := ctx.Err(); err != nil {
-		return s.Status(), err
-	}
-	err := s.apply(ctx, n, ref, settings, tun, false)
-	return s.Status(), err
+func (s *Service) Apply(ctx context.Context, n domain.Node, ref domain.NodeRef, settings domain.Settings, tun bool) error {
+	return s.apply(ctx, n, ref, settings, tun, false)
 }
 
-func (s *Service) Disconnect(ctx context.Context) (rpc.Status, error) {
+func (s *Service) Disconnect(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
-		return s.Status(), err
+		return err
 	}
 	name := s.session.node.Name
-	err := s.stop(ctx)
-	if err != nil {
-		return s.Status(), err
+	if err := s.stop(); err != nil {
+		return err
 	}
 	if name != "" {
 		s.log.Printf("disconnected from %s", name)
 	}
-	return s.Status(), nil
+	return nil
 }
 
 func (s *Service) Restore(n domain.Node, ref domain.NodeRef, settings domain.Settings, tun bool) {
@@ -84,14 +75,9 @@ func (s *Service) ForgetIfRemoved(subID string) error {
 	if s.session.ref.SubscriptionID != subID {
 		return nil
 	}
-	name := s.session.node.Name
-	err := s.stop(context.WithoutCancel(s.ctx))
-	if err != nil {
+	if err := s.Disconnect(context.Background()); err != nil {
 		s.log.Print(err)
 		return err
-	}
-	if name != "" {
-		s.log.Printf("disconnected from %s", name)
 	}
 	return nil
 }
@@ -102,15 +88,8 @@ func (s *Service) Probe(ctx context.Context, nodes []domain.Node, settings domai
 
 func (s *Service) RestartRequested() <-chan struct{} { return s.restart }
 
-func (s *Service) requestRestart() {
-	select {
-	case s.restart <- struct{}{}:
-	default:
-	}
-}
-
 func (s *Service) Shutdown() {
-	if err := s.stop(context.WithoutCancel(s.ctx)); err != nil {
+	if err := s.stop(); err != nil {
 		s.log.Print(err)
 	}
 }
@@ -128,14 +107,14 @@ func (s *Service) Status() rpc.Status {
 }
 
 func (s *Service) apply(ctx context.Context, n domain.Node, ref domain.NodeRef, settings domain.Settings, tun, resetStarted bool) (err error) {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if n.TLS != nil && n.TLS.Insecure {
 		return errors.New("insecure TLS node is not allowed")
 	}
 	eng := s.session.eng
 	if eng == nil {
-		if err = s.stop(context.WithoutCancel(s.ctx)); err != nil {
-			return err
-		}
 		if err = rpc.ClearLog(rpc.EngineLog(s.dir)); err != nil {
 			s.log.Print(err)
 		}
@@ -143,7 +122,7 @@ func (s *Service) apply(ctx context.Context, n domain.Node, ref domain.NodeRef, 
 		if eng == nil {
 			err = errors.New("initialize engine: engine is nil")
 		} else if err = eng.Apply(ctx, engine.SessionSpec{Node: n, Settings: settings, Tun: tun}); err != nil {
-			err = errors.Join(err, s.discard(context.WithoutCancel(s.ctx), eng))
+			err = errors.Join(err, eng.Stop())
 		}
 	} else {
 		err = eng.Apply(ctx, engine.SessionSpec{Node: n, Settings: settings, Tun: tun})
@@ -153,7 +132,10 @@ func (s *Service) apply(ctx context.Context, n domain.Node, ref domain.NodeRef, 
 			s.session = session{}
 		}
 		if tun && elevate.Needed(err) {
-			s.requestRestart()
+			select {
+			case s.restart <- struct{}{}:
+			default:
+			}
 			err = rpc.ErrElevate
 		}
 		return err
@@ -168,14 +150,10 @@ func (s *Service) apply(ctx context.Context, n domain.Node, ref domain.NodeRef, 
 	return nil
 }
 
-func (s *Service) stop(ctx context.Context) error {
+func (s *Service) stop() error {
 	if eng := s.session.eng; eng != nil {
 		s.session = session{}
-		return eng.Stop(ctx)
+		return eng.Stop()
 	}
 	return nil
-}
-
-func (s *Service) discard(ctx context.Context, eng engine.Engine) error {
-	return eng.Stop(ctx)
 }

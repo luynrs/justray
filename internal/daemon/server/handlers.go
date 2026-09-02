@@ -36,7 +36,10 @@ func (s *Server) handle(conn net.Conn, semHeld *bool) {
 	}
 	if req.Method == "Shutdown" {
 		reply(conn, nil, nil)
-		s.requestShutdown()
+		select {
+		case s.stop <- struct{}{}:
+		default:
+		}
 		return
 	}
 	_ = conn.SetDeadline(time.Time{})
@@ -59,35 +62,25 @@ func (s *Server) dispatch(ctx context.Context, req rpc.Req) (any, error) {
 	case "Snapshot":
 		return s.core.Snapshot(), nil
 	case "AddSub":
-		_, err := s.core.AddSubscription(ctx, a.URL)
-		return s.mutation(err)
+		return s.mutation(s.core.AddSubscription(ctx, a.URL))
 	case "RemoveSub":
 		return s.mutation(s.core.RemoveSubscription(a.ID))
 	case "MoveSub":
 		return s.mutation(s.core.MoveSubscription(a.ID, a.Dir))
 	case "RefreshAll":
-		_, err := s.core.RefreshSubscriptions(ctx)
-		return s.mutation(err)
+		return s.mutation(s.core.RefreshSubscriptions(ctx))
 	case "Refresh":
-		_, err := s.core.RefreshSubscription(ctx, a.ID)
-		return s.mutation(err)
+		return s.mutation(s.core.RefreshSubscription(ctx, a.ID))
 	case "Probe":
-		if err := s.core.Probe(ctx, a.Sub, a.ID); err != nil {
-			return nil, err
-		}
-		return s.core.Snapshot(), nil
+		return s.mutation(s.core.Probe(ctx, a.Sub, a.ID))
 	case "Connect":
-		_, err := s.core.Connect(ctx, a.ID, a.Sub)
-		return s.mutation(err)
+		return s.mutation(s.core.Connect(ctx, a.ID, a.Sub))
 	case "Disconnect":
-		_, err := s.core.Disconnect(ctx)
-		return s.mutation(err)
+		return s.mutation(s.core.Disconnect(ctx))
 	case "SetTun":
-		_, err := s.core.SetTun(ctx, a.Tun)
-		return s.mutation(err)
+		return s.mutation(s.core.SetTun(ctx, a.Tun))
 	case "SetSettings":
-		_, err := s.core.SetSettings(ctx, a.Settings)
-		return s.mutation(err)
+		return s.mutation(s.core.SetSettings(ctx, a.Settings))
 	}
 	return nil, fmt.Errorf("unknown method %q", req.Method)
 }

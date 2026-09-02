@@ -18,9 +18,6 @@ import (
 
 func (s *Service) fetch(ctx context.Context, rawURL string) ([]domain.Node, string, domain.Traffic, error) {
 	var none domain.Traffic
-	if err := check(rawURL); err != nil {
-		return nil, "", none, err
-	}
 	if s.device.Get("X-Hwid") == "" {
 		return nil, "", none, fmt.Errorf("device id unavailable")
 	}

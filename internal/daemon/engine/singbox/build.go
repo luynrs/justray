@@ -85,16 +85,14 @@ func ProbeConfig(ctx context.Context, nodes []domain.Node, s domain.Settings, lo
 	jobs := make(chan int)
 	var wg sync.WaitGroup
 	for range min(probeWorkers, len(nodes)) {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for i := range jobs {
 				n := nodes[i]
 				if r, err := resolved(ctx, n, s); err == nil {
 					resolvedNodes[i] = &r
 				}
 			}
-		}()
+		})
 	}
 	for i := range nodes {
 		select {

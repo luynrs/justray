@@ -42,7 +42,7 @@ func TestShutdownClosesWatch(t *testing.T) {
 	}
 	logger := log.New(io.Discard, "", 0)
 	st := store.Disk{Dir: dir}
-	app, err := core.New(st, connection.New(context.Background(), dir, nil, nil, logger), subscription.New(context.Background(), logger), logger)
+	app, err := core.New(st, connection.New(context.Background(), dir, nil, nil, logger), subscription.New(context.Background(), logger))
 	if err != nil {
 		t.Fatal(err)
 	}

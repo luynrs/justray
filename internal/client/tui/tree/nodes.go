@@ -2,7 +2,6 @@ package tree
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/luynrs/justray/internal/client/tui/style"
 	"github.com/luynrs/justray/internal/shared/rpc"
@@ -18,7 +17,7 @@ func (d Data) Render(r Row, selected bool, width int) string {
 	case Gap:
 		return ""
 	case Meta:
-		return style.Flush("    "+style.Dim.Render(subUsage(r.Sub)), subMeta(r.Sub, d.Refreshing[r.Sub.ID], d.Spinner), width)
+		return style.Flush("    "+style.Dim.Render(style.Usage(r.Sub.Traffic)), subMeta(r.Sub, d.Refreshing[r.Sub.ID], d.Spinner), width)
 	case Header:
 		return caret + subHeader(r.Sub, d.Collapsed[r.Sub.ID], selected, d.Emoji)
 	}
@@ -51,28 +50,6 @@ func subMeta(s rpc.Sub, refreshing bool, spinner string) string {
 		plural = ""
 	}
 	return style.Dim.Render(fmt.Sprintf("%d node%s · %s", s.Nodes, plural, age))
-}
-
-func subUsage(s rpc.Sub) string {
-	t := s.Traffic
-	used := t.UploadBytes + t.DownloadBytes
-
-	var parts []string
-	switch {
-	case t.TotalBytes > 0:
-		parts = append(parts, fmt.Sprintf("%s %s %s",
-			style.Bytes(used),
-			style.Bar(float64(used)/float64(t.TotalBytes)),
-			style.Bytes(t.TotalBytes)))
-	case used > 0:
-		parts = append(parts, style.Bytes(used)+" used")
-	default:
-		parts = append(parts, "No data")
-	}
-	if !t.ExpiresAt.IsZero() {
-		parts = append(parts, style.Expiry(t.ExpiresAt))
-	}
-	return strings.Join(parts, " · ")
 }
 
 func (d Data) node(n rpc.Node, selected bool) string {

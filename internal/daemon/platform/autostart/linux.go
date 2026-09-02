@@ -55,7 +55,7 @@ func Enable() error {
 		return err
 	}
 	if symlinked(path) {
-		return fmt.Errorf("%s is managed elsewhere, enable it there", path)
+		return fmt.Errorf("%s is managed elsewhere", path)
 	}
 
 	bin, err := os.Executable()
@@ -82,7 +82,7 @@ func Disable() error {
 		return err
 	}
 	if symlinked(path) {
-		return fmt.Errorf("%s is managed elsewhere, disable it there", path)
+		return fmt.Errorf("%s is managed elsewhere", path)
 	}
 
 	_ = exec.Command("systemctl", "--user", "disable", "justrayd.service").Run()
