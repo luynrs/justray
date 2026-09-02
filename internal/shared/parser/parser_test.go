@@ -127,6 +127,72 @@ func TestParseSubscriptionBase64Wrapped(t *testing.T) {
 	}
 }
 
+func TestParseSubscriptionURIWithClashMarker(t *testing.T) {
+	nodes, err := ParseSubscription([]byte("trojan://secret@example.com:443#proxies:"))
+	if err != nil || len(nodes) != 1 {
+		t.Fatalf("got %d nodes, err %v", len(nodes), err)
+	}
+}
+
+func TestParseSubscriptionXray(t *testing.T) {
+	jsonPayload := `[{"remarks":"Germany VLESS","outbounds":[{"tag":"proxy","protocol":"vless","settings":{"vnext":[{"address":"1.2.3.4","port":443,"users":[{"id":"11111111-1111-1111-1111-111111111111","flow":"xtls-rprx-vision"}]}]},"streamSettings":{"network":"tcp","security":"reality","realitySettings":{"serverName":"example.com","publicKey":"pubkey","shortId":"shortid"}}},{"tag":"direct","protocol":"freedom"}]}]`
+
+	nodes, err := ParseSubscription([]byte(jsonPayload))
+	if err != nil {
+		t.Fatalf("ParseSubscription Xray: %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("got %d nodes, want 1", len(nodes))
+	}
+	n := nodes[0]
+	if n.Name != "Germany VLESS" || n.Protocol != domain.VLess || n.Server != "1.2.3.4" || n.Port != 443 {
+		t.Fatalf("unexpected node: %+v", n)
+	}
+	if n.Reality == nil || n.Reality.PublicKey != "pubkey" || n.Reality.ShortID != "shortid" {
+		t.Fatalf("unexpected reality: %+v", n.Reality)
+	}
+}
+
+func TestParseSubscriptionXrayMultiOutbound(t *testing.T) {
+	jsonPayload := `[{"remarks":"Switzerland","outbounds":[{"tag":"proxy-decoy-1-direct","protocol":"vless","settings":{"vnext":[{"address":"87.84.224.105","port":443,"users":[{"id":"uuid1","flow":"xtls-rprx-vision"}]}]},"streamSettings":{"network":"tcp","security":"reality","realitySettings":{"serverName":"vk.com","publicKey":"pk1","shortId":"s1"}}},{"tag":"proxy-wl-1-direct","protocol":"vless","settings":{"vnext":[{"address":"46.243.142.42","port":9443,"users":[{"id":"uuid1"}]}]},"streamSettings":{"network":"grpc","security":"reality","realitySettings":{"serverName":"yandex.net","publicKey":"pk2","shortId":"s2"},"grpcSettings":{"serviceName":"proxy"}}}]}]`
+
+	nodes, err := ParseSubscription([]byte(jsonPayload))
+	if err != nil {
+		t.Fatalf("ParseSubscription Xray: %v", err)
+	}
+	if len(nodes) != 2 {
+		t.Fatalf("got %d nodes, want 2", len(nodes))
+	}
+	if nodes[0].Name != "Switzerland (proxy-decoy-1-direct)" {
+		t.Errorf("unexpected name %q", nodes[0].Name)
+	}
+	if nodes[1].Name != "Switzerland (proxy-wl-1-direct)" {
+		t.Errorf("unexpected name %q", nodes[1].Name)
+	}
+}
+
+func TestParseSubscriptionXrayMultipleEndpoints(t *testing.T) {
+	body := `{"outbounds":[{"protocol":"vless","settings":{"vnext":[{"address":"one.example","port":443,"users":[{"id":"one"},{"id":"two"}]},{"address":"two.example","port":8443,"users":[{"id":"three"}]}]}}]}`
+	nodes, err := ParseSubscription([]byte(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 3 || nodes[2].Server != "two.example" || nodes[2].Auth.UUID != "three" {
+		t.Fatalf("unexpected nodes: %+v", nodes)
+	}
+}
+
+func TestParseSubscriptionRejectsInvalidXray(t *testing.T) {
+	for _, body := range []string{
+		`{"outbounds":[{"protocol":"vless","settings":{"vnext":[{"port":443,"users":[{"id":"uuid"}]}]}}]}`,
+		`{"outbounds":[{"protocol":"vless","settings":{"vnext":[{"address":"example.com","port":443,"users":[{"id":"uuid"}]}]},"streamSettings":{"network":"xhttp"}}]}`,
+	} {
+		if _, err := ParseSubscription([]byte(body)); err == nil {
+			t.Fatalf("accepted invalid xray config: %s", body)
+		}
+	}
+}
+
 func TestParseSubscriptionAllGarbage(t *testing.T) {
 	if _, err := ParseSubscription([]byte("nothing here parses as anything\nnor does this")); err == nil {
 		t.Fatal("want error, got none")
@@ -137,6 +203,7 @@ func FuzzParseSubscription(f *testing.F) {
 	f.Add([]byte("trojan://secret@example.com:443#one\nvless://11111111-1111-1111-1111-111111111111@example.org:8443?security=tls#two"))
 	f.Add([]byte(base64.StdEncoding.EncodeToString([]byte("ss://YWVzLTI1Ni1nY206cGFzcw==@example.com:8388#one"))))
 	f.Add([]byte("proxies:\n  - {name: x, type: trojan, server: example.com, port: 443, password: secret}"))
+	f.Add([]byte(`[{"remarks":"test","outbounds":[{"tag":"proxy","protocol":"vless","settings":{"vnext":[{"address":"1.1.1.1","port":443,"users":[{"id":"uuid"}]}]}}]}]`))
 	f.Add([]byte(""))
 	f.Add([]byte("\x00\x01\xff not utf8 \xfe"))
 

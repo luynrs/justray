@@ -1,7 +1,5 @@
 package protocols
 
-// Shadowsocks
-
 import (
 	"cmp"
 	"errors"

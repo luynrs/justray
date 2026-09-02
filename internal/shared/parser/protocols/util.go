@@ -72,7 +72,7 @@ func atoi(s string) int {
 
 func splitComma(s string) []string {
 	var out []string
-	for _, p := range strings.Split(s, ",") {
+	for p := range strings.SplitSeq(s, ",") {
 		if p = strings.TrimSpace(p); p != "" {
 			out = append(out, p)
 		}
@@ -114,7 +114,7 @@ func (f *flexInt) UnmarshalJSON(b []byte) error {
 	if s == "" || s == "null" {
 		return nil
 	}
-	n, err := strconv.ParseFloat(s, 64)
+	n, err := strconv.Atoi(s)
 	if err != nil {
 		return err
 	}
@@ -135,6 +135,5 @@ func (f *flexString) UnmarshalJSON(b []byte) error {
 		*f = flexString(strings.Join(arr, ","))
 		return nil
 	}
-	*f = flexString(strings.Trim(string(b), `"`))
-	return nil
+	return fmt.Errorf("expected string or string array")
 }

@@ -1,7 +1,5 @@
 package protocols
 
-// WireGuard
-
 import (
 	"cmp"
 	"fmt"
@@ -77,7 +75,7 @@ func encodeUserinfoSlash(uri string) string {
 }
 
 func rawQuery(u *url.URL, key string) string {
-	for _, pair := range strings.Split(u.RawQuery, "&") {
+	for pair := range strings.SplitSeq(u.RawQuery, "&") {
 		name, value, ok := strings.Cut(pair, "=")
 		if ok && name == key {
 			value, _ = url.PathUnescape(value)

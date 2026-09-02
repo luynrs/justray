@@ -1,7 +1,5 @@
 package protocols
 
-// VLESS
-
 import (
 	"cmp"
 	"fmt"

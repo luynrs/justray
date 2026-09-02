@@ -1,7 +1,5 @@
 package protocols
 
-// AnyTLS
-
 import (
 	"cmp"
 	"fmt"

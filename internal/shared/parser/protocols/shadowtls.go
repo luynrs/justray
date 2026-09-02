@@ -1,7 +1,5 @@
 package protocols
 
-// ShadowTLS
-
 import (
 	"cmp"
 	"fmt"
@@ -47,7 +45,7 @@ func parseShadowTLSPlugin(raw, host string) (*domain.ShadowTLS, error) {
 		return nil, fmt.Errorf("unsupported plugin %q", base)
 	}
 	stls := &domain.ShadowTLS{Version: 3, SNI: host}
-	for _, option := range strings.Split(opts, ";") {
+	for option := range strings.SplitSeq(opts, ";") {
 		key, value, ok := strings.Cut(option, "=")
 		if !ok {
 			continue

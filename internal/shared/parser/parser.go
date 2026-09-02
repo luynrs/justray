@@ -2,6 +2,7 @@ package parser
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -50,38 +51,41 @@ func ParseURI(uri string) (domain.Node, error) {
 	return n, nil
 }
 
-// clash yaml (b64)
 func ParseSubscription(raw []byte) ([]domain.Node, error) {
 	body := bytes.TrimSpace(raw)
-	if nodes, err := protocols.ParseClash(body); err == nil {
-		return nodes, nil
-	}
 	if decoded, err := protocols.Unbase64(string(body)); err == nil {
-		body = decoded
-		if nodes, err := protocols.ParseClash(body); err == nil {
+		if nodes, err := parseSub(decoded); err == nil {
 			return nodes, nil
 		}
 	}
+	return parseSub(body)
+}
 
+func parseSub(body []byte) ([]domain.Node, error) {
+	if nodes, err := protocols.ParseXray(body); err == nil {
+		return nodes, nil
+	}
+	if nodes, err := protocols.ParseClash(body); err == nil {
+		return nodes, nil
+	}
+	if nodes := parseURILines(body); len(nodes) > 0 {
+		return nodes, nil
+	}
+	return nil, errors.New("unrecognized subscription format")
+}
+
+func parseURILines(raw []byte) []domain.Node {
 	var nodes []domain.Node
-	var bad error
-	for line := range strings.Lines(string(body)) {
+	for line := range strings.Lines(string(raw)) {
 		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") {
+		if line == "" || line[0] == '#' || strings.HasPrefix(line, "//") {
 			continue
 		}
 		n, err := ParseURI(line)
 		if err != nil {
-			bad = err
 			continue
 		}
 		nodes = append(nodes, n)
 	}
-	if len(nodes) == 0 {
-		if bad != nil {
-			return nil, bad
-		}
-		return nil, fmt.Errorf("no nodes in subscription")
-	}
-	return nodes, nil
+	return nodes
 }

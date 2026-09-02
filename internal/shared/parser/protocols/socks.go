@@ -1,7 +1,5 @@
 package protocols
 
-// SOCKS5
-
 import (
 	"cmp"
 

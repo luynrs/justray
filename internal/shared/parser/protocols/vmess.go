@@ -1,7 +1,5 @@
 package protocols
 
-// VMESS
-
 import (
 	"cmp"
 	"encoding/json"

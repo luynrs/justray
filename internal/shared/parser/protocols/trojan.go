@@ -1,7 +1,5 @@
 package protocols
 
-// Trojan
-
 import (
 	"cmp"
 	"fmt"
