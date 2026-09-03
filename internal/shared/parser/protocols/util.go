@@ -57,11 +57,16 @@ func hostPort(hp string) (string, int, error) {
 }
 
 func transport(q url.Values) domain.Transport {
+	net := strings.ToLower(cmp.Or(q.Get("type"), "tcp"))
+	if net == "splithttp" {
+		net = "xhttp"
+	}
 	return domain.Transport{
-		Network:     strings.ToLower(cmp.Or(q.Get("type"), "tcp")),
+		Network:     net,
 		Path:        q.Get("path"),
 		Host:        cmp.Or(q.Get("host"), q.Get("sni")),
 		ServiceName: q.Get("serviceName"),
+		Mode:        q.Get("mode"),
 	}
 }
 

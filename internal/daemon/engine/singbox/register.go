@@ -7,6 +7,7 @@ import (
 	"github.com/sagernet/sing-box/adapter/endpoint"
 	"github.com/sagernet/sing-box/adapter/inbound"
 	"github.com/sagernet/sing-box/adapter/outbound"
+	boxcertificate "github.com/sagernet/sing-box/adapter/certificate"
 	boxservice "github.com/sagernet/sing-box/adapter/service"
 	"github.com/sagernet/sing-box/dns"
 	"github.com/sagernet/sing-box/dns/transport"
@@ -34,10 +35,11 @@ var ( // read-only, built once instead of on every connect/probe
 	endpointReg = endpointRegistry()
 	dnsReg      = dnsTransportRegistry()
 	serviceReg  = boxservice.NewRegistry()
+	certReg     = boxcertificate.NewRegistry()
 )
 
 func Context(ctx context.Context) context.Context {
-	return sbox.Context(ctx, inboundReg, outboundReg, endpointReg, dnsReg, serviceReg)
+	return sbox.Context(ctx, inboundReg, outboundReg, endpointReg, dnsReg, serviceReg, certReg)
 }
 
 func inboundRegistry() *inbound.Registry {

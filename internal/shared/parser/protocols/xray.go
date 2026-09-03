@@ -44,7 +44,9 @@ type xrayStreamSettings struct {
 	TLSSettings     xrayTLSSettings     `json:"tlsSettings"`
 	WSSettings      xrayHTTPTransport   `json:"wsSettings"`
 	GRPCSettings    xrayGRPCTransport   `json:"grpcSettings"`
-	HTTPSettings    xrayHTTPTransport   `json:"httpSettings"`
+	HTTPSettings      xrayHTTPTransport   `json:"httpSettings"`
+	XHTTPSettings     xrayXHTTPTransport  `json:"xhttpSettings"`
+	SplitHTTPSettings xrayXHTTPTransport  `json:"splitHttpSettings"`
 }
 
 type xrayRealitySettings struct {
@@ -64,6 +66,13 @@ type xrayTLSSettings struct {
 type xrayHTTPTransport struct {
 	Path    string            `json:"path"`
 	Host    string            `json:"host"`
+	Headers map[string]string `json:"headers"`
+}
+
+type xrayXHTTPTransport struct {
+	Path    string            `json:"path"`
+	Host    string            `json:"host"`
+	Mode    string            `json:"mode"`
 	Headers map[string]string `json:"headers"`
 }
 
@@ -136,6 +145,13 @@ func xrayTransport(s xrayStreamSettings) (domain.Transport, error) {
 		return domain.Transport{Network: network, ServiceName: s.GRPCSettings.ServiceName}, nil
 	case "http", "h2":
 		return domain.Transport{Network: "http", Path: s.HTTPSettings.Path, Host: cmp.Or(s.HTTPSettings.Host, s.HTTPSettings.Headers["Host"])}, nil
+	case "xhttp", "splithttp":
+		return domain.Transport{
+			Network: "xhttp",
+			Path:    cmp.Or(s.XHTTPSettings.Path, s.SplitHTTPSettings.Path),
+			Host:    cmp.Or(s.XHTTPSettings.Host, s.SplitHTTPSettings.Host, s.XHTTPSettings.Headers["Host"], s.SplitHTTPSettings.Headers["Host"]),
+			Mode:    cmp.Or(s.XHTTPSettings.Mode, s.SplitHTTPSettings.Mode),
+		}, nil
 	default:
 		return domain.Transport{}, fmt.Errorf("unsupported xray transport: %s", network)
 	}

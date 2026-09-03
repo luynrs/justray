@@ -49,6 +49,9 @@ func ParseVMess(uri string) (domain.Node, error) {
 	}
 
 	net := strings.ToLower(cmp.Or(vm.Net, "tcp"))
+	if net == "splithttp" {
+		net = "xhttp"
+	}
 	host0 := strings.TrimSpace(strings.SplitN(vm.Host, ",", 2)[0])
 	n := domain.Node{
 		Name:     cmp.Or(vm.PS, frag, vm.Add),

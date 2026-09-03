@@ -72,6 +72,15 @@ func transport(n domain.Node) *option.V2RayTransportOptions {
 				Host: n.Transport.Host,
 			},
 		}
+	case "xhttp", "splithttp":
+		return &option.V2RayTransportOptions{
+			Type: C.V2RayTransportTypeXHTTP,
+			XHTTPOptions: option.V2RayXHTTPOptions{
+				Path: n.Transport.Path,
+				Host: n.Transport.Host,
+				Mode: n.Transport.Mode,
+			},
+		}
 	}
 	return nil
 }

@@ -185,7 +185,7 @@ func TestParseSubscriptionXrayMultipleEndpoints(t *testing.T) {
 func TestParseSubscriptionRejectsInvalidXray(t *testing.T) {
 	for _, body := range []string{
 		`{"outbounds":[{"protocol":"vless","settings":{"vnext":[{"port":443,"users":[{"id":"uuid"}]}]}}]}`,
-		`{"outbounds":[{"protocol":"vless","settings":{"vnext":[{"address":"example.com","port":443,"users":[{"id":"uuid"}]}]},"streamSettings":{"network":"xhttp"}}]}`,
+		`{"outbounds":[{"protocol":"vless","settings":{"vnext":[{"address":"example.com","port":443,"users":[{"id":"uuid"}]}]},"streamSettings":{"network":"invalid"}}]}`,
 	} {
 		if _, err := ParseSubscription([]byte(body)); err == nil {
 			t.Fatalf("accepted invalid xray config: %s", body)

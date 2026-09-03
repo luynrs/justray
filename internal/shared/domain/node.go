@@ -79,10 +79,11 @@ type WireGuard struct {
 }
 
 type Transport struct {
-	Network     string // tcp, ws, grpc, quic
+	Network     string // tcp, ws, grpc, quic, xhttp
 	Path        string
 	Host        string
 	ServiceName string // grpc
+	Mode        string // xhttp: auto, packet-up, stream-up, stream-one
 }
 
 type TLS struct {

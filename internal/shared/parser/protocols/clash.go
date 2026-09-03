@@ -60,6 +60,11 @@ type clashProxy struct {
 	GRPCOpts *struct {
 		ServiceName string `yaml:"grpc-service-name"`
 	} `yaml:"grpc-opts"`
+	XHTTPOpts *struct {
+		Path    string            `yaml:"path"`
+		Headers map[string]string `yaml:"headers"`
+		Mode    string            `yaml:"mode"`
+	} `yaml:"xhttp-opts"`
 	RealityOpts *struct {
 		PublicKey string `yaml:"public-key"`
 		ShortID   string `yaml:"short-id"`
@@ -306,6 +311,13 @@ func clashTransport(p clashProxy) domain.Transport {
 	case "grpc":
 		if p.GRPCOpts != nil {
 			t.ServiceName = p.GRPCOpts.ServiceName
+		}
+	case "xhttp", "splithttp":
+		t.Network = "xhttp"
+		if p.XHTTPOpts != nil {
+			t.Path = p.XHTTPOpts.Path
+			t.Host = cmp.Or(p.XHTTPOpts.Headers["Host"], p.XHTTPOpts.Headers["host"])
+			t.Mode = p.XHTTPOpts.Mode
 		}
 	}
 	return t

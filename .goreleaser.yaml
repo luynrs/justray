@@ -6,7 +6,7 @@ builds:
     main: ./cmd/justray
     binary: justray
     env: [CGO_ENABLED=0]
-    flags: ["-tags=with_quic,with_utls,with_gvisor,with_grpc"]
+    flags: ["-tags=with_quic,with_utls,with_gvisor,with_grpc,with_xhttp"]
     ldflags: ["-s -w -X github.com/luynrs/justray/internal/shared/version.Version={{.Version}}"]
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
@@ -15,7 +15,7 @@ builds:
     main: ./cmd/justrayd
     binary: justrayd
     env: [CGO_ENABLED=0]
-    flags: ["-tags=with_quic,with_utls,with_gvisor,with_grpc"]
+    flags: ["-tags=with_quic,with_utls,with_gvisor,with_grpc,with_xhttp"]
     ldflags: ['-s -w {{ if eq .Os "windows" }}-H windowsgui {{ end }}-X github.com/luynrs/justray/internal/shared/version.Version={{.Version}}']
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]

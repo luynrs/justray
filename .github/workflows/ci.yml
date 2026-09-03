@@ -13,7 +13,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     env:
-      GOFLAGS: -tags=with_quic,with_utls,with_gvisor,with_grpc
+      GOFLAGS: -tags=with_quic,with_utls,with_gvisor,with_grpc,with_xhttp
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -26,7 +26,7 @@ jobs:
       - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
-          args: --build-tags with_quic,with_utls,with_gvisor,with_grpc
+          args: --build-tags with_quic,with_utls,with_gvisor,with_grpc,with_xhttp
       - name: Build Linux
         run: go build ./...
       - name: Build MacOS
