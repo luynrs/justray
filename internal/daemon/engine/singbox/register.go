@@ -4,10 +4,10 @@ import (
 	"context"
 
 	sbox "github.com/sagernet/sing-box"
+	boxcertificate "github.com/sagernet/sing-box/adapter/certificate"
 	"github.com/sagernet/sing-box/adapter/endpoint"
 	"github.com/sagernet/sing-box/adapter/inbound"
 	"github.com/sagernet/sing-box/adapter/outbound"
-	boxcertificate "github.com/sagernet/sing-box/adapter/certificate"
 	boxservice "github.com/sagernet/sing-box/adapter/service"
 	"github.com/sagernet/sing-box/dns"
 	"github.com/sagernet/sing-box/dns/transport"
@@ -27,6 +27,7 @@ import (
 	"github.com/sagernet/sing-box/protocol/vless"
 	"github.com/sagernet/sing-box/protocol/vmess"
 	"github.com/sagernet/sing-box/protocol/wireguard"
+	_ "github.com/sagernet/sing-box/transport/v2rayxhttp"
 )
 
 var ( // read-only, built once instead of on every connect/probe

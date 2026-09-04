@@ -66,7 +66,7 @@ func transport(q url.Values) domain.Transport {
 		Path:        q.Get("path"),
 		Host:        cmp.Or(q.Get("host"), q.Get("sni")),
 		ServiceName: q.Get("serviceName"),
-		Mode:        q.Get("mode"),
+		Mode:        cmp.Or(q.Get("mode"), q.Get("headerType")),
 	}
 }
 

@@ -38,12 +38,12 @@ type xrayUser struct {
 }
 
 type xrayStreamSettings struct {
-	Network         string              `json:"network"`
-	Security        string              `json:"security"`
-	RealitySettings xrayRealitySettings `json:"realitySettings"`
-	TLSSettings     xrayTLSSettings     `json:"tlsSettings"`
-	WSSettings      xrayHTTPTransport   `json:"wsSettings"`
-	GRPCSettings    xrayGRPCTransport   `json:"grpcSettings"`
+	Network           string              `json:"network"`
+	Security          string              `json:"security"`
+	RealitySettings   xrayRealitySettings `json:"realitySettings"`
+	TLSSettings       xrayTLSSettings     `json:"tlsSettings"`
+	WSSettings        xrayHTTPTransport   `json:"wsSettings"`
+	GRPCSettings      xrayGRPCTransport   `json:"grpcSettings"`
 	HTTPSettings      xrayHTTPTransport   `json:"httpSettings"`
 	XHTTPSettings     xrayXHTTPTransport  `json:"xhttpSettings"`
 	SplitHTTPSettings xrayXHTTPTransport  `json:"splitHttpSettings"`
@@ -149,7 +149,7 @@ func xrayTransport(s xrayStreamSettings) (domain.Transport, error) {
 		return domain.Transport{
 			Network: "xhttp",
 			Path:    cmp.Or(s.XHTTPSettings.Path, s.SplitHTTPSettings.Path),
-			Host:    cmp.Or(s.XHTTPSettings.Host, s.SplitHTTPSettings.Host, s.XHTTPSettings.Headers["Host"], s.SplitHTTPSettings.Headers["Host"]),
+			Host:    cmp.Or(s.XHTTPSettings.Host, s.SplitHTTPSettings.Host, s.XHTTPSettings.Headers["Host"], s.XHTTPSettings.Headers["host"], s.SplitHTTPSettings.Headers["Host"], s.SplitHTTPSettings.Headers["host"]),
 			Mode:    cmp.Or(s.XHTTPSettings.Mode, s.SplitHTTPSettings.Mode),
 		}, nil
 	default:
