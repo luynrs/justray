@@ -114,12 +114,14 @@ func (c *Core) Probe(ctx context.Context, sub, id string) error {
 
 	c.probeMu.Lock()
 	var targets []domain.Node
-	var targetRefs []domain.NodeRef
+	pending := make(map[string][]domain.NodeRef)
 	for i, ref := range refs {
 		if !c.probing[ref] {
 			c.probing[ref] = true
-			targetRefs = append(targetRefs, ref)
-			targets = append(targets, nodes[i])
+			if len(pending[ref.NodeID]) == 0 {
+				targets = append(targets, nodes[i])
+			}
+			pending[ref.NodeID] = append(pending[ref.NodeID], ref)
 		}
 	}
 	c.probeMu.Unlock()
@@ -131,26 +133,22 @@ func (c *Core) Probe(ctx context.Context, sub, id string) error {
 
 	defer func() {
 		c.probeMu.Lock()
-		for _, ref := range targetRefs {
-			delete(c.probing, ref)
+		for _, refs := range pending {
+			for _, ref := range refs {
+				delete(c.probing, ref)
+			}
 		}
 		c.probeMu.Unlock()
 		c.publish()
 	}()
 
-	refMap := make(map[string]domain.NodeRef, len(targetRefs))
-	for _, ref := range targetRefs {
-		refMap[ref.NodeID] = ref
-	}
-
 	onResult := func(nodeID string, res engine.Result) {
-		ref, ok := refMap[nodeID]
-		if !ok {
-			return
-		}
 		c.probeMu.Lock()
-		c.probes[ref] = res
-		delete(c.probing, ref)
+		for _, ref := range pending[nodeID] {
+			c.probes[ref] = res
+			delete(c.probing, ref)
+		}
+		delete(pending, nodeID)
 		c.probeMu.Unlock()
 
 		c.publish()

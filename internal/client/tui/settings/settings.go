@@ -174,7 +174,10 @@ func New(s domain.Settings, top int) *Settings {
 	styles.Focused.Placeholder = style.Dim
 	input.SetStyles(styles)
 	input.CharLimit = 2048
-	return &Settings{top: top, cur: s, orig: s, input: input}
+	cur := s
+	cur.Except = slices.Clone(s.Except)
+	cur.Blocked = slices.Clone(s.Blocked)
+	return &Settings{top: top, cur: cur, orig: s, input: input}
 }
 
 func (s *Settings) Result() (domain.Settings, bool, error) {

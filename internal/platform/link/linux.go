@@ -2,8 +2,10 @@
 
 package link
 
-import "os/exec"
+import "github.com/sagernet/netlink"
 
 func Delete(iface string) {
-	_ = exec.Command("ip", "link", "del", iface).Run()
+	if l, err := netlink.LinkByName(iface); err == nil {
+		_ = netlink.LinkDel(l)
+	}
 }
