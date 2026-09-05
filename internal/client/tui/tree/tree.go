@@ -16,12 +16,16 @@ const (
 )
 
 type Row struct {
-	Kind Kind
-	Sub  ipc.Sub
-	Node ipc.Node
+	Kind    Kind
+	GroupID string
+	Sub     ipc.Sub
+	Node    ipc.Node
 }
 
 func (r Row) SubID() string {
+	if r.GroupID != "" {
+		return r.GroupID
+	}
 	return r.Sub.ID
 }
 
@@ -89,13 +93,13 @@ func (d Data) Rows() []Row {
 			rows = append(rows, Row{Kind: Gap})
 		}
 
-		rows = append(rows, Row{Kind: Header, Sub: g.Sub})
+		rows = append(rows, Row{Kind: Header, GroupID: g.Sub.ID, Sub: g.Sub})
 		if g.Sub.ID != Default {
-			rows = append(rows, Row{Kind: Meta, Sub: g.Sub})
+			rows = append(rows, Row{Kind: Meta, GroupID: g.Sub.ID, Sub: g.Sub})
 		}
 		for _, n := range nodes {
 			if q != "" || !d.Collapsed[g.Sub.ID] || (d.connected() && d.Status.NodeRef == n.Ref()) {
-				rows = append(rows, Row{Kind: Node, Sub: subs[n.Sub], Node: n})
+				rows = append(rows, Row{Kind: Node, GroupID: g.Sub.ID, Sub: subs[n.Sub], Node: n})
 			}
 		}
 	}

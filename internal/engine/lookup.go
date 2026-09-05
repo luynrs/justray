@@ -5,33 +5,15 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
-	"sync"
 	"time"
 
 	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/engine/outbound"
 )
 
-type dnsEntry struct {
-	ip  string
-	exp time.Time
-}
-
-var (
-	dnsMu    sync.RWMutex
-	dnsCache = map[string]dnsEntry{}
-)
-
 func resolved(ctx context.Context, n domain.Node, s domain.Settings) (domain.Node, error) {
 	if _, err := netip.ParseAddr(n.Server); err == nil {
 		return n, nil
-	}
-	key := s.IPVersion + ":" + n.Server
-	dnsMu.RLock()
-	entry, ok := dnsCache[key]
-	dnsMu.RUnlock()
-	if ok && time.Now().Before(entry.exp) {
-		return withServerIP(n, entry.ip), nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
@@ -44,11 +26,7 @@ func resolved(ctx context.Context, n domain.Node, s domain.Settings) (domain.Nod
 		return n, fmt.Errorf("no addresses for %s", n.Server)
 	}
 
-	ip := ips[0].Unmap().String()
-	dnsMu.Lock()
-	dnsCache[key] = dnsEntry{ip: ip, exp: time.Now().Add(10 * time.Minute)}
-	dnsMu.Unlock()
-	return withServerIP(n, ip), nil
+	return withServerIP(n, ips[0].Unmap().String()), nil
 }
 
 func withServerIP(n domain.Node, ip string) domain.Node {

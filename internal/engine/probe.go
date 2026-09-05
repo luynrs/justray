@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"runtime"
 	"sync"
 	"time"
 
@@ -17,6 +16,9 @@ import (
 )
 
 func Probe(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath string, onResult func(string, Result)) (map[string]Result, error) {
+	if len(nodes) > maxProbeNodes {
+		return nil, fmt.Errorf("too many nodes to probe: %d (maximum %d)", len(nodes), maxProbeNodes)
+	}
 	if len(nodes) == 0 {
 		return map[string]Result{}, nil
 	}
@@ -32,8 +34,7 @@ func Probe(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath 
 	defer func() { _ = inst.Close() }()
 
 	out := map[string]Result{}
-	workers := min(len(nodes), max(runtime.NumCPU()*2, 4))
-	sem := make(chan struct{}, workers)
+	sem := make(chan struct{}, probeWorkers(len(nodes)))
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	for i, n := range nodes {

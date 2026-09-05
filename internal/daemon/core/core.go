@@ -25,10 +25,10 @@ type Core struct {
 	store   store.Disk
 	state   store.PersistentState
 	probeMu sync.Mutex
-	probes    map[domain.NodeRef]engine.Result
-	probing   map[domain.NodeRef]bool
-	conn      *connection.Service
-	subs      *subscription.Service
+	probes  map[domain.NodeRef]engine.Result
+	probing map[domain.NodeRef]bool
+	conn    *connection.Service
+	subs    *subscription.Service
 
 	jobsMu    sync.Mutex
 	refreshes map[string]*refreshCall
@@ -244,20 +244,7 @@ func (c *Core) RefreshSubscriptions(ctx context.Context) error {
 	if len(subs) == 0 {
 		return nil
 	}
-	onUpdated := func(sub store.Subscription) {
-		c.opMu.Lock()
-		defer c.opMu.Unlock()
-		if ctx.Err() != nil {
-			return
-		}
-		next := c.current()
-		if i := slices.IndexFunc(next.Subscriptions, func(s store.Subscription) bool { return s.ID == sub.ID }); i >= 0 {
-			next.Subscriptions[i] = sub
-			dropConn := c.sanitizeRefs(&next, sub)
-			_ = c.syncAfterRefresh(ctx, next, dropConn)
-		}
-	}
-	updated, refreshErr := c.subs.RefreshAll(ctx, subs, c.refresh, onUpdated)
+	updated, refreshErr := c.subs.RefreshAll(ctx, subs, c.refresh, nil)
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
 	if err := ctx.Err(); err != nil {

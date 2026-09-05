@@ -386,14 +386,14 @@ func (s *Settings) listRows(l list) []field {
 		set := func(v *domain.Settings, in string) error {
 			at := l.at(v)
 			if in = strings.TrimSpace(in); in == "" {
-				*at = append((*at)[:i:i], (*at)[i+1:]...)
+				*at = slices.Delete(*at, i, i+1)
 				return nil
 			}
 			rule, err := domain.ParseRule(in)
 			if err != nil {
 				return err
 			}
-			*at = append(append((*at)[:i:i], rule), (*at)[i+1:]...)
+			(*at)[i] = rule
 			return nil
 		}
 		out = append(out, field{

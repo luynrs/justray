@@ -50,14 +50,6 @@ func Fit(body string, n int) string {
 	return strings.Join(lines[:max(n, 0)], "\n")
 }
 
-func Indent(s string) string {
-	var b strings.Builder
-	for line := range strings.Lines(s) {
-		b.WriteString("  " + line)
-	}
-	return b.String()
-}
-
 func FirstLine(s string) string {
 	line, _, _ := strings.Cut(s, "\n")
 	return line

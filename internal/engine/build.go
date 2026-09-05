@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/netip"
 	"net/url"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,7 +19,10 @@ import (
 	"github.com/luynrs/justray/internal/engine/resolvers"
 )
 
-const Tag = "proxy"
+const (
+	Tag           = "proxy"
+	maxProbeNodes = 512
+)
 
 var dnsStrategy = map[string]option.DomainStrategy{
 	"auto": option.DomainStrategy(C.DomainStrategyPreferIPv4),
@@ -78,6 +82,8 @@ func Proxy(ctx context.Context, n domain.Node, s domain.Settings) (*option.Endpo
 
 func ProbeTag(i int) string { return "p" + strconv.Itoa(i) }
 
+func probeWorkers(n int) int { return min(n, max(runtime.NumCPU()*2, 4)) }
+
 func ProbeConfig(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath string) *option.Options {
 	opts := &option.Options{
 		Log:   &option.LogOptions{Level: s.LogLevel, Output: logPath},
@@ -89,10 +95,17 @@ func ProbeConfig(ctx context.Context, nodes []domain.Node, s domain.Settings, lo
 			uniqueHosts[n.Server] = ""
 		}
 	}
-	var wg sync.WaitGroup
-	var mu sync.Mutex
+	hosts := make([]string, 0, len(uniqueHosts))
 	for host := range uniqueHosts {
+		hosts = append(hosts, host)
+	}
+	var mu sync.Mutex
+	sem := make(chan struct{}, probeWorkers(len(hosts)))
+	var wg sync.WaitGroup
+	for _, host := range hosts {
+		sem <- struct{}{}
 		wg.Go(func() {
+			defer func() { <-sem }()
 			dummy := domain.Node{Server: host}
 			if r, err := resolved(ctx, dummy, s); err == nil {
 				mu.Lock()
@@ -122,7 +135,10 @@ func attach(opts *option.Options, ep *option.Endpoint, obs []option.Outbound) {
 }
 
 func dnsServer(s domain.Settings) option.DNSServerOptions {
-	detour := strings.TrimPrefix(final(s), "direct")
+	detour := ""
+	if final(s) == Tag {
+		detour = Tag
+	}
 	remote := option.RemoteDNSServerOptions{
 		RawLocalDNSServerOptions: option.RawLocalDNSServerOptions{
 			DialerOptions: option.DialerOptions{Detour: detour},

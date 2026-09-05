@@ -20,9 +20,7 @@ func out(s string) { _, _ = lipgloss.Println(s) }
 
 func done(text string) { out(style.Alive.Bold(true).Render("✓") + " " + text) }
 
-func fields(pairs ...[2]string) { out(fieldLines(pairs...)) }
-
-func fieldLines(pairs ...[2]string) string {
+func fields(pairs ...[2]string) {
 	w := 0
 	for _, p := range pairs {
 		w = max(w, lipgloss.Width(p[0]))
@@ -31,13 +29,13 @@ func fieldLines(pairs ...[2]string) string {
 	for i, p := range pairs {
 		lines[i] = "  " + style.Pad(style.Dim.Render(p[0]+":"), w+1) + " " + p[1]
 	}
-	return strings.Join(lines, "\n")
+	out(strings.Join(lines, "\n"))
 }
 
 func state(st ipc.Status) string {
 	if st.Connected {
 		text := "connected via " + strings.ToUpper(modeWord(st.Tun))
-		if st.Uptime >= 0 {
+		if st.Uptime > 0 {
 			text += " for " + style.Uptime(time.Duration(st.Uptime)*time.Second)
 		}
 		return text

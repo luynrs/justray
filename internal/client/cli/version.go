@@ -1,37 +1,32 @@
 package cli
 
 import (
-	"debug/buildinfo"
+	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 
-	"github.com/luynrs/justray/internal/client/tui/style"
+	"github.com/spf13/cobra"
+
 	"github.com/luynrs/justray/internal/version"
 )
 
-func versionBlock() string {
-	var pairs [][2]string
-	if v := singboxVersion(); v != "" {
-		pairs = append(pairs, [2]string{"sing-box", v})
-	}
-	pairs = append(pairs, [2]string{"Platform", runtime.GOOS + "/" + runtime.GOARCH})
-
-	head := style.Dim.Render("·") + " JustRay " + style.Dim.Render(version.String())
-	return head + "\n" + fieldLines(pairs...) + "\n"
+var versionCmd = &cobra.Command{
+	Use:    "version",
+	Hidden: true,
+	Args:   cobra.NoArgs,
+	Run: func(cmd *cobra.Command, args []string) {
+		out(strings.TrimRight(versionBlock(), "\n"))
+	},
 }
 
-func singboxVersion() string {
-	bin, err := justrayd()
-	if err != nil {
-		return ""
+func versionBlock() string {
+	bin := "justray"
+	if len(os.Args) > 0 && os.Args[0] != "" {
+		bin = filepath.Base(os.Args[0])
 	}
-	info, err := buildinfo.ReadFile(bin)
-	if err != nil {
-		return ""
-	}
-	for _, d := range info.Deps {
-		if d.Path == "github.com/sagernet/sing-box" {
-			return d.Version
-		}
-	}
-	return ""
+	ver := strings.TrimPrefix(version.String(), "v")
+	p := runtime.GOOS + "/" + runtime.GOARCH
+	return fmt.Sprintf("%s version %s (%s)\nhttps://github.com/luynrs/justray/releases/tag/%s\n", bin, ver, p, version.String())
 }

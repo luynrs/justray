@@ -44,8 +44,8 @@ type hit struct {
 }
 
 func (s *Settings) lines(width, height int) []string {
-	w := max(width-4, 20)
-	s.input.SetWidth(max(w-8, 12))
+	w := max(width-2, 20)
+	s.input.SetWidth(max(w-6, 12))
 
 	rows := s.rows()
 	blocks := make([][]string, len(rows))
@@ -124,9 +124,9 @@ func tabAt(x int) (int, bool) {
 func (s *Settings) fieldBlock(f field, i, width int) (lines, choices []string) {
 	selected := i == s.cursor
 
-	bar := "    "
+	bar := "  "
 	if selected {
-		bar = "  " + style.Accent.Render("▎") + " "
+		bar = style.Accent.Render("▎ ")
 	}
 
 	switch {
@@ -145,7 +145,7 @@ func (s *Settings) fieldBlock(f field, i, width int) (lines, choices []string) {
 		lines = append(lines, value...)
 		choices = append(choices, picks...)
 		if selected && s.err != "" {
-			lines = append(lines, bar+style.Err.Render(style.Clip(style.FirstLine(s.err), width-4)))
+			lines = append(lines, bar+style.Err.Render(style.Clip(style.FirstLine(s.err), width-2)))
 			choices = append(choices, "")
 		}
 	}

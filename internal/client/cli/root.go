@@ -70,7 +70,7 @@ func init() {
 	rootCmd.SetUsageTemplate(usageTemplate)
 	rootCmd.SetVersionTemplate("{{versionBlock}}")
 	rootCmd.AddGroup(&cobra.Group{ID: cmdGroup, Title: "AVAILABLE COMMANDS"})
-	rootCmd.AddCommand(upCmd, downCmd, stopCmd, statusCmd, subCmd)
+	rootCmd.AddCommand(upCmd, downCmd, stopCmd, statusCmd, subCmd, versionCmd)
 }
 
 // Execute runs the justray CLI. The caller (cmd/justray) handles the error.
@@ -80,7 +80,7 @@ func Execute() error {
 	rootCmd.Use = filepath.Base(os.Args[0]) + " <command>"
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		for c := cmd; c != nil; c = c.Parent() {
-			if c.Name() == "completion" || c.Name() == "help" || c.Name() == "stop" {
+			if c.Name() == "completion" || c.Name() == "help" || c.Name() == "stop" || c.Name() == "version" {
 				return nil
 			}
 		}
@@ -181,12 +181,17 @@ func spawn(dir string) error {
 }
 
 func justrayd() (string, error) {
-	bin, err := exec.LookPath(exeName("justrayd"))
-	if err == nil {
+	if bin, err := exec.LookPath(exeName("justrayd")); err == nil {
 		return bin, nil
 	}
 	if bin := nextToSelf("justrayd"); bin != "" {
 		return bin, nil
+	}
+	if dir, err := ipc.Dir(); err == nil {
+		p := filepath.Join(dir, "elevated", exeName("justrayd"))
+		if _, err := os.Stat(p); err == nil {
+			return p, nil
+		}
 	}
 	return "", fmt.Errorf("daemon not in PATH or next to client")
 }

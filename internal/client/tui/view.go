@@ -44,7 +44,7 @@ func (m Model) content() string {
 		return ""
 	case m.dialog != nil:
 		body := m.titleLine() + "\n\n" + m.dialog.View(m.w, max(m.h-topLines-1, 1))
-		return style.Fit(body, m.h-1) + "\n" + m.clip(style.Indent(m.hints(m.w-2)))
+		return style.Fit(body, m.h-1) + "\n" + m.clip(m.hints(m.w))
 	case m.h < topLines+footerLines+1:
 		return m.titleLine()
 	}
