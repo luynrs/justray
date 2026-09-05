@@ -58,9 +58,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tickCmd()
 
 	case spinner.TickMsg:
-		if len(m.refreshing) == 0 && !m.connecting && m.live {
-			return m, nil
-		}
 		var cmd tea.Cmd
 		m.spin, cmd = m.spin.Update(msg)
 		return m, cmd
@@ -72,9 +69,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.err != nil {
 			m.err = msg.err.Error()
-			if msg.op == "probe" {
-				m.probing = nil
-			}
 			if msg.op == "refresh" {
 				m.refreshing = nil
 			}
@@ -90,15 +84,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.since = time.Now().Add(-time.Duration(m.status.Uptime) * time.Second)
 		m.emoji = msg.snapshot.Settings.Emoji == "on"
 		m.live = true
-		if msg.op == "probe" {
-			m.probing = nil
-		} else if len(m.probing) > 0 {
-			for _, n := range m.nodes {
-				if n.Probed {
-					delete(m.probing, n.Ref())
-				}
-			}
-		}
 		if msg.op == "refresh" {
 			m.refreshing = nil
 		} else if len(m.refreshing) > 0 {
@@ -125,6 +110,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.op == "settings" {
 			m.settings = settings.New(msg.snapshot.Settings, topLines)
 		}
+		return m, nil
 
 	case pushed:
 		if msg.live {
@@ -134,7 +120,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, next(m.statusCh)
 		}
 		m.live = false
-		return m, tea.Batch(next(m.statusCh), m.spin.Tick)
+		return m, next(m.statusCh)
 	}
 	return m, nil
 }
@@ -314,5 +300,5 @@ func (m Model) closeSettings() (Model, tea.Cmd) {
 	}
 	m.emoji = next.Emoji == "on"
 	m.connecting = true
-	return m, tea.Batch(m.spin.Tick, snapshotCmd("connect", func() (ipc.Snapshot, error) { return m.client.SetSettings(next) }))
+	return m, snapshotCmd("connect", func() (ipc.Snapshot, error) { return m.client.SetSettings(next) })
 }

@@ -3,7 +3,6 @@ package tree
 import (
 	"strings"
 
-	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/ipc"
 )
 
@@ -32,7 +31,6 @@ type Data struct {
 	Subs       []ipc.Sub
 	Nodes      []ipc.Node
 	Collapsed  map[string]bool
-	Probing    map[domain.NodeRef]bool
 	Refreshing map[string]bool
 	Query      string
 	Status     ipc.Status

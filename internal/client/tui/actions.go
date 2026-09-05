@@ -6,7 +6,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/luynrs/justray/internal/client/tui/tree"
-	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/ipc"
 )
 
@@ -30,7 +29,7 @@ func (m Model) activate() (tea.Model, tea.Cmd) {
 		ref := r.Node.Ref()
 		act = func() (ipc.Snapshot, error) { return m.client.Connect(ref) }
 	}
-	return m, tea.Batch(m.spin.Tick, snapshotCmd("connect", act))
+	return m, snapshotCmd("connect", act)
 }
 
 func (m Model) collapse() (tea.Model, tea.Cmd) {
@@ -69,27 +68,19 @@ func (m Model) probe() (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	m.probing = map[domain.NodeRef]bool{}
 	if r.Kind == tree.Node {
-		m.probing[r.Node.Ref()] = true
+		if r.Node.Probing {
+			return m, nil
+		}
 		return m, snapshotCmd("probe", func() (ipc.Snapshot, error) { return m.client.Probe(r.Node.Sub, r.Node.ID) })
 	}
 	if r.Sub.ID == tree.Default {
 		return m, nil
 	}
-	for _, n := range m.nodes {
-		if n.Sub == r.Sub.ID {
-			m.probing[n.Ref()] = true
-		}
-	}
 	return m, snapshotCmd("probe", func() (ipc.Snapshot, error) { return m.client.Probe(r.Sub.ID, "") })
 }
 
 func (m Model) probeAll() (tea.Model, tea.Cmd) {
-	m.probing = map[domain.NodeRef]bool{}
-	for _, n := range m.nodes {
-		m.probing[n.Ref()] = true
-	}
 	return m, snapshotCmd("probe", func() (ipc.Snapshot, error) { return m.client.Probe("", "") })
 }
 
@@ -103,7 +94,7 @@ func (m Model) refresh() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.refreshing = map[string]bool{id: true}
-	return m, tea.Batch(m.spin.Tick, snapshotCmd("refresh", func() (ipc.Snapshot, error) { return m.client.Refresh(id) }))
+	return m, snapshotCmd("refresh", func() (ipc.Snapshot, error) { return m.client.Refresh(id) })
 }
 
 func (m Model) refreshAll() (tea.Model, tea.Cmd) {
@@ -111,7 +102,7 @@ func (m Model) refreshAll() (tea.Model, tea.Cmd) {
 	for _, sub := range m.subs {
 		m.refreshing[sub.ID] = true
 	}
-	return m, tea.Batch(m.spin.Tick, snapshotCmd("refresh", m.client.RefreshAll))
+	return m, snapshotCmd("refresh", m.client.RefreshAll)
 }
 
 func (m Model) moveSub(dir int) (tea.Model, tea.Cmd) {
@@ -133,5 +124,5 @@ func (m Model) setTun(enable bool) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.connecting = true
-	return m, tea.Batch(m.spin.Tick, snapshotCmd("connect", func() (ipc.Snapshot, error) { return m.client.SetTun(enable) }))
+	return m, snapshotCmd("connect", func() (ipc.Snapshot, error) { return m.client.SetTun(enable) })
 }

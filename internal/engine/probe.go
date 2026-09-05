@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"runtime"
 	"sync"
 	"time"
 
@@ -16,13 +17,10 @@ import (
 )
 
 func Probe(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath string, onResult func(string, Result)) (map[string]Result, error) {
-	if len(nodes) > maxProbeNodes {
-		return nil, fmt.Errorf("too many nodes to probe: %d (maximum %d)", len(nodes), maxProbeNodes)
+	if len(nodes) == 0 {
+		return map[string]Result{}, nil
 	}
-	opts, err := ProbeConfig(ctx, nodes, s, logPath)
-	if err != nil {
-		return nil, err
-	}
+	opts := ProbeConfig(ctx, nodes, s, logPath)
 	inst, err := sbox.New(sbox.Options{Options: *opts, Context: Context(ctx)})
 	if err != nil {
 		return nil, fmt.Errorf("build probe engine: %w", err)
@@ -34,12 +32,19 @@ func Probe(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath 
 	defer func() { _ = inst.Close() }()
 
 	out := map[string]Result{}
-	sem := make(chan struct{}, probeWorkers)
+	workers := min(len(nodes), max(runtime.NumCPU()*2, 4))
+	sem := make(chan struct{}, workers)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	for i, n := range nodes {
-		dialer, ok := inst.Outbound().Outbound(ProbeTag(i))
-		if !ok {
+		tag := ProbeTag(i)
+		var dialer N.Dialer
+		if ob, ok := inst.Outbound().Outbound(tag); ok {
+			dialer = ob
+		} else if ep, ok := inst.Endpoint().Get(tag); ok {
+			dialer = ep
+		}
+		if dialer == nil {
 			res := Result{}
 			mu.Lock()
 			out[n.ID] = res
@@ -59,9 +64,6 @@ func Probe(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath 
 			defer func() { <-sem }()
 
 			ms, err := delay(ctx, dialer, s.ProbeURL)
-			if err != nil {
-				forget(n.Server, s)
-			}
 			res := Result{Alive: err == nil, MS: ms}
 			mu.Lock()
 			out[n.ID] = res
@@ -77,20 +79,9 @@ func Probe(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath 
 
 func delay(ctx context.Context, dialer N.Dialer, url string) (int, error) {
 	client := &http.Client{
-		Timeout: 5 * time.Second,
-		CheckRedirect: func(r *http.Request, via []*http.Request) error {
-			if r.URL.Scheme != "https" && r.URL.Scheme != "http" {
-				return fmt.Errorf("probe redirect must use http or https")
-			}
-			if via[len(via)-1].URL.Scheme == "https" && r.URL.Scheme == "http" {
-				return fmt.Errorf("probe redirect must not downgrade to http")
-			}
-			if len(via) >= 10 {
-				return fmt.Errorf("stopped after 10 redirects")
-			}
-			return nil
-		},
+		Timeout: 4 * time.Second,
 		Transport: &http.Transport{
+			DisableKeepAlives: true,
 			DialContext: func(ctx context.Context, _, addr string) (net.Conn, error) {
 				return dialer.DialContext(ctx, N.NetworkTCP, M.ParseSocksaddr(addr))
 			},

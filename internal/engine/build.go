@@ -18,11 +18,13 @@ import (
 	"github.com/luynrs/justray/internal/engine/resolvers"
 )
 
-const (
-	Tag           = "proxy"
-	maxProbeNodes = 512
-	probeWorkers  = 32
-)
+const Tag = "proxy"
+
+var dnsStrategy = map[string]option.DomainStrategy{
+	"auto": option.DomainStrategy(C.DomainStrategyPreferIPv4),
+	"ipv4": option.DomainStrategy(C.DomainStrategyIPv4Only),
+	"ipv6": option.DomainStrategy(C.DomainStrategyIPv6Only),
+}
 
 func Build(ctx context.Context, n domain.Node, s domain.Settings, logPath string, tun bool) (*option.Options, error) {
 	ep, obs, err := Proxy(ctx, n, s)
@@ -76,48 +78,40 @@ func Proxy(ctx context.Context, n domain.Node, s domain.Settings) (*option.Endpo
 
 func ProbeTag(i int) string { return "p" + strconv.Itoa(i) }
 
-func ProbeConfig(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath string) (*option.Options, error) {
+func ProbeConfig(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath string) *option.Options {
 	opts := &option.Options{
 		Log:   &option.LogOptions{Level: s.LogLevel, Output: logPath},
 		Route: &option.RouteOptions{AutoDetectInterface: true},
 	}
-	resolvedNodes := make([]*domain.Node, len(nodes))
-	jobs := make(chan int)
+	uniqueHosts := map[string]string{}
+	for _, n := range nodes {
+		if _, err := netip.ParseAddr(n.Server); err != nil && n.Server != "" {
+			uniqueHosts[n.Server] = ""
+		}
+	}
 	var wg sync.WaitGroup
-	for range min(probeWorkers, len(nodes)) {
+	var mu sync.Mutex
+	for host := range uniqueHosts {
 		wg.Go(func() {
-			for i := range jobs {
-				n := nodes[i]
-				if r, err := resolved(ctx, n, s); err == nil {
-					resolvedNodes[i] = &r
-				}
+			dummy := domain.Node{Server: host}
+			if r, err := resolved(ctx, dummy, s); err == nil {
+				mu.Lock()
+				uniqueHosts[host] = r.Server
+				mu.Unlock()
 			}
 		})
 	}
-	for i := range nodes {
-		select {
-		case jobs <- i:
-		case <-ctx.Done():
-			close(jobs)
-			wg.Wait()
-			return nil, ctx.Err()
-		}
-	}
-	close(jobs)
 	wg.Wait()
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
 
-	for i, n := range resolvedNodes {
-		if n == nil {
-			continue
+	for i, n := range nodes {
+		if ip, ok := uniqueHosts[n.Server]; ok && ip != "" {
+			n = withServerIP(n, ip)
 		}
-		if ep, obs, err := outbound.New(*n, ProbeTag(i)); err == nil {
+		if ep, obs, err := outbound.New(n, ProbeTag(i)); err == nil {
 			attach(opts, ep, obs)
 		}
 	}
-	return opts, nil
+	return opts
 }
 
 func attach(opts *option.Options, ep *option.Endpoint, obs []option.Outbound) {

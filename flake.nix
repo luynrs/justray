@@ -113,7 +113,7 @@
             config = lib.mkIf cfg.enable {
               environment.systemPackages = [ cfg.package ];
 
-              security.wrappers.justrayd = lib.mkIf pkgs.stdenv.isLinux {
+              security.wrappers.justrayd = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
                 source = "${cfg.package}/bin/justrayd";
                 capabilities = "cap_net_admin+ep";
                 owner = "root";
@@ -148,7 +148,7 @@
             config = lib.mkIf cfg.enable {
               home.packages = [ cfg.package ];
 
-              systemd.user.services.justrayd = lib.mkIf pkgs.stdenv.isLinux {
+              systemd.user.services.justrayd = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
                 Unit = {
                   After = [ "network-online.target" ];
                   Wants = [ "network-online.target" ];

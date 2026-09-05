@@ -1,6 +1,7 @@
 package tree
 
 import (
+	"cmp"
 	"fmt"
 
 	"github.com/luynrs/justray/internal/client/tui/style"
@@ -69,20 +70,20 @@ func info(n ipc.Node) string {
 
 func latency(n ipc.Node) string {
 	switch {
-	case !n.Probed:
+	case n.Probing || !n.Probed:
 		return ""
 	case n.Alive:
 		return fmt.Sprintf("%dms", n.MS)
 	}
-	return "timeout"
+	return "fail"
 }
 
 func (d Data) dot(n ipc.Node) string {
 	switch {
 	case d.connected() && d.Status.NodeRef == n.Ref():
 		return style.Alive.Render("●")
-	case d.Probing[n.Ref()]:
-		return style.Pending.Render("○")
+	case n.Probing:
+		return style.Pending.Render(cmp.Or(d.Spinner, "○"))
 	case !n.Probed:
 		return style.Unknown.Render("○")
 	case n.Alive:

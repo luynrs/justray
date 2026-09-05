@@ -12,7 +12,6 @@ import (
 
 	"github.com/luynrs/justray/internal/client/tui/settings"
 	"github.com/luynrs/justray/internal/client/tui/tree"
-	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/ipc"
 )
 
@@ -28,7 +27,6 @@ type Model struct {
 	nodes []ipc.Node
 
 	collapsed  map[string]bool
-	probing    map[domain.NodeRef]bool
 	refreshing map[string]bool
 	spin       spinner.Model
 	cursor     int
@@ -86,7 +84,6 @@ func (m Model) data() tree.Data {
 		Subs:       m.subs,
 		Nodes:      m.nodes,
 		Collapsed:  m.collapsed,
-		Probing:    m.probing,
 		Refreshing: m.refreshing,
 		Query:      m.filter.Value(),
 		Status:     m.status,

@@ -22,12 +22,13 @@ import (
 type Core struct {
 	opMu    sync.Mutex
 	stateMu sync.RWMutex
-	probeMu sync.Mutex
 	store   store.Disk
 	state   store.PersistentState
-	probes  map[domain.NodeRef]engine.Result
-	conn    *connection.Service
-	subs    *subscription.Service
+	probeMu sync.Mutex
+	probes    map[domain.NodeRef]engine.Result
+	probing   map[domain.NodeRef]bool
+	conn      *connection.Service
+	subs      *subscription.Service
 
 	jobsMu    sync.Mutex
 	refreshes map[string]*refreshCall
@@ -36,6 +37,7 @@ type Core struct {
 	snapshot atomic.Pointer[ipc.Snapshot]
 	watchMu  sync.Mutex
 	watchers map[chan ipc.Changed]struct{}
+	pubMu    sync.Mutex
 }
 
 func New(st store.Disk, conn *connection.Service, subs *subscription.Service) (*Core, error) {
@@ -51,7 +53,7 @@ func New(st store.Disk, conn *connection.Service, subs *subscription.Service) (*
 		settings.Autostart = "on"
 	}
 	state.Settings = settings
-	c := &Core{store: st, state: state, probes: map[domain.NodeRef]engine.Result{}, conn: conn, subs: subs, refreshes: map[string]*refreshCall{}, watchers: map[chan ipc.Changed]struct{}{}}
+	c := &Core{store: st, state: state, probes: map[domain.NodeRef]engine.Result{}, probing: map[domain.NodeRef]bool{}, conn: conn, subs: subs, refreshes: map[string]*refreshCall{}, watchers: map[chan ipc.Changed]struct{}{}}
 	c.publish()
 	return c, nil
 }
@@ -104,16 +106,40 @@ func (c *Core) Watch() (ipc.Changed, <-chan ipc.Changed, func()) {
 }
 
 func (c *Core) Probe(ctx context.Context, sub, id string) error {
-	c.probeMu.Lock()
-	defer c.probeMu.Unlock()
-
 	state := c.current()
 	refs, nodes, err := probeTargets(state.Subscriptions, sub, id)
 	if err != nil {
 		return err
 	}
-	refMap := make(map[string]domain.NodeRef, len(refs))
-	for _, ref := range refs {
+
+	c.probeMu.Lock()
+	var targets []domain.Node
+	var targetRefs []domain.NodeRef
+	for i, ref := range refs {
+		if !c.probing[ref] {
+			c.probing[ref] = true
+			targetRefs = append(targetRefs, ref)
+			targets = append(targets, nodes[i])
+		}
+	}
+	c.probeMu.Unlock()
+
+	if len(targets) == 0 {
+		return nil
+	}
+	c.publish()
+
+	defer func() {
+		c.probeMu.Lock()
+		for _, ref := range targetRefs {
+			delete(c.probing, ref)
+		}
+		c.probeMu.Unlock()
+		c.publish()
+	}()
+
+	refMap := make(map[string]domain.NodeRef, len(targetRefs))
+	for _, ref := range targetRefs {
 		refMap[ref.NodeID] = ref
 	}
 
@@ -122,13 +148,15 @@ func (c *Core) Probe(ctx context.Context, sub, id string) error {
 		if !ok {
 			return
 		}
-		c.opMu.Lock()
+		c.probeMu.Lock()
 		c.probes[ref] = res
-		c.opMu.Unlock()
+		delete(c.probing, ref)
+		c.probeMu.Unlock()
+
 		c.publish()
 	}
 
-	_, err = c.conn.Probe(ctx, nodes, state.Settings, onResult)
+	_, err = c.conn.Probe(ctx, targets, state.Settings, onResult)
 	return err
 }
 
@@ -435,6 +463,9 @@ func (c *Core) commit(state store.PersistentState) error {
 }
 
 func (c *Core) publish() {
+	c.pubMu.Lock()
+	defer c.pubMu.Unlock()
+
 	state := c.current()
 	subs := make([]ipc.Sub, len(state.Subscriptions))
 	for i, sub := range state.Subscriptions {
@@ -458,6 +489,11 @@ func (c *Core) publish() {
 		select {
 		case ch <- ipc.Changed{Revision: snapshot.Revision}:
 		default:
+			select {
+			case <-ch:
+			default:
+			}
+			ch <- ipc.Changed{Revision: snapshot.Revision}
 		}
 	}
 	c.watchMu.Unlock()
@@ -484,13 +520,24 @@ func (c *Core) status(state store.PersistentState) ipc.Status {
 }
 
 func (c *Core) nodes(subscriptions []store.Subscription) []ipc.Node {
+	c.probeMu.Lock()
+	defer c.probeMu.Unlock()
+
 	live := map[domain.NodeRef]bool{}
 	out := []ipc.Node{}
 	for _, subscription := range subscriptions {
 		for _, node := range subscription.Nodes {
 			ref := domain.NodeRef{SubscriptionID: subscription.ID, NodeID: node.ID}
 			live[ref] = true
-			item := ipc.Node{ID: node.ID, Name: node.Name, Protocol: string(node.Protocol), Server: node.Server, Port: node.Port, Sub: subscription.ID}
+			item := ipc.Node{
+				ID:       node.ID,
+				Name:     node.Name,
+				Protocol: string(node.Protocol),
+				Server:   node.Server,
+				Port:     node.Port,
+				Sub:      subscription.ID,
+				Probing:  c.probing[ref],
+			}
 			if result, ok := c.probes[ref]; ok {
 				item.Probed, item.Alive, item.MS = true, result.Alive, result.MS
 			}
@@ -500,6 +547,11 @@ func (c *Core) nodes(subscriptions []store.Subscription) []ipc.Node {
 	for ref := range c.probes {
 		if !live[ref] {
 			delete(c.probes, ref)
+		}
+	}
+	for ref := range c.probing {
+		if !live[ref] {
+			delete(c.probing, ref)
 		}
 	}
 	return out
