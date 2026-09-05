@@ -62,7 +62,7 @@ func New(c *ipc.Client) Model {
 	editor.CharLimit = 2048
 	filter := textinput.New()
 	filter.Prompt = ""
-	filter.Placeholder, filter.CharLimit = "type to filter...", 128
+	filter.CharLimit = 128
 	return Model{
 		client:    c,
 		collapsed: map[string]bool{},
