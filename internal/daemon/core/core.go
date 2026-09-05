@@ -350,12 +350,14 @@ func (c *Core) refresh(ctx context.Context, sub store.Subscription) (store.Subsc
 	call := &refreshCall{done: make(chan struct{})}
 	c.refreshes[sub.ID] = call
 	c.jobsMu.Unlock()
+	c.publish()
 
 	call.sub, call.err = c.subs.Refresh(ctx, sub)
 	c.jobsMu.Lock()
 	delete(c.refreshes, sub.ID)
 	close(call.done)
 	c.jobsMu.Unlock()
+	c.publish()
 	return call.sub, call.err
 }
 
@@ -467,10 +469,20 @@ func (c *Core) publish() {
 	defer c.pubMu.Unlock()
 
 	state := c.current()
+	c.jobsMu.Lock()
 	subs := make([]ipc.Sub, len(state.Subscriptions))
 	for i, sub := range state.Subscriptions {
-		subs[i] = ipc.Sub{ID: sub.ID, Name: sub.Name, Nodes: len(sub.Nodes), UpdatedAt: sub.UpdatedAt, Traffic: sub.Traffic, Direct: parser.IsLink(sub.URL)}
+		subs[i] = ipc.Sub{
+			ID:         sub.ID,
+			Name:       sub.Name,
+			Nodes:      len(sub.Nodes),
+			UpdatedAt:  sub.UpdatedAt,
+			Traffic:    sub.Traffic,
+			Direct:     parser.IsLink(sub.URL),
+			Refreshing: c.refreshes[sub.ID] != nil,
+		}
 	}
+	c.jobsMu.Unlock()
 	active := state.Active
 	if active.NodeID == "" {
 		active = state.Last

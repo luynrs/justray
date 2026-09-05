@@ -42,8 +42,8 @@ func (m Model) content() string {
 	switch {
 	case m.quitting, m.w == 0:
 		return ""
-	case m.settings != nil:
-		body := m.titleLine() + "\n\n" + m.settings.View(m.w, max(m.h-topLines-1, 1))
+	case m.dialog != nil:
+		body := m.titleLine() + "\n\n" + m.dialog.View(m.w, max(m.h-topLines-1, 1))
 		return style.Fit(body, m.h-1) + "\n" + m.clip(style.Indent(m.hints(m.w-2)))
 	case m.h < topLines+footerLines+1:
 		return m.titleLine()
@@ -58,14 +58,14 @@ func (m Model) content() string {
 
 func (m Model) titleLine() string {
 	left := style.Title.Render("JustRay") + " " + style.Dim.Render(version.String())
-	if m.settings != nil {
-		left += "  " + m.settings.TabBar(max(m.w-lipgloss.Width(left)-2, 10))
+	if m.dialog != nil {
+		left += "  " + m.dialog.TabBar(max(m.w-lipgloss.Width(left)-2, 10))
 	} else if m.filter.Focused() || m.filter.Value() != "" {
 		left += " " + style.Dim.Render("~ Search:") + " " + m.filter.View()
 	}
 
 	var right string
-	if m.settings == nil {
+	if m.dialog == nil {
 		right = style.Segment(modeProxy, !m.status.Tun) + style.Segment(modeTun, m.status.Tun)
 	}
 	return m.clip(style.Flush(left, right, m.w))
@@ -101,9 +101,9 @@ func (m Model) tree() string {
 
 func (m Model) keys() [][2]string {
 	switch {
-	case m.settings != nil:
-		return m.settings.Hints()
-	case m.confirmID != "":
+	case m.dialog != nil:
+		return m.dialog.Hints()
+	case m.confirmSub.ID != "":
 		return [][2]string{{"y", "Delete"}, {"any", "Cancel"}}
 	case m.editor.Focused():
 		return [][2]string{{"↵", "Add"}, {"esc", "Cancel"}}
@@ -145,7 +145,7 @@ func (m Model) footer() string {
 		if m.connecting {
 			iconStyle = style.Pending
 		}
-		status = iconStyle.Render(icon) + " " + style.Strong.Render(style.Sanitize(m.status.NodeName, m.emoji)) + " " + style.Dim.Render("·") + " " + style.Strong.Render(style.Uptime(time.Since(m.since)))
+		status = iconStyle.Render(icon) + " " + style.Strong.Render(style.Sanitize(m.status.NodeName, m.cfg.Emoji == "on")) + " " + style.Dim.Render("·") + " " + style.Strong.Render(style.Uptime(time.Since(m.since)))
 	case m.live:
 		iconStyle := style.Dim
 		if m.connecting {
@@ -160,8 +160,8 @@ func (m Model) footer() string {
 	}
 
 	hints := m.hints(m.w)
-	if m.confirmID != "" {
-		q := style.Err.Render(style.Sanitize(m.confirmQ, true))
+	if m.confirmSub.ID != "" {
+		q := style.Err.Render(style.Sanitize("Delete "+m.confirmSub.Name+"?", true))
 		hints = q + "  " + m.hints(max(m.w-lipgloss.Width(q)-2, 0))
 	}
 

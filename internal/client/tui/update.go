@@ -23,25 +23,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		switch {
 		case msg.String() == "ctrl+c":
-			if m.settings != nil {
-				m.settings = nil
+			if m.dialog != nil {
+				m.dialog = nil
 				return m, tea.Quit
 			}
 			return m.quit()
-		case m.settings != nil:
+		case m.dialog != nil:
 			return m.updateSettings(msg)
 		}
 		return m.key(msg)
 
 	case tea.MouseMsg:
-		if m.settings != nil {
+		if m.dialog != nil {
 			return m.updateSettings(msg)
 		}
 		return m.mouse(msg)
 
 	case tea.PasteMsg:
 		switch {
-		case m.settings != nil:
+		case m.dialog != nil:
 			return m.updateSettings(msg)
 		case m.editor.Focused():
 			var cmd tea.Cmd
@@ -69,9 +69,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.err != nil {
 			m.err = msg.err.Error()
-			if msg.op == "refresh" {
-				m.refreshing = nil
-			}
 			return m, nil
 		}
 		if msg.snapshot.Revision < m.revision {
@@ -82,17 +79,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.subs, m.nodes = msg.snapshot.Subscriptions, msg.snapshot.Nodes
 		m.status = msg.snapshot.Status
 		m.since = time.Now().Add(-time.Duration(m.status.Uptime) * time.Second)
-		m.emoji = msg.snapshot.Settings.Emoji == "on"
+		m.cfg = msg.snapshot.Settings
 		m.live = true
-		if msg.op == "refresh" {
-			m.refreshing = nil
-		} else if len(m.refreshing) > 0 {
-			for _, sub := range msg.snapshot.Subscriptions {
-				if time.Since(sub.UpdatedAt) < 10*time.Second {
-					delete(m.refreshing, sub.ID)
-				}
-			}
-		}
 		if selectedOK {
 			if selected.Kind == tree.Header {
 				m.toHeader(selected.Sub.ID)
@@ -107,9 +95,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.clamp()
-		if msg.op == "settings" {
-			m.settings = settings.New(msg.snapshot.Settings, topLines)
-		}
 		return m, nil
 
 	case pushed:
@@ -129,10 +114,10 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	k := msg.String()
 
 	switch {
-	case m.confirmID != "":
-		id := m.confirmID
-		m.confirmQ, m.confirmID = "", ""
-		if k == "y" {
+	case m.confirmSub.ID != "":
+		id := m.confirmSub.ID
+		m.confirmSub = ipc.Sub{}
+		if k == "y" || k == "Y" {
 			return m, snapshotCmd("mutation", func() (ipc.Snapshot, error) { return m.client.RemoveSub(id) })
 		}
 		return m, nil
@@ -187,12 +172,13 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.editor.SetValue("")
 		return m, tea.Batch(m.editor.Focus(), textinput.Blink)
 	case "o":
-		return m, snapshotCmd("settings", m.client.Snapshot)
+		m.dialog = settings.New(m.cfg, topLines)
+		return m, nil
 	case "/":
 		return m, m.startFiltering()
 	case "d":
-		if r, ok := m.at(); ok {
-			m.confirmQ, m.confirmID = "Delete "+r.Sub.Name+"?", r.Sub.ID
+		if r, ok := m.at(); ok && r.Sub.ID != "" && r.Sub.ID != tree.Default {
+			m.confirmSub = r.Sub
 		}
 	case "q":
 		return m.quit()
@@ -229,7 +215,7 @@ func (m *Model) startFiltering() tea.Cmd {
 }
 
 func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	if m.editor.Focused() || m.confirmID != "" {
+	if m.editor.Focused() || m.confirmSub.ID != "" {
 		return m, nil
 	}
 	mouse := msg.Mouse()
@@ -280,7 +266,7 @@ func (m Model) click(x, y int) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
-	closed, cmd := m.settings.Update(msg)
+	closed, cmd := m.dialog.Update(msg)
 	if !closed {
 		return m, cmd
 	}
@@ -289,8 +275,8 @@ func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // closeSettings saves on the way out
 func (m Model) closeSettings() (Model, tea.Cmd) {
-	next, changed, err := m.settings.Result()
-	m.settings = nil
+	next, changed, err := m.dialog.Result()
+	m.dialog = nil
 	switch {
 	case err != nil:
 		m.err = err.Error()
@@ -298,7 +284,6 @@ func (m Model) closeSettings() (Model, tea.Cmd) {
 	case !changed:
 		return m, nil
 	}
-	m.emoji = next.Emoji == "on"
-	m.connecting = true
-	return m, snapshotCmd("connect", func() (ipc.Snapshot, error) { return m.client.SetSettings(next) })
+	m.cfg = next
+	return m, snapshotCmd("settings", func() (ipc.Snapshot, error) { return m.client.SetSettings(next) })
 }

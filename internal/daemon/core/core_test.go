@@ -62,6 +62,9 @@ func TestRefreshRunsOutsideMutationLockAndJoins(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
 	}
+	if snap := app.Snapshot(); len(snap.Subscriptions) == 0 || !snap.Subscriptions[0].Refreshing {
+		t.Fatalf("expected sub to be refreshing, got %+v", snap.Subscriptions)
+	}
 	moved := make(chan error, 1)
 	go func() { moved <- app.MoveSubscription("sub", 1) }()
 	select {
@@ -79,6 +82,9 @@ func TestRefreshRunsOutsideMutationLockAndJoins(t *testing.T) {
 	}
 	if err := <-first; err != nil {
 		t.Fatal(err)
+	}
+	if snap := app.Snapshot(); len(snap.Subscriptions) == 0 || snap.Subscriptions[0].Refreshing {
+		t.Fatalf("expected sub not to be refreshing, got %+v", snap.Subscriptions)
 	}
 	if got := calls.Load(); got != 1 {
 		t.Fatalf("HTTP calls = %d, want 1", got)

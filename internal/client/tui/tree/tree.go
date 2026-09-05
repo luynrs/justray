@@ -28,15 +28,14 @@ func (r Row) SubID() string {
 func (r Row) Selectable() bool { return r.Kind == Header || r.Kind == Node }
 
 type Data struct {
-	Subs       []ipc.Sub
-	Nodes      []ipc.Node
-	Collapsed  map[string]bool
-	Refreshing map[string]bool
-	Query      string
-	Status     ipc.Status
-	Live       bool
-	Emoji      bool
-	Spinner    string
+	Subs      []ipc.Sub
+	Nodes     []ipc.Node
+	Collapsed map[string]bool
+	Query     string
+	Status    ipc.Status
+	Live      bool
+	Emoji     bool
+	Spinner   string
 }
 
 func (d Data) connected() bool { return d.Live && d.Status.Connected }

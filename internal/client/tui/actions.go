@@ -93,15 +93,10 @@ func (m Model) refresh() (tea.Model, tea.Cmd) {
 	if id == tree.Default {
 		return m, nil
 	}
-	m.refreshing = map[string]bool{id: true}
 	return m, snapshotCmd("refresh", func() (ipc.Snapshot, error) { return m.client.Refresh(id) })
 }
 
 func (m Model) refreshAll() (tea.Model, tea.Cmd) {
-	m.refreshing = map[string]bool{}
-	for _, sub := range m.subs {
-		m.refreshing[sub.ID] = true
-	}
 	return m, snapshotCmd("refresh", m.client.RefreshAll)
 }
 
