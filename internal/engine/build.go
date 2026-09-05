@@ -103,7 +103,12 @@ func ProbeConfig(ctx context.Context, nodes []domain.Node, s domain.Settings, lo
 	sem := make(chan struct{}, probeWorkers(len(hosts)))
 	var wg sync.WaitGroup
 	for _, host := range hosts {
-		sem <- struct{}{}
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			wg.Wait()
+			return opts
+		}
 		wg.Go(func() {
 			defer func() { <-sem }()
 			dummy := domain.Node{Server: host}

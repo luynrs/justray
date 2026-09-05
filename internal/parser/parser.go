@@ -52,7 +52,7 @@ func ParseURI(uri string) (domain.Node, error) {
 }
 
 func ParseSubscription(raw []byte) ([]domain.Node, error) {
-	body := bytes.TrimSpace(raw)
+	body := bytes.TrimPrefix(bytes.TrimSpace(raw), []byte("\xef\xbb\xbf"))
 	if decoded, err := protocols.Unbase64(string(body)); err == nil {
 		if nodes, err := parseSub(decoded); err == nil {
 			return nodes, nil
@@ -62,6 +62,7 @@ func ParseSubscription(raw []byte) ([]domain.Node, error) {
 }
 
 func parseSub(body []byte) ([]domain.Node, error) {
+	body = bytes.TrimPrefix(bytes.TrimSpace(body), []byte("\xef\xbb\xbf"))
 	if nodes, err := protocols.ParseXray(body); err == nil {
 		return nodes, nil
 	}

@@ -26,7 +26,7 @@ func Info(ctx context.Context) (osName, hwid, ver, model string) {
 }
 
 func distro() string {
-	for line := range strings.Lines(read("/etc/os-release")) {
+	for line := range strings.Lines(cmp.Or(read("/etc/os-release"), read("/usr/lib/os-release"))) {
 		if name, ok := strings.CutPrefix(line, "PRETTY_NAME="); ok {
 			return strings.Trim(strings.TrimSpace(name), `"`)
 		}

@@ -72,7 +72,7 @@ func (s Settings) Equal(o Settings) bool { return reflect.DeepEqual(s, o) }
 
 // Normalize fills defaults and validates
 func (s Settings) Normalize() (Settings, error) {
-	for _, check := range []func() error{
+	checks := []error{
 		num("port", &s.Port, DefaultPort, 1, 65535),
 		num("mtu", &s.TunMTU, DefaultTunMTU, 576, 65535),
 		num("refresh interval", &s.RefreshEvery, 0, 0, 24*30),
@@ -90,65 +90,58 @@ func (s Settings) Normalize() (Settings, error) {
 		text("probe url", &s.ProbeURL, DefaultProbeURL, "a url", isURL),
 		canon(&s.Except),
 		canon(&s.Blocked),
-	} {
-		if err := check(); err != nil {
+	}
+	for _, err := range checks {
+		if err != nil {
 			return s, err
 		}
 	}
 	return s, nil
 }
 
-func num(name string, v *int, def, lo, hi int) func() error {
-	return func() error {
-		if *v == 0 {
-			*v = def
-		}
-		if *v < lo || *v > hi {
-			return fmt.Errorf("%s %d is out of range", name, *v)
-		}
-		return nil
+func num(name string, v *int, def, lo, hi int) error {
+	if *v == 0 {
+		*v = def
 	}
+	if *v < lo || *v > hi {
+		return fmt.Errorf("%s %d is out of range", name, *v)
+	}
+	return nil
 }
 
-func one(name string, v *string, def string, allowed []string) func() error {
-	return func() error {
-		if *v == "" {
-			*v = def
-		}
-		if !slices.Contains(allowed, *v) {
-			return fmt.Errorf("%s %q is not one of %s", name, *v, strings.Join(allowed, ", "))
-		}
-		return nil
+func one(name string, v *string, def string, allowed []string) error {
+	if *v == "" {
+		*v = def
 	}
+	if !slices.Contains(allowed, *v) {
+		return fmt.Errorf("%s %q is not one of %s", name, *v, strings.Join(allowed, ", "))
+	}
+	return nil
 }
 
-func text(name string, v *string, def, want string, ok func(string) bool) func() error {
-	return func() error {
-		if *v = strings.TrimSpace(*v); *v == "" {
-			*v = def
-		}
-		if !ok(*v) {
-			return fmt.Errorf("%s %q is not %s", name, *v, want)
-		}
-		return nil
+func text(name string, v *string, def, want string, ok func(string) bool) error {
+	if *v = strings.TrimSpace(*v); *v == "" {
+		*v = def
 	}
+	if !ok(*v) {
+		return fmt.Errorf("%s %q is not %s", name, *v, want)
+	}
+	return nil
 }
 
-func canon(list *[]string) func() error {
-	return func() error {
-		out := make([]string, 0, len(*list))
-		for _, raw := range *list {
-			rule, err := ParseRule(raw)
-			if err != nil {
-				return err
-			}
-			if !slices.Contains(out, rule) {
-				out = append(out, rule)
-			}
+func canon(list *[]string) error {
+	out := make([]string, 0, len(*list))
+	for _, raw := range *list {
+		rule, err := ParseRule(raw)
+		if err != nil {
+			return err
 		}
-		*list = out
-		return nil
+		if !slices.Contains(out, rule) {
+			out = append(out, rule)
+		}
 	}
+	*list = out
+	return nil
 }
 
 func isAddr(v string) bool {

@@ -145,7 +145,7 @@ func (m Model) footer() string {
 		if m.connecting {
 			iconStyle = style.Pending
 		}
-		status = iconStyle.Render(icon) + " " + style.Strong.Render(style.Sanitize(m.status.NodeName, m.cfg.Emoji == "on")) + " " + style.Dim.Render("·") + " " + style.Strong.Render(style.Uptime(time.Since(m.since)))
+		status = iconStyle.Render(icon) + " " + style.Sanitize(m.status.NodeName, m.cfg.Emoji == "on") + " " + style.Dim.Render("·") + " " + style.Uptime(time.Since(m.since))
 	case m.live:
 		iconStyle := style.Dim
 		if m.connecting {

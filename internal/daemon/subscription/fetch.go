@@ -118,7 +118,8 @@ func usage(h http.Header) domain.Traffic {
 func title(h http.Header) string {
 	if t := h.Get("Profile-Title"); t != "" {
 		if b64, ok := strings.CutPrefix(t, "base64:"); ok {
-			if decoded, err := base64.StdEncoding.DecodeString(b64); err == nil {
+			b64 = strings.TrimRight(strings.TrimSpace(b64), "=")
+			if decoded, err := base64.RawStdEncoding.DecodeString(b64); err == nil {
 				return string(decoded)
 			}
 			if decoded, err := base64.RawURLEncoding.DecodeString(b64); err == nil {

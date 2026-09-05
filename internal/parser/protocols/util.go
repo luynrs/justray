@@ -15,7 +15,7 @@ import (
 )
 
 func Unbase64(s string) ([]byte, error) {
-	s = strings.Join(strings.Fields(s), "")
+	s = strings.TrimPrefix(strings.Join(strings.Fields(s), ""), "\ufeff")
 	s = strings.TrimRight(s, "=")
 	if b, err := base64.RawURLEncoding.DecodeString(s); err == nil {
 		return b, nil
