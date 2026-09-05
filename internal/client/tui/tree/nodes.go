@@ -75,7 +75,7 @@ func latency(n ipc.Node) string {
 	case n.Alive:
 		return fmt.Sprintf("%dms", n.MS)
 	}
-	return "fail"
+	return "t/o"
 }
 
 func (d Data) dot(n ipc.Node) string {

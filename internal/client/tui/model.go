@@ -61,6 +61,7 @@ func New(c *ipc.Client) Model {
 	editor.Placeholder = "subscription URL, or a vless://, vmess://, trojan://, ss://, etc. link"
 	editor.CharLimit = 2048
 	filter := textinput.New()
+	filter.Prompt = ""
 	filter.Placeholder, filter.CharLimit = "type to filter...", 128
 	return Model{
 		client:    c,

@@ -140,7 +140,21 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case m.filter.Focused():
-		return m.filterKey(msg)
+		switch k {
+		case "esc":
+			m.filter.SetValue("")
+			m.filter.Blur()
+			m.clamp()
+			return m, nil
+		case "enter":
+			m.filter.Blur()
+			m.clamp()
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.filter, cmd = m.filter.Update(msg)
+		m.clamp()
+		return m, cmd
 	}
 
 	switch k {
@@ -175,7 +189,8 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.dialog = settings.New(m.cfg, topLines)
 		return m, nil
 	case "/":
-		return m, m.startFiltering()
+		m.filter.CursorEnd()
+		return m, tea.Batch(m.filter.Focus(), textinput.Blink)
 	case "d":
 		if r, ok := m.at(); ok && r.Sub.ID != "" && r.Sub.ID != tree.Default {
 			m.confirmSub = r.Sub
@@ -189,29 +204,6 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
-}
-
-func (m Model) filterKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc":
-		m.filter.SetValue("")
-		m.filter.Blur()
-		m.clamp()
-		return m, nil
-	case "enter":
-		m.filter.Blur()
-		m.clamp()
-		return m, nil
-	}
-	var cmd tea.Cmd
-	m.filter, cmd = m.filter.Update(msg)
-	m.clamp()
-	return m, cmd
-}
-
-func (m *Model) startFiltering() tea.Cmd {
-	m.filter.CursorEnd()
-	return tea.Batch(m.filter.Focus(), textinput.Blink)
 }
 
 func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
