@@ -6,7 +6,6 @@ import (
 	"errors"
 	"os"
 	"slices"
-	"strings"
 
 	"golang.org/x/sys/windows"
 )
@@ -18,8 +17,7 @@ func Needed(err error) bool {
 	if err == nil || windows.GetCurrentProcessToken().IsElevated() {
 		return false
 	}
-	e := strings.ToLower(err.Error())
-	return strings.Contains(e, "access is denied") || strings.Contains(e, "operation not permitted")
+	return errors.Is(err, os.ErrPermission)
 }
 
 func Restart(_ string) error {

@@ -55,6 +55,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tick:
+		if m.err != "" && time.Since(m.errAt) > 10*time.Second {
+			m.err = ""
+		}
 		return m, tickCmd()
 
 	case spinner.TickMsg:
@@ -63,13 +66,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case loaded:
-		m.err = ""
 		if msg.op == "connect" {
 			m.connecting = false
 		}
 		if msg.err != nil {
-			m.err = msg.err.Error()
+			m.err, m.errAt = msg.err.Error(), time.Now()
 			return m, nil
+		}
+		if msg.op != "sync" && msg.op != "probe" {
+			m.err = ""
 		}
 		if msg.snapshot.Revision < m.revision {
 			return m, nil
@@ -221,7 +226,7 @@ func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if m.filter.Focused() || (mouse.Button != tea.MouseWheelUp && mouse.Button != tea.MouseWheelDown) {
 			return m, nil
 		}
-		if time.Since(m.wheel) < 20*time.Millisecond {
+		if time.Since(m.wheel) < 15*time.Millisecond {
 			return m, nil
 		}
 		m.wheel = time.Now()
@@ -271,7 +276,7 @@ func (m Model) closeSettings() (Model, tea.Cmd) {
 	m.dialog = nil
 	switch {
 	case err != nil:
-		m.err = err.Error()
+		m.err, m.errAt = err.Error(), time.Now()
 		return m, nil
 	case !changed:
 		return m, nil

@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log"
+	"path/filepath"
 	"time"
 
 	"charm.land/bubbles/v2/spinner"
@@ -48,7 +49,8 @@ type Model struct {
 	stopWatch  context.CancelFunc
 	connecting bool
 
-	err string
+	err   string
+	errAt time.Time
 
 	w, h     int
 	quitting bool
@@ -115,7 +117,19 @@ func (m Model) quit() (tea.Model, tea.Cmd) {
 }
 
 func Run(c *ipc.Client) error {
-	log.SetOutput(io.Discard)
+	prev := log.Writer()
+	defer log.SetOutput(prev)
+
+	if dir, err := ipc.Dir(); err == nil {
+		if f, err := tea.LogToFile(filepath.Join(dir, "tui.log"), "tui"); err == nil {
+			defer func() { _ = f.Close() }()
+		} else {
+			log.SetOutput(io.Discard)
+		}
+	} else {
+		log.SetOutput(io.Discard)
+	}
+
 	m := New(c)
 	_, err := tea.NewProgram(m).Run()
 	m.stopWatch()

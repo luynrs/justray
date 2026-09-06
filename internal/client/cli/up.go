@@ -109,7 +109,7 @@ func (a *app) runOp(text string, op func() (ipc.Snapshot, error), want *bool) (i
 	st, err := awaitElevate(func() (ipc.Status, error) {
 		snapshot, err := a.client.Snapshot()
 		return snapshot.Status, err
-	}, want, 3*time.Minute)
+	}, want, 30*time.Second)
 	if err == nil && want != nil && (!st.Connected || st.Tun != *want) {
 		snapshot, err := op()
 		return snapshot.Status, err

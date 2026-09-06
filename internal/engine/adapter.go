@@ -4,13 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"reflect"
-	"runtime"
-	"strings"
 	"syscall"
-	"time"
 
 	sbox "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/adapter"
@@ -31,7 +27,6 @@ type Box struct {
 
 	inst *sbox.Box
 	tun  bool
-	name string
 	node domain.Node
 }
 
@@ -81,10 +76,6 @@ func (e *Box) start(ctx context.Context, spec SessionSpec) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	var before map[string]struct{}
-	if spec.Tun && runtime.GOOS == "darwin" {
-		before = interfaceNames()
-	}
 
 	inst, err := startBox(e.lifetime, *opts)
 	if err != nil {
@@ -92,23 +83,7 @@ func (e *Box) start(ctx context.Context, spec SessionSpec) error {
 	}
 	e.inst, e.node = inst, spec.Node
 	e.settings, e.tun = spec.Settings, spec.Tun
-	if spec.Tun && runtime.GOOS == "darwin" {
-		e.name = newInterface(before)
-		if e.name == "" {
-			return errors.Join(errors.New("tun interface name unavailable"), e.Stop())
-		}
-	}
 	return nil
-}
-
-func rideOutEBusy(op func() error) error {
-	err := op()
-	for i := 0; i < 2 && err != nil && errors.Is(err, syscall.EBUSY); i++ {
-		link.Delete(domain.TunInterface)
-		waitGone(domain.TunInterface)
-		err = op()
-	}
-	return err
 }
 
 func startBox(ctx context.Context, opts option.Options) (*sbox.Box, error) {
@@ -129,7 +104,6 @@ func startBox(ctx context.Context, opts option.Options) (*sbox.Box, error) {
 			return nil, err
 		}
 		link.Delete(domain.TunInterface)
-		waitGone(domain.TunInterface)
 	}
 }
 
@@ -170,10 +144,6 @@ func (e *Box) apply(ctx context.Context, n domain.Node) error {
 }
 
 func (e *Box) tunAdd() error {
-	var before map[string]struct{}
-	if runtime.GOOS == "darwin" {
-		before = interfaceNames()
-	}
 	if _, err := wintun.Ensure(); err != nil {
 		return err
 	}
@@ -181,20 +151,12 @@ func (e *Box) tunAdd() error {
 	ctx := e.runtimeCtx()
 	logger := e.inst.LogFactory().NewLogger("inbound/tun[tun-in]")
 
-	err := rideOutEBusy(func() error {
-		return e.inst.Inbound().Create(ctx, e.inst.Router(), logger, "tun-in", C.TypeTun, inb.Options)
-	})
+	err := e.inst.Inbound().Create(ctx, e.inst.Router(), logger, "tun-in", C.TypeTun, inb.Options)
+	if errors.Is(err, syscall.EBUSY) {
+		link.Delete(domain.TunInterface)
+		err = e.inst.Inbound().Create(ctx, e.inst.Router(), logger, "tun-in", C.TypeTun, inb.Options)
+	}
 	if err == nil {
-		if runtime.GOOS == "darwin" {
-			e.name = newInterface(before)
-			if e.name == "" {
-				if rbErr := e.inst.Inbound().Remove("tun-in"); rbErr != nil {
-					_ = e.Stop()
-					return errors.Join(errors.New("tun interface name unavailable"), fmt.Errorf("tun rollback failed: %w", rbErr))
-				}
-				return errors.New("tun interface name unavailable")
-			}
-		}
 		e.tun = true
 	}
 	return err
@@ -205,21 +167,7 @@ func (e *Box) tunRemove() error {
 		return err
 	}
 	e.tun = false
-	iface := e.interfaceName()
-	e.name = ""
-	var errs []error
-	if iface == "" {
-		errs = append(errs, errors.New("tun interface name unavailable"))
-	} else if !waitGone(iface) {
-		link.Delete(iface)
-		if !waitGone(iface) {
-			errs = append(errs, fmt.Errorf("%s still up after removing tun-in", iface))
-		}
-	}
-	if len(errs) > 0 {
-		_ = e.Stop()
-		return errors.Join(errs...)
-	}
+	link.Delete(domain.TunInterface)
 	return nil
 }
 
@@ -229,25 +177,16 @@ func (e *Box) Stop() error {
 	}
 	inst := e.inst
 	tun := e.tun
-	iface := e.interfaceName()
 
 	e.inst = nil
 	e.tun = false
-	e.name = ""
 
 	err := inst.Close()
 	if errors.Is(err, os.ErrClosed) {
 		err = nil
 	}
 	if tun {
-		if iface == "" {
-			err = errors.Join(err, errors.New("tun interface name unavailable"))
-		} else if !waitGone(iface) {
-			link.Delete(iface)
-			if !waitGone(iface) {
-				err = errors.Join(err, fmt.Errorf("%s still up after closing engine", iface))
-			}
-		}
+		link.Delete(domain.TunInterface)
 	}
 	return err
 }
@@ -256,47 +195,6 @@ func (e *Box) Running() bool {
 	return e.inst != nil
 }
 
-func (e *Box) interfaceName() string {
-	if runtime.GOOS == "darwin" {
-		return e.name
-	}
-	return domain.TunInterface
-}
-
-func interfaceNames() map[string]struct{} {
-	before := map[string]struct{}{}
-	interfaces, _ := net.Interfaces()
-	for _, iface := range interfaces {
-		before[iface.Name] = struct{}{}
-	}
-	return before
-}
-
-func newInterface(before map[string]struct{}) string {
-	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); {
-		interfaces, _ := net.Interfaces()
-		for _, iface := range interfaces {
-			if strings.HasPrefix(iface.Name, "utun") {
-				if _, ok := before[iface.Name]; !ok {
-					return iface.Name
-				}
-			}
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	return ""
-}
-
 func (e *Box) runtimeCtx() context.Context {
 	return service.ContextWith[adapter.NetworkManager](Context(e.lifetime), e.inst.Network())
-}
-
-func waitGone(iface string) bool {
-	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); {
-		if _, err := net.InterfaceByName(iface); err != nil {
-			return true
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	return false
 }

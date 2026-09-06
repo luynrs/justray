@@ -1,7 +1,5 @@
 package main
 
-// DAEMON ENTRYPOINT
-
 import (
 	"context"
 	"fmt"
@@ -25,8 +23,14 @@ import (
 )
 
 func main() {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "-v", "--version":
+			fmt.Printf("justrayd %s\n", version.String())
+			return
+		}
+	}
+
 	dir, err := ipc.Dir()
 	if err != nil {
 		die("resolve config dir:", err)
@@ -52,70 +56,76 @@ func main() {
 		logger.Print(err)
 	}
 
-	ln, unlock, err := server.Listen(socket)
-	if err != nil {
-		if strings.Contains(err.Error(), "already listening") {
-			logger.Printf("%v, exiting", err)
+	for {
+		ctx, cancel := context.WithCancel(context.Background())
+
+		ln, unlock, err := server.Listen(socket)
+		if err != nil {
+			cancel()
+			if strings.Contains(err.Error(), "already listening") {
+				logger.Printf("%v, exiting", err)
+				return
+			}
+			logger.Fatal(err)
+		}
+		logger.Printf("justrayd %s listening on %s", version.String(), socket)
+
+		st := store.Disk{Dir: dir}
+		conn := connection.New(ctx, dir, engine.New, engine.Probe, logger)
+		subs := subscription.New(ctx, logger)
+		app, err := core.New(st, conn, subs)
+		if err != nil {
+			unlock()
+			cancel()
+			die(err)
+		}
+		srv := server.New(ctx, logger, app)
+		app.Restore()
+
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+
+		go srv.AutoRefresh()
+
+		served := make(chan error, 1)
+		go func() { served <- srv.Serve(ln) }()
+
+		restart := false
+		select {
+		case s := <-sig:
+			logger.Printf("shutting down (%s)", s)
+		case <-app.RestartRequested():
+			restart = true
+			logger.Print("shutting down for elevated restart")
+		case <-srv.ShutdownRequested():
+			logger.Print("shutting down by request")
+		case err := <-served:
+			logger.Printf("shutting down (%v)", err)
+		}
+		signal.Stop(sig)
+		cancel()
+
+		cleaned := make(chan struct{})
+		go func() {
+			srv.Shutdown()
+			app.Shutdown()
+			close(cleaned)
+		}()
+		select {
+		case <-cleaned:
+		case <-time.After(5 * time.Second):
+			logger.Print("shutdown timed out, exiting")
+		}
+		unlock()
+
+		if !restart {
 			return
 		}
-		logger.Fatal(err)
-	}
-	defer func() {
-		if unlock != nil {
-			unlock()
-		}
-	}()
-	logger.Printf("justrayd %s listening on %s", version.String(), socket)
-
-	st := store.Disk{Dir: dir}
-	conn := connection.New(ctx, dir, engine.New, engine.Probe, logger)
-	subs := subscription.New(ctx, logger)
-	app, err := core.New(st, conn, subs)
-	if err != nil {
-		die(err)
-	}
-	srv := server.New(ctx, logger, app)
-	app.Restore()
-
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-
-	go srv.AutoRefresh()
-
-	served := make(chan error, 1)
-	go func() { served <- srv.Serve(ln) }()
-
-	restart := false
-	select {
-	case s := <-sig:
-		logger.Printf("shutting down (%s)", s)
-	case <-app.RestartRequested():
-		restart = true
-		logger.Print("shutting down for elevated restart")
-	case <-srv.ShutdownRequested():
-		logger.Print("shutting down by request")
-	case err := <-served:
-		logger.Printf("shutting down (%v)", err)
-	}
-	cancel()
-
-	cleaned := make(chan struct{})
-	go func() {
-		srv.Shutdown()
-		app.Shutdown()
-		close(cleaned)
-	}()
-	select {
-	case <-cleaned:
-	case <-time.After(5 * time.Second):
-		logger.Print("shutdown timed out, exiting")
-	}
-	if restart {
-		unlock()
-		unlock = nil
 		if err := elevate.Restart(dir); err != nil {
-			logger.Print(err)
+			logger.Printf("elevated restart failed: %v, continuing non-elevated", err)
+			continue
 		}
+		return
 	}
 }
 
