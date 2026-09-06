@@ -34,10 +34,8 @@ brew install luynrs/tap/justray
 
 # Arch Linux (AUR)
 yay -S justray-bin
-
-# Windows
-winget install luynrs.justray
 ```
+<!-- # Windows  winget install luynrs.justray (UNTIL MERGE) -->
 
 Alternatively, with [x-cmd](https://www.x-cmd.com/mod/eget):
 
