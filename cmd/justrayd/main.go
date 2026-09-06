@@ -44,7 +44,7 @@ func main() {
 
 	var out io.Writer = logFile
 	if !sameFile(os.Stderr, logFile) {
-		out = io.MultiWriter(os.Stderr, logFile)
+		out = io.MultiWriter(logFile, os.Stderr)
 	}
 	logger := log.New(out, "justrayd: ", log.LstdFlags)
 

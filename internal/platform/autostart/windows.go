@@ -37,7 +37,7 @@ func Enable() error {
 	if err != nil {
 		return err
 	}
-	cmd := task("/Create", "/F", "/RL", "LIMITED", "/SC", "ONLOGON", "/TN", name, "/TR", `"`+bin+`"`)
+	cmd := task("/Create", "/F", "/RL", "LIMITED", "/SC", "ONLOGON", "/TN", name, "/TR", bin)
 	if err := cmd.Run(); err != nil {
 		return errors.New("could not enable autostart")
 	}

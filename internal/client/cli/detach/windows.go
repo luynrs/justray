@@ -14,5 +14,7 @@ func init() {
 }
 
 func Cmd(cmd *exec.Cmd) {
-	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NO_WINDOW | syscall.CREATE_NEW_PROCESS_GROUP}
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		CreationFlags: windows.CREATE_NO_WINDOW | windows.DETACHED_PROCESS | syscall.CREATE_NEW_PROCESS_GROUP,
+	}
 }
