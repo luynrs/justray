@@ -31,6 +31,41 @@ archives:
 checksum:
   name_template: checksums.txt
 
+changelog:
+  use: github
+  sort: asc
+  abbrev: -1
+  format: >-
+    {{ if contains .Message "(#" -}}
+      {{ index (split .Message "(#") 0 | trim }}{{ with .Author.Username }} by @{{ . }}{{ else }}{{ with .Author.Name }} by {{ . }}{{ end }}{{ end }} in #{{ trimsuffix (index (split .Message "(#") 1) ")" }}
+    {{- else -}}
+      {{ .Message }}{{ with .Author.Username }} by @{{ . }}{{ else }}{{ with .Author.Name }} by {{ . }}{{ end }}{{ end }}
+    {{- end }}
+
+  groups:
+    - title: "🚀 Features"
+      regexp: '^.*?feat(\([[:word:]-]+\))??!?:.+$'
+      order: 0
+
+    - title: "🐛 Bug Fixes"
+      regexp: '^.*?fix(\([[:word:]-]+\))??!?:.+$'
+      order: 1
+
+    - title: "⚡ Performance"
+      regexp: '^.*?perf(\([[:word:]-]+\))??!?:.+$'
+      order: 2
+
+    - title: "♻️ Refactoring"
+      regexp: '^.*?refactor(\([[:word:]-]+\))??!?:.+$'
+      order: 3
+
+  filters:
+    exclude:
+      - '^.*?docs(\([[:word:]-]+\))??!?:'
+      - '^.*?chore(\([[:word:]-]+\))??!?:'
+      - '^.*?ci(\([[:word:]-]+\))??!?:'
+      - '^.*?Merge (pull request|branch)'
+
 homebrew_casks:
   - name: justray
     binaries: [justray, justrayd]
@@ -93,4 +128,5 @@ aurs:
 release:
   name_template: "{{ .Version }}"
   draft: false
+  prerelease: auto
   mode: replace
