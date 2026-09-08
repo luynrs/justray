@@ -12,12 +12,12 @@ import (
 
 const (
 	DefaultPort     = 10808
-	DefaultDNS      = "1.1.1.1"
+	DefaultDNS      = "8.8.8.8"
 	DefaultLogLevel = "error"
 	DefaultTunMTU   = 9000
 	DefaultTunStack = "gvisor"
 	DefaultRefresh  = 6
-	DefaultProbeURL = "http://cp.cloudflare.com/generate_204"
+	DefaultProbeURL = "http://www.gstatic.com/generate_204"
 	TunInterface    = "justray"
 )
 

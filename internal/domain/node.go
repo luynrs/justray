@@ -27,24 +27,24 @@ const (
 )
 
 type Node struct {
-	ID             string
-	Name           string
-	Protocol       Proto
-	Server         string
-	Port           int
-	Auth           Auth
-	Transport      Transport
-	TLS            *TLS // nil means plaintext
-	Reality        *Reality
-	Obfs           string // hysteria2
-	ObfsPassword   string // hysteria2, hysteria xplus
-	UpMbps         int    // hysteria
-	DownMbps       int    // hysteria
-	Congestion     string // tuic
-	UDPRelayMode   string // tuic
-	PacketEncoding string // vless, vmess: xudp, packetaddr; empty = xudp
-	ShadowTLS      *ShadowTLS
-	WireGuard      *WireGuard
+	ID             string     `yaml:"id"`
+	Name           string     `yaml:"name,omitempty"`
+	Protocol       Proto      `yaml:"protocol"`
+	Server         string     `yaml:"server"`
+	Port           int        `yaml:"port"`
+	Auth           Auth       `yaml:"auth,omitempty"`
+	Transport      Transport  `yaml:"transport,omitempty"`
+	TLS            *TLS       `yaml:"tls,omitempty"`
+	Reality        *Reality   `yaml:"reality,omitempty"`
+	Obfs           string     `yaml:"obfs,omitempty"`            // hysteria2
+	ObfsPassword   string     `yaml:"obfs_password,omitempty"`   // hysteria2, hysteria xplus
+	UpMbps         int        `yaml:"up_mbps,omitempty"`         // hysteria
+	DownMbps       int        `yaml:"down_mbps,omitempty"`       // hysteria
+	Congestion     string     `yaml:"congestion,omitempty"`      // tuic
+	UDPRelayMode   string     `yaml:"udp_relay_mode,omitempty"`  // tuic
+	PacketEncoding string     `yaml:"packet_encoding,omitempty"` // vless, vmess: xudp, packetaddr; empty = xudp
+	ShadowTLS      *ShadowTLS `yaml:"shadow_tls,omitempty"`
+	WireGuard      *WireGuard `yaml:"wireguard,omitempty"`
 }
 
 type NodeRef struct {
@@ -55,46 +55,46 @@ type NodeRef struct {
 func ValidPort(port int) bool { return port >= 1 && port <= 65535 }
 
 type Auth struct {
-	UUID     string // vmess, vless, tuic
-	Password string // trojan, ss, hysteria, anytls, tuic
-	Username string // socks, http
-	Method   string // ss cipher, vmess security
-	Flow     string // vless, e.g. xtls
-	AlterID  int    // legacy vmess
+	UUID     string `yaml:"uuid,omitempty"`     // vmess, vless, tuic
+	Password string `yaml:"password,omitempty"` // trojan, ss, hysteria, anytls, tuic
+	Username string `yaml:"username,omitempty"` // socks, http
+	Method   string `yaml:"method,omitempty"`   // ss cipher, vmess security
+	Flow     string `yaml:"flow,omitempty"`     // vless, e.g. xtls
+	AlterID  int    `yaml:"alter_id,omitempty"` // legacy vmess
 }
 
 type ShadowTLS struct {
-	Version  int
-	Password string
-	SNI      string
+	Version  int    `yaml:"version,omitempty"`
+	Password string `yaml:"password,omitempty"`
+	SNI      string `yaml:"sni,omitempty"`
 }
 
 type WireGuard struct {
-	PrivateKey    string
-	PeerPublicKey string
-	PreSharedKey  string
-	Address       []string
-	Reserved      []uint8
-	MTU           uint32
+	PrivateKey    string   `yaml:"private_key,omitempty"`
+	PeerPublicKey string   `yaml:"peer_public_key,omitempty"`
+	PreSharedKey  string   `yaml:"pre_shared_key,omitempty"`
+	Address       []string `yaml:"address,omitempty"`
+	Reserved      []uint8  `yaml:"reserved,omitempty"`
+	MTU           uint32   `yaml:"mtu,omitempty"`
 }
 
 type Transport struct {
-	Network     string // tcp, ws, grpc, quic, xhttp
-	Path        string
-	Host        string
-	ServiceName string // grpc
-	Mode        string // xhttp: auto, packet-up, stream-up, stream-one
+	Network     string `yaml:"network,omitempty"` // tcp, ws, grpc, quic, xhttp
+	Path        string `yaml:"path,omitempty"`
+	Host        string `yaml:"host,omitempty"`
+	ServiceName string `yaml:"service_name,omitempty"` // grpc
+	Mode        string `yaml:"mode,omitempty"`         // xhttp: auto, packet-up, stream-up, stream-one
 	Extra       string `yaml:"extra,omitempty"`
 }
 
 type TLS struct {
-	SNI         string
-	ALPN        []string
-	Fingerprint string
-	Insecure    bool
+	SNI         string   `yaml:"sni,omitempty"`
+	ALPN        []string `yaml:"alpn,omitempty"`
+	Fingerprint string   `yaml:"fingerprint,omitempty"`
+	Insecure    bool     `yaml:"insecure,omitempty"`
 }
 
 type Reality struct {
-	PublicKey string
-	ShortID   string
+	PublicKey string `yaml:"public_key,omitempty"`
+	ShortID   string `yaml:"short_id,omitempty"`
 }

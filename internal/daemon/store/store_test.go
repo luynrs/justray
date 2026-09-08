@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,6 +31,13 @@ func TestRoundtrip(t *testing.T) {
 	}
 	if err := d.Save(state); err != nil {
 		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(ipc.Configuration(d.Dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "tls:") || strings.Contains(string(raw), "password:") {
+		t.Fatalf("expected empty fields to be omitted, got:\n%s", raw)
 	}
 	got, err := d.Load()
 	if err != nil {
