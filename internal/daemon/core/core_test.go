@@ -21,7 +21,7 @@ import (
 	"github.com/luynrs/justray/internal/engine"
 )
 
-func TestRefreshRunsOutsideMutationLockAndJoins(t *testing.T) {
+func TestRefreshLock(t *testing.T) {
 	var calls atomic.Int32
 	var start sync.Once
 	started := make(chan struct{})
@@ -108,7 +108,7 @@ func TestFind(t *testing.T) {
 	}
 }
 
-func TestMoveSubscriptionCommitsCoreState(t *testing.T) {
+func TestMoveSubscription(t *testing.T) {
 	disk := store.Disk{Dir: t.TempDir()}
 	if err := disk.Save(store.PersistentState{Subscriptions: []store.Subscription{{ID: "a"}, {ID: "b"}}}); err != nil {
 		t.Fatal(err)
@@ -118,15 +118,15 @@ func TestMoveSubscriptionCommitsCoreState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	initial, changed, cancel := app.Watch()
+	init, changed, cancel := app.Watch()
 	defer cancel()
 	if err := app.MoveSubscription("a", 1); err != nil {
 		t.Fatal(err)
 	}
 	select {
-	case update := <-changed:
-		if update.Revision <= initial.Revision || app.Snapshot().Revision != update.Revision {
-			t.Fatalf("revision: initial=%d update=%d snapshot=%d", initial.Revision, update.Revision, app.Snapshot().Revision)
+	case up := <-changed:
+		if up.Revision <= init.Revision || app.Snapshot().Revision != up.Revision {
+			t.Fatalf("revision: init=%d update=%d snapshot=%d", init.Revision, up.Revision, app.Snapshot().Revision)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("watch did not receive mutation revision")
@@ -140,7 +140,7 @@ func TestMoveSubscriptionCommitsCoreState(t *testing.T) {
 	}
 }
 
-func TestRefreshSubscriptionPublishesCommittedSnapshot(t *testing.T) {
+func TestRefreshSnapshot(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, "vless://11111111-1111-1111-1111-111111111111@example.com:443?security=tls#node")
 	}))
@@ -158,23 +158,23 @@ func TestRefreshSubscriptionPublishesCommittedSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	initial, changed, cancel := app.Watch()
+	init, changed, cancel := app.Watch()
 	defer cancel()
 	if err := app.RefreshSubscription(context.Background(), "sub"); err != nil {
 		t.Fatal(err)
 	}
 	select {
-	case update := <-changed:
-		snapshot := app.Snapshot()
-		if update.Revision <= initial.Revision || snapshot.Revision != update.Revision || len(snapshot.Nodes) != 1 {
-			t.Fatalf("update=%+v initial=%+v snapshot=%+v", update, initial, snapshot)
+	case up := <-changed:
+		snap := app.Snapshot()
+		if up.Revision <= init.Revision || snap.Revision != up.Revision || len(snap.Nodes) != 1 {
+			t.Fatalf("update=%+v init=%+v snap=%+v", up, init, snap)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("watch did not receive refresh revision")
 	}
 }
 
-func TestProbePublishesCoreOwnedResults(t *testing.T) {
+func TestProbe(t *testing.T) {
 	disk := store.Disk{Dir: t.TempDir()}
 	if err := disk.Save(store.PersistentState{Subscriptions: []store.Subscription{{ID: "sub", Nodes: []domain.Node{{ID: "node"}}}}}); err != nil {
 		t.Fatal(err)
@@ -191,39 +191,39 @@ func TestProbePublishesCoreOwnedResults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	initial, changed, cancel := app.Watch()
+	init, changed, cancel := app.Watch()
 	defer cancel()
 	if err := app.Probe(context.Background(), "sub", "node"); err != nil {
 		t.Fatal(err)
 	}
 	select {
-	case update := <-changed:
-		snapshot := app.Snapshot()
-		if update.Revision <= initial.Revision || snapshot.Revision != update.Revision || len(snapshot.Nodes) != 1 || !snapshot.Nodes[0].Probed || !snapshot.Nodes[0].Alive || snapshot.Nodes[0].MS != 12 {
-			t.Fatalf("update=%+v initial=%+v snapshot=%+v", update, initial, snapshot)
+	case up := <-changed:
+		snap := app.Snapshot()
+		if up.Revision <= init.Revision || snap.Revision != up.Revision || len(snap.Nodes) != 1 || !snap.Nodes[0].Probed || !snap.Nodes[0].Alive || snap.Nodes[0].MS != 12 {
+			t.Fatalf("update=%+v init=%+v snap=%+v", up, init, snap)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("watch did not receive probe revision")
 	}
 }
 
-func TestSetTunCommitsCoreState(t *testing.T) {
+func TestSetTun(t *testing.T) {
 	disk := store.Disk{Dir: t.TempDir()}
 	logger := log.New(io.Discard, "", 0)
 	app, err := New(disk, connection.New(context.Background(), "", nil, nil, logger), subscription.New(context.Background(), logger))
 	if err != nil {
 		t.Fatal(err)
 	}
-	initial, changed, cancel := app.Watch()
+	init, changed, cancel := app.Watch()
 	defer cancel()
 	if err := app.SetTun(context.Background(), true); err != nil {
 		t.Fatal(err)
 	}
 	select {
-	case update := <-changed:
-		snapshot := app.Snapshot()
-		if update.Revision <= initial.Revision || snapshot.Revision != update.Revision || !snapshot.Status.Tun {
-			t.Fatalf("update=%+v initial=%+v snapshot=%+v", update, initial, snapshot)
+	case up := <-changed:
+		snap := app.Snapshot()
+		if up.Revision <= init.Revision || snap.Revision != up.Revision || !snap.Status.Tun {
+			t.Fatalf("update=%+v init=%+v snap=%+v", up, init, snap)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("watch did not receive TUN revision")
@@ -258,7 +258,7 @@ func testCore(t *testing.T, eng engine.Engine, state store.PersistentState) *Cor
 	return app
 }
 
-func TestStatusPortActualWhenConnected(t *testing.T) {
+func TestStatusPort(t *testing.T) {
 	settings, _ := domain.Settings{}.Normalize()
 	settings.Port = 1080
 	app := testCore(t, &fakeEngine{}, store.PersistentState{
@@ -282,7 +282,7 @@ func TestStatusPortActualWhenConnected(t *testing.T) {
 	}
 }
 
-func TestContextCancelledCheckedAfterOpMu(t *testing.T) {
+func TestContextCancelled(t *testing.T) {
 	settings, _ := domain.Settings{}.Normalize()
 	app := testCore(t, &fakeEngine{}, store.PersistentState{
 		Settings:      settings,
@@ -303,7 +303,7 @@ func TestContextCancelledCheckedAfterOpMu(t *testing.T) {
 	}
 }
 
-func TestDisconnectDesiredStateCommittedOnRuntimeError(t *testing.T) {
+func TestDisconnectError(t *testing.T) {
 	settings, _ := domain.Settings{}.Normalize()
 	app := testCore(t, &fakeEngine{closeErr: io.ErrUnexpectedEOF}, store.PersistentState{
 		Settings:      settings,
@@ -320,7 +320,7 @@ func TestDisconnectDesiredStateCommittedOnRuntimeError(t *testing.T) {
 	}
 }
 
-func TestNewFailsOnMalformedConfig(t *testing.T) {
+func TestNewMalformed(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "configuration.yaml")
 	if err := os.WriteFile(path, []byte("invalid: [yaml: broken"), 0o600); err != nil {
@@ -334,7 +334,7 @@ func TestNewFailsOnMalformedConfig(t *testing.T) {
 	}
 }
 
-func TestSnapshotRefreshesStatusUptime(t *testing.T) {
+func TestSnapshotUptime(t *testing.T) {
 	settings, _ := domain.Settings{}.Normalize()
 	app := testCore(t, &fakeEngine{}, store.PersistentState{
 		Settings:      settings,

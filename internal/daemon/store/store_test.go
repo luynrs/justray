@@ -11,7 +11,7 @@ import (
 	"github.com/luynrs/justray/internal/ipc"
 )
 
-func TestPersistentStateRoundtrip(t *testing.T) {
+func TestRoundtrip(t *testing.T) {
 	d := Disk{Dir: t.TempDir()}
 	state := PersistentState{
 		Subscriptions: []Subscription{{
@@ -40,7 +40,7 @@ func TestPersistentStateRoundtrip(t *testing.T) {
 	}
 }
 
-func TestLoadMigratesSplitFiles(t *testing.T) {
+func TestLoadMigrates(t *testing.T) {
 	d := Disk{Dir: t.TempDir()}
 	if err := os.WriteFile(ipc.Configuration(d.Dir), []byte("active: node\nactive_subscription: sub\nlast: old\nlast_subscription: old-sub\ntun: true\nsettings:\n  general:\n    refresh_hours: 12\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -63,7 +63,7 @@ func TestLoadMigratesSplitFiles(t *testing.T) {
 	}
 }
 
-func TestEmptySnapshotDoesNotReadLegacyFile(t *testing.T) {
+func TestEmptySnapshot(t *testing.T) {
 	d := Disk{Dir: t.TempDir()}
 	if err := d.Save(PersistentState{}); err != nil {
 		t.Fatal(err)

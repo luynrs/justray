@@ -18,9 +18,9 @@ import (
 	"github.com/luynrs/justray/internal/ipc"
 )
 
-func TestListenDoesNotWaitForLock(t *testing.T) {
-	socket := filepath.Join(t.TempDir(), "daemon.sock")
-	ln, unlock, err := Listen(socket)
+func TestListenLocked(t *testing.T) {
+	sock := filepath.Join(t.TempDir(), "daemon.sock")
+	ln, unlock, err := Listen(sock)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,47 +29,47 @@ func TestListenDoesNotWaitForLock(t *testing.T) {
 		unlock()
 	}()
 
-	if _, _, err := Listen(socket); err == nil || !strings.Contains(err.Error(), "already listening") {
+	if _, _, err := Listen(sock); err == nil || !strings.Contains(err.Error(), "already listening") {
 		t.Fatalf("second Listen error = %v", err)
 	}
 }
 
-func TestShutdownClosesWatch(t *testing.T) {
+func TestShutdownWatch(t *testing.T) {
 	dir := t.TempDir()
 	ln, err := net.Listen("unix", filepath.Join(dir, "daemon.sock"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	logger := log.New(io.Discard, "", 0)
+	l := log.New(io.Discard, "", 0)
 	st := store.Disk{Dir: dir}
-	app, err := core.New(st, connection.New(context.Background(), dir, nil, nil, logger), subscription.New(context.Background(), logger))
+	app, err := core.New(st, connection.New(context.Background(), dir, nil, nil, l), subscription.New(context.Background(), l))
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := New(context.Background(), logger, app)
+	srv := New(context.Background(), l, app)
 	served := make(chan error, 1)
 	go func() { served <- srv.Serve(ln) }()
 
-	client, err := net.Dial("unix", ln.Addr().String())
+	c, err := net.Dial("unix", ln.Addr().String())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = client.Close() }()
-	if err := json.NewEncoder(client).Encode(ipc.Req{Method: "Watch"}); err != nil {
+	defer func() { _ = c.Close() }()
+	if err := json.NewEncoder(c).Encode(ipc.Req{Method: "Watch"}); err != nil {
 		t.Fatal(err)
 	}
-	_ = client.SetReadDeadline(time.Now().Add(time.Second))
-	if err := json.NewDecoder(client).Decode(&ipc.Changed{}); err != nil {
+	_ = c.SetReadDeadline(time.Now().Add(time.Second))
+	if err := json.NewDecoder(c).Decode(&ipc.Changed{}); err != nil {
 		t.Fatalf("initial Watch revision: %v", err)
 	}
 
-	stopped := make(chan struct{})
+	done := make(chan struct{})
 	go func() {
 		srv.Shutdown()
-		close(stopped)
+		close(done)
 	}()
 	select {
-	case <-stopped:
+	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("Shutdown did not wait for Watch to exit")
 	}

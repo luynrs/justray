@@ -104,7 +104,7 @@ func TestParseSubscriptionPlainList(t *testing.T) {
 		"",
 		"trojan://secret@example.com:443#one",
 		"vless://11111111-1111-1111-1111-111111111111@example.org:8443?security=tls#two",
-		"shit shit shit shit shit",
+		"https://youtu.be/dQw4w9WgXcQ", // rickroll
 	}, "\n")
 
 	nodes, err := ParseSubscription([]byte(body))

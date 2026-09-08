@@ -40,7 +40,7 @@ func testService(t *testing.T, eng engine.Engine) *Service {
 	}
 }
 
-func TestStopCleansUpSessionOnEngineError(t *testing.T) {
+func TestStopError(t *testing.T) {
 	eng := &fakeEngine{closeErr: errors.New("close failed")}
 	s := testService(t, eng)
 	if err := s.stop(); err == nil || s.session.eng != nil || s.Status().Connected {
@@ -48,7 +48,7 @@ func TestStopCleansUpSessionOnEngineError(t *testing.T) {
 	}
 }
 
-func TestSetTunFailureDoesNotChangeRuntimeState(t *testing.T) {
+func TestSetTunFailure(t *testing.T) {
 	s := testService(t, &fakeEngine{tunErr: errors.New("tun failed")})
 	settings, _ := domain.Settings{}.Normalize()
 	if err := s.Apply(context.Background(), domain.Node{ID: "n1"}, domain.NodeRef{NodeID: "n1"}, settings, true); err == nil || s.session.tun {
@@ -56,7 +56,7 @@ func TestSetTunFailureDoesNotChangeRuntimeState(t *testing.T) {
 	}
 }
 
-func TestStartClosesEngineOnFailure(t *testing.T) {
+func TestStartFailure(t *testing.T) {
 	eng := &fakeEngine{startErr: errors.New("start failed")}
 	s := testService(t, nil)
 	s.newEngine = func(context.Context, string) engine.Engine { return eng }
@@ -66,7 +66,7 @@ func TestStartClosesEngineOnFailure(t *testing.T) {
 	}
 }
 
-func TestStatusPortMatchesActiveSession(t *testing.T) {
+func TestStatusPort(t *testing.T) {
 	eng := &fakeEngine{}
 	s := testService(t, nil)
 	s.newEngine = func(context.Context, string) engine.Engine { return eng }
@@ -86,7 +86,7 @@ func TestStatusPortMatchesActiveSession(t *testing.T) {
 	}
 }
 
-func TestShutdownClosesEngine(t *testing.T) {
+func TestShutdown(t *testing.T) {
 	eng := &fakeEngine{}
 	s := testService(t, eng)
 	s.Shutdown()
