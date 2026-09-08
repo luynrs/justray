@@ -11,7 +11,14 @@ permissions:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     env:
       GOFLAGS: -tags=with_quic,with_utls,with_gvisor,with_grpc,with_xhttp
     steps:
@@ -20,20 +27,23 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Verify
+        env:
+          JUSTRAY_TEST_SCHEDULER: "1"
         run: |
           go vet ./...
           go test ./...
       - uses: golangci/golangci-lint-action@v9
+        if: runner.os == 'Linux'
         with:
           version: v2.12.2
           args: --build-tags with_quic,with_utls,with_gvisor,with_grpc,with_xhttp
-      - name: Build Linux
+      - name: Build
         run: go build ./...
-      - name: Build MacOS
-        run: GOOS=darwin GOARCH=amd64 go build ./...
-      - name: Build Windows
-        run: GOOS=windows GOARCH=amd64 go build ./...
+      - name: Race detector
+        if: runner.os == 'Linux'
+        run: go test -race ./cmd/justrayd ./internal/daemon/... ./internal/ipc/...
       - name: GoReleaser
+        if: runner.os == 'Linux'
         uses: goreleaser/goreleaser-action@v7
         with:
           args: check
