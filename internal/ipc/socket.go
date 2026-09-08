@@ -25,6 +25,7 @@ func EnsureDir(dir string) error {
 func Socket(dir string) string        { return filepath.Join(dir, "ipc", "justrayd.sock") }
 func DaemonLog(dir string) string     { return filepath.Join(dir, "logs", "daemon.log") }
 func EngineLog(dir string) string     { return filepath.Join(dir, "logs", "engine.log") }
+func TUILog(dir string) string        { return filepath.Join(dir, "logs", "tui.log") }
 func Subscriptions(dir string) string { return filepath.Join(dir, "subscriptions.yaml") }
 func Configuration(dir string) string { return filepath.Join(dir, "configuration.yaml") }
 

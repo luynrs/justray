@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"log"
-	"path/filepath"
 	"time"
 
 	"charm.land/bubbles/v2/spinner"
@@ -121,7 +120,7 @@ func Run(c *ipc.Client) error {
 	defer log.SetOutput(prev)
 
 	if dir, err := ipc.Dir(); err == nil {
-		if f, err := tea.LogToFile(filepath.Join(dir, "tui.log"), "tui"); err == nil {
+		if f, err := tea.LogToFile(ipc.TUILog(dir), "tui"); err == nil {
 			defer func() { _ = f.Close() }()
 		} else {
 			log.SetOutput(io.Discard)
