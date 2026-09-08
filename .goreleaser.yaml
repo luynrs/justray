@@ -33,7 +33,8 @@ checksum:
 
 changelog:
   sort: asc
-  abbrev: -1
+  abbrev: 7
+  format: "[`{{ .SHA }}`](https://github.com/luynrs/justray/commit/{{ .SHA }}) {{ .Message }}"
   groups:
     - title: "🚀 Features"
       regexp: '^.*?feat(\([[:word:]-]+\))??!?:.+$'
