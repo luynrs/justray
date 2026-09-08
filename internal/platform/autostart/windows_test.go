@@ -4,11 +4,13 @@ package autostart
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/xml"
 	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
+	"unicode/utf16"
 
 	"golang.org/x/sys/windows"
 )
@@ -27,7 +29,14 @@ func TestTask(t *testing.T) {
 	var bin bytes.Buffer
 	_ = xml.EscapeText(&bin, []byte(filepath.Join(dir, "justray & тест.exe")))
 	xmlPath := filepath.Join(dir, "task.xml")
-	if err := os.WriteFile(xmlPath, fmt.Appendf(nil, task, u.User.Sid.String(), bin.String()), 0o600); err != nil {
+	f, err := os.Create(xmlPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := binary.Write(f, binary.LittleEndian, utf16.Encode([]rune(fmt.Sprintf(task, u.User.Sid.String(), bin.String())))); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
 		t.Fatal(err)
 	}
 	if out, err := cmd("/Create", "/TN", name, "/XML", xmlPath).CombinedOutput(); err != nil {

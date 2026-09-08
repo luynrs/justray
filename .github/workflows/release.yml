@@ -7,11 +7,14 @@ on:
 permissions:
   contents: write
 
-env:
-  GOFLAGS: -tags=with_quic,with_utls,with_gvisor,with_grpc
-
 jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   release:
+    needs: [ci]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -25,8 +28,6 @@ jobs:
           version=$(awk -F '"' '/^var Version = / { print $2 }' internal/version/version.go)
           test -n "$version"
           test "$GITHUB_REF_NAME" = "v$version"
-          go vet ./...
-          go test ./...
       - name: Publish
         uses: goreleaser/goreleaser-action@v7
         with:

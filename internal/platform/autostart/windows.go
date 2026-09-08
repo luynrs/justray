@@ -4,6 +4,7 @@ package autostart
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -11,13 +12,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"syscall"
+	"unicode/utf16"
 
 	"golang.org/x/sys/windows"
 )
 
 const name = "justrayd"
 
-const task = `<?xml version="1.0" encoding="UTF-8"?>
+const task = "\ufeff" + `<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <Triggers><LogonTrigger><UserId>%[1]s</UserId></LogonTrigger></Triggers>
   <Principals><Principal id="User"><UserId>%[1]s</UserId><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>
@@ -66,7 +68,7 @@ func Enable() error {
 		return err
 	}
 	defer func() { _ = os.Remove(f.Name()) }()
-	_, err = fmt.Fprintf(f, task, user.User.Sid.String(), command.String())
+	err = binary.Write(f, binary.LittleEndian, utf16.Encode([]rune(fmt.Sprintf(task, user.User.Sid.String(), command.String()))))
 	if err := errors.Join(err, f.Close()); err != nil {
 		return err
 	}

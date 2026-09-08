@@ -32,16 +32,8 @@ checksum:
   name_template: checksums.txt
 
 changelog:
-  use: github
   sort: asc
   abbrev: -1
-  format: >-
-    {{ if contains .Message "(#" -}}
-      {{ index (split .Message "(#") 0 | trim }}{{ with .Author.Username }} by @{{ . }}{{ else }}{{ with .Author.Name }} by {{ . }}{{ end }}{{ end }} in #{{ trimsuffix (index (split .Message "(#") 1) ")" }}
-    {{- else -}}
-      {{ .Message }}{{ with .Author.Username }} by @{{ . }}{{ else }}{{ with .Author.Name }} by {{ . }}{{ end }}{{ end }}
-    {{- end }}
-
   groups:
     - title: "🚀 Features"
       regexp: '^.*?feat(\([[:word:]-]+\))??!?:.+$'
