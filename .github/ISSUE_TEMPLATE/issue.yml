@@ -1,0 +1,55 @@
+name: Bug report
+description: Report a bug or problem
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I am running the latest version of justray
+        - label: I searched existing issues and this is not a duplicate
+        - label: I just checked boxes without reading they
+
+  - type: textarea
+    id: version
+    attributes:
+      label: Client version
+      description: Run `justray version` and paste the output
+      render: shell
+      placeholder: |
+        justray version 0.0.0 (linux/amd64)
+        https://github.com/luynrs/justray/releases/tag/v0.0.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: What went wrong and how to reproduce it
+      placeholder: |
+        What happened:
+        ...
+
+        Steps to reproduce:
+        1. ...
+    validations:
+      required: true
+
+  - type: upload
+    id: daemon_log
+    attributes:
+      label: daemon.log
+      description: Upload logs/daemon.log (remove server data if it yours)
+    validations:
+      accept: ".log,.txt"
+
+  - type: upload
+    id: core_log
+    attributes:
+      label: core log
+      description: Upload logs/engine.log
+    validations:
+      accept: ".log,.txt"

@@ -1,0 +1,32 @@
+name: Feature request
+description: Suggest an idea or improvement
+title: "[Feature]: "
+labels: ["feature"]
+body:
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and this is not a duplicate
+
+  - type: textarea
+    id: feature
+    attributes:
+      label: Feature
+      description: What to add or change and why
+      placeholder: |
+        What I want:
+        ...
+
+        Why:
+        ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: details
+    attributes:
+      label: Ideas / Implementation
+      description: CLI flags, TUI mockups, or ideas
+      placeholder: "e.g. `justray --flightmode` or a new keybind in the TUI"
