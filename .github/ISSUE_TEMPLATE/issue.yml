@@ -10,7 +10,7 @@ body:
       options:
         - label: I am running the latest version of justray
         - label: I searched existing issues and this is not a duplicate
-        - label: I just checked boxes without reading they
+        - label: I just checked boxes without reading them
 
   - type: textarea
     id: version
