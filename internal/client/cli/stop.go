@@ -2,11 +2,13 @@ package cli
 
 import (
 	"errors"
+	"os"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/luynrs/justray/internal/ipc"
+	"github.com/luynrs/justray/internal/platform/lock"
 )
 
 var stopCmd = &cobra.Command{
@@ -17,26 +19,42 @@ var stopCmd = &cobra.Command{
 }
 
 func (a *app) stop(cmd *cobra.Command, args []string) error {
-	c := a.daemon()
-	if c == nil || c.Ping() != nil {
+	dir, err := ipc.Dir()
+	if err != nil {
+		return err
+	}
+	socket := ipc.Socket(dir)
+	c := ipc.NewClient(socket)
+	if c.Ping() != nil {
+		if err := waitStopped(socket, 6*time.Second); err != nil {
+			return err
+		}
 		done("Daemon is not running")
 		return nil
 	}
 	stop := spin("Stopping daemon")
-	_ = c.Shutdown()
-	err := waitStopped(c, 5*time.Second)
+	shutdownErr := c.Shutdown()
+	err = waitStopped(socket, 6*time.Second)
 	stop()
 	if err != nil {
-		return err
+		return errors.Join(shutdownErr, err)
 	}
 	done("Daemon stopped")
 	return nil
 }
 
-func waitStopped(c *ipc.Client, timeout time.Duration) error {
+func waitStopped(socket string, timeout time.Duration) error {
 	for deadline := time.Now().Add(timeout); time.Now().Before(deadline); {
-		if c.Ping() != nil {
+		unlock, err := lock.File(socket + ".lock")
+		if err == nil {
+			unlock()
 			return nil
+		}
+		if os.IsNotExist(err) {
+			return nil
+		}
+		if !errors.Is(err, lock.ErrLocked) {
+			return err
 		}
 		time.Sleep(50 * time.Millisecond)
 	}

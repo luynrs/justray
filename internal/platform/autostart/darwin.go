@@ -3,6 +3,8 @@
 package autostart
 
 import (
+	"bytes"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"os"
@@ -12,14 +14,14 @@ import (
 
 const label = "com.github.luynrs.justrayd"
 
-const plist = `<?xml version="1.0" encoding="UTF-8"?>
+const task = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
 	<key>Label</key><string>%s</string>
 	<key>ProgramArguments</key><array><string>%s</string></array>
 	<key>RunAtLoad</key><true/>
-	<key>KeepAlive</key><true/>
+	<key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
 </dict>
 </plist>
 `
@@ -53,7 +55,9 @@ func Enable() error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, fmt.Appendf(nil, plist, label, bin), 0o600); err != nil {
+	var command bytes.Buffer
+	_ = xml.EscapeText(&command, []byte(bin))
+	if err := os.WriteFile(path, fmt.Appendf(nil, task, label, command.String()), 0o600); err != nil {
 		return err
 	}
 	if err := exec.Command("launchctl", "load", "-w", path).Run(); err != nil {

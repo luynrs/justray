@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -49,12 +50,11 @@ func main() {
 	var out io.Writer = logFile
 	if !sameFile(os.Stderr, logFile) {
 		out = io.MultiWriter(logFile, os.Stderr)
+		if err := debug.SetCrashOutput(logFile, debug.CrashOptions{}); err != nil {
+			_, _ = fmt.Fprintln(logFile, "crash:", err)
+		}
 	}
 	logger := log.New(out, "justrayd: ", log.LstdFlags)
-
-	if err := ipc.ClearLog(ipc.EngineLog(dir)); err != nil {
-		logger.Print(err)
-	}
 
 	for {
 		ctx, cancel := context.WithCancel(context.Background())
@@ -69,15 +69,19 @@ func main() {
 			logger.Fatal(err)
 		}
 		logger.Printf("justrayd %s listening on %s", version.String(), socket)
+		if err := ipc.ClearLog(ipc.EngineLog(dir)); err != nil {
+			logger.Print(err)
+		}
 
 		st := store.Disk{Dir: dir}
 		conn := connection.New(ctx, dir, engine.New, engine.Probe, logger)
 		subs := subscription.New(ctx, logger)
 		app, err := core.New(st, conn, subs)
 		if err != nil {
+			_ = ln.Close()
 			unlock()
 			cancel()
-			die(err)
+			logger.Fatal(err)
 		}
 		srv := server.New(ctx, logger, app)
 		app.Restore()
@@ -88,9 +92,13 @@ func main() {
 		go srv.AutoRefresh()
 
 		served := make(chan error, 1)
-		go func() { served <- srv.Serve(ln) }()
+		go func() {
+			served <- srv.Serve(ln)
+			close(served)
+		}()
 
 		restart := false
+		var serveErr error
 		select {
 		case s := <-sig:
 			logger.Printf("shutting down (%s)", s)
@@ -99,25 +107,30 @@ func main() {
 			logger.Print("shutting down for elevated restart")
 		case <-srv.ShutdownRequested():
 			logger.Print("shutting down by request")
-		case err := <-served:
-			logger.Printf("shutting down (%v)", err)
+		case serveErr = <-served:
+			logger.Printf("shutting down (%v)", serveErr)
 		}
 		signal.Stop(sig)
 		cancel()
 
 		cleaned := make(chan struct{})
 		go func() {
+			_ = ln.Close()
 			srv.Shutdown()
+			<-served
 			app.Shutdown()
 			close(cleaned)
 		}()
 		select {
 		case <-cleaned:
 		case <-time.After(5 * time.Second):
-			logger.Print("shutdown timed out, exiting")
+			logger.Fatal("shutdown timed out")
 		}
 		unlock()
 
+		if serveErr != nil {
+			logger.Fatal(serveErr)
+		}
 		if !restart {
 			return
 		}
