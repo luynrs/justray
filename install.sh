@@ -1,6 +1,6 @@
 #!/bin/sh
 
-set -eu
+set -efu
 
 repo="https://github.com/luynrs/justray"
 version="${JUSTRAY_VERSION:-latest}"
@@ -19,7 +19,7 @@ step() {
 	fi
 }
 
-done_msg() {
+pass() {
 	if [ -n "$c_clr" ]; then
 		printf "%b✓ %s\n" "$c_clr" "$1"
 	else
@@ -98,6 +98,7 @@ line=$(
 	' "$checksums"
 )
 
+# shellcheck disable=SC2086
 set -- $line
 [ "$#" -eq 2 ] || fail "expected exactly one release for ${os}_${arch}"
 
@@ -105,7 +106,7 @@ expected="$1"
 archive="$2"
 
 tag=$(echo "$archive" | sed -E 's/^justray_(.+)_[^_]+_[^_]+\.tar\.gz$/\1/')
-done_msg "Found v$tag for ${os}/${arch}"
+pass "Found v$tag for ${os}/${arch}"
 
 step "Downloading $archive..."
 
@@ -121,7 +122,7 @@ fi
 
 [ "$actual" = "$expected" ] || fail "checksum mismatch"
 
-done_msg "Verified checksum"
+pass "Verified checksum"
 
 mkdir -p "$tmp/out"
 tar -xzf "$tmp/$archive" -C "$tmp/out" 2>/dev/null || fail "failed to extract archive"
@@ -170,7 +171,7 @@ install -m 755 "$tmp/out/justrayd" "$dir/justrayd" || fail "failed to install ju
 install -m 755 "$tmp/out/justray" "$dir/justray" || fail "failed to install justray"
 ln -sf justray "$dir/jray" || fail "failed to link jray"
 
-done_msg "Installed to $dir"
+pass "Installed to $dir"
 
 case ":$PATH:" in
 	*":$dir:"*)

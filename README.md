@@ -57,6 +57,8 @@ irm https://raw.githubusercontent.com/luynrs/justray/main/install.ps1 | iex
 
 Nix:
 
+The flake supports Linux (x86_64/aarch64) and Apple Silicon. On Intel Macs, use Homebrew or binaries
+
 ```bash
 # Run directly
 nix run github:luynrs/justray

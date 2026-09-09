@@ -15,34 +15,80 @@
     };
   };
 
-  outputs = inputs@{ flake-parts, ... }:
+  outputs =
+    inputs@{ flake-parts, ... }:
+    let
+      version = builtins.head (
+        builtins.match ".*Version = \"([^\"]*)\".*" (builtins.readFile ./internal/version/version.go)
+      );
+      tags = [
+        "with_quic"
+        "with_utls"
+        "with_gvisor"
+        "with_grpc"
+        "with_xhttp"
+        "badlinkname"
+      ];
+    in
     flake-parts.lib.mkFlake { inherit inputs; } {
-      systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
+      systems = [
+        "x86_64-linux"
+        "aarch64-linux"
+        "aarch64-darwin"
+      ];
 
-      perSystem = { self', pkgs, ... }:
+      perSystem =
+        {
+          self',
+          pkgs,
+          lib,
+          ...
+        }:
         let
-          version = builtins.head (builtins.match ".*Version = \"([^\"]*)\".*" (builtins.readFile ./internal/version/version.go));
-        in {
+          pkg = self'.packages.default;
+          app = program: {
+            type = "app";
+            inherit program;
+            inherit (pkg) meta;
+          };
+        in
+        {
           packages.default = pkgs.buildGo127Module {
             pname = "justray";
             inherit version;
 
-            src = pkgs.lib.fileset.toSource {
+            src = lib.fileset.toSource {
               root = ./.;
-              fileset = pkgs.lib.fileset.unions [ ./go.mod ./go.sum ./cmd ./internal ./LICENSE ];
+              fileset = lib.fileset.unions [
+                ./go.mod
+                ./go.sum
+                ./cmd
+                ./internal
+                ./LICENSE
+              ];
             };
 
             vendorHash = "sha256-GrCNCexU8PTj1LBdbc3SyOeja+OopmEPiuJAPQ/9zWQ=";
             proxyVendor = true;
 
-            subPackages = [ "cmd/justray" "cmd/justrayd" ];
-            tags = [ "with_quic" "with_utls" "with_gvisor" "with_grpc" "with_xhttp" "badlinkname" ];
-            ldflags = [ "-s" "-w" "-X" "github.com/luynrs/justray/internal/version.Version=${version}" ];
+            subPackages = [
+              "cmd/justray"
+              "cmd/justrayd"
+            ];
+            inherit tags;
+            ldflags = [
+              "-s"
+              "-w"
+              "-X"
+              "github.com/luynrs/justray/internal/version.Version=${version}"
+            ];
 
             nativeBuildInputs = [ pkgs.installShellFiles ];
 
             postInstall = ''
               ln -s justray $out/bin/jray
+            ''
+            + lib.optionalString (pkgs.stdenv.buildPlatform.canExecute pkgs.stdenv.hostPlatform) ''
               for cmd in justray jray; do
                 installShellCompletion --cmd "$cmd" \
                   --bash <($out/bin/$cmd completion bash) \
@@ -51,29 +97,33 @@
               done
             '';
 
-            meta = with pkgs.lib; {
+            meta = {
               description = "A modern VPN client that lives in your terminal";
               homepage = "https://github.com/luynrs/justray";
-              license = licenses.gpl3Plus;
+              license = lib.licenses.gpl3Plus;
               mainProgram = "justray";
-              platforms = platforms.unix;
+              platforms = lib.platforms.unix;
             };
           };
           packages.justray = self'.packages.default;
 
-          apps = let
-            pkg = self'.packages.default;
-            app = program: { type = "app"; inherit program; };
-          in {
-            default = app (pkgs.lib.getExe pkg);
-            justray = app (pkgs.lib.getExe pkg);
-            jray = app (pkgs.lib.getExe' pkg "jray");
-            justrayd = app (pkgs.lib.getExe' pkg "justrayd");
+          apps = {
+            default = app (lib.getExe pkg);
+            justray = app (lib.getExe pkg);
+            jray = app (lib.getExe' pkg "jray");
+            justrayd = app (lib.getExe' pkg "justrayd");
           };
 
+          formatter = pkgs.nixfmt-tree;
+
           devShells.default = pkgs.mkShell {
-            packages = with pkgs; [ go_1_27 gopls golangci-lint goreleaser ];
-            GOFLAGS = "-tags=with_quic,with_utls,with_gvisor,with_grpc,with_xhttp,badlinkname";
+            packages = with pkgs; [
+              go_1_27
+              gopls
+              golangci-lint
+              goreleaser
+            ];
+            GOFLAGS = "-tags=${builtins.concatStringsSep "," tags}";
           };
         };
 
@@ -83,19 +133,28 @@
         };
 
         nixosModules = rec {
-          default = { config, lib, pkgs, ... }:
-            let cfg = config.programs.justray; in {
+          default =
+            {
+              config,
+              lib,
+              pkgs,
+              ...
+            }:
+            let
+              cfg = config.programs.justray;
+            in
+            {
               options.programs.justray = {
                 enable = lib.mkEnableOption "justray";
                 package = lib.mkOption {
                   type = lib.types.package;
-                  default = inputs.self.packages.${pkgs.stdenv.hostPlatform.system}.justray;
+                  default = pkgs.justray or inputs.self.packages.${pkgs.stdenv.hostPlatform.system}.justray;
                 };
               };
               config = lib.mkIf cfg.enable {
                 environment.systemPackages = [ cfg.package ];
                 security.wrappers.justrayd = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
-                  source = "${cfg.package}/bin/justrayd";
+                  source = lib.getExe' cfg.package "justrayd";
                   capabilities = "cap_net_admin+ep";
                   owner = "root";
                   group = "root";
@@ -106,24 +165,46 @@
         };
 
         homeManagerModules = rec {
-          default = { config, lib, pkgs, ... }:
-            let cfg = config.services.justray; in {
+          default =
+            {
+              config,
+              lib,
+              pkgs,
+              osConfig ? null,
+              ...
+            }:
+            let
+              cfg = config.services.justray;
+            in
+            {
               options.services.justray = {
                 enable = lib.mkEnableOption "justray";
                 package = lib.mkOption {
                   type = lib.types.package;
-                  default = inputs.self.packages.${pkgs.stdenv.hostPlatform.system}.justray;
+                  default = pkgs.justray or inputs.self.packages.${pkgs.stdenv.hostPlatform.system}.justray;
                 };
                 execPath = lib.mkOption {
                   type = lib.types.str;
-                  default = if pkgs.stdenv.hostPlatform.isLinux then "/run/wrappers/bin/justrayd" else "${cfg.package}/bin/justrayd";
+                  default =
+                    if osConfig != null && (osConfig.programs.justray.enable or false) then
+                      "/run/wrappers/bin/justrayd"
+                    else
+                      lib.getExe' cfg.package "justrayd";
                 };
               };
               config = lib.mkIf cfg.enable {
                 home.packages = [ cfg.package ];
                 systemd.user.services.justrayd = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
-                  Unit = { After = [ "network-online.target" ]; Wants = [ "network-online.target" ]; };
-                  Service = { ExecStart = cfg.execPath; Restart = "on-failure"; RestartSec = 3; };
+                  Unit = {
+                    Description = "justray VPN daemon";
+                    After = [ "network-online.target" ];
+                    Wants = [ "network-online.target" ];
+                  };
+                  Service = {
+                    ExecStart = cfg.execPath;
+                    Restart = "on-failure";
+                    RestartSec = 3;
+                  };
                   Install.WantedBy = [ "default.target" ];
                 };
               };
