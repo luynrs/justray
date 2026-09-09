@@ -30,7 +30,7 @@
 
       justrayFor = system:
         let pkgs = nixpkgs.legacyPackages.${system};
-        in pkgs.buildGoModule {
+        in pkgs.buildGo127Module {
           pname = "justray";
           inherit version;
 
@@ -39,11 +39,11 @@
             fileset = pkgs.lib.fileset.unions [ ./go.mod ./go.sum ./cmd ./internal ./LICENSE ];
           };
 
-          vendorHash = "sha256-XGFLQOVY2l6pptyCdNlwuucqRKtg7WCbEom5LQ7QLdo=";
+          vendorHash = "sha256-GrCNCexU8PTj1LBdbc3SyOeja+OopmEPiuJAPQ/9zWQ=";
           proxyVendor = true;
 
           subPackages = [ "cmd/justray" "cmd/justrayd" ];
-          tags = [ "with_quic" "with_utls" "with_gvisor" "with_grpc" "with_xhttp" ];
+          tags = [ "with_quic" "with_utls" "with_gvisor" "with_grpc" "with_xhttp" "badlinkname" ];
           ldflags = [ "-s" "-w" "-X" "github.com/luynrs/justray/internal/version.Version=${version}" ];
 
           nativeBuildInputs = [ pkgs.installShellFiles ];
@@ -89,8 +89,8 @@
       devShells = forAllSystems (system:
         let pkgs = nixpkgs.legacyPackages.${system}; in {
           default = pkgs.mkShell {
-            packages = with pkgs; [ go gopls golangci-lint goreleaser ];
-            GOFLAGS = "-tags=with_quic,with_utls,with_gvisor,with_grpc,with_xhttp";
+            packages = with pkgs; [ go_1_27 gopls golangci-lint goreleaser ];
+            GOFLAGS = "-tags=with_quic,with_utls,with_gvisor,with_grpc,with_xhttp,badlinkname";
           };
         });
 

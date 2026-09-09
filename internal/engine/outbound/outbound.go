@@ -188,7 +188,7 @@ func wireguard(n domain.Node, tag string) (*option.Endpoint, error) {
 			PreSharedKey:                w.PreSharedKey,
 			AllowedIPs:                  []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0")},
 			Reserved:                    w.Reserved,
-			PersistentKeepaliveInterval: 25,
+			PersistentKeepaliveInterval: "25",
 		}},
 	}}, nil
 }

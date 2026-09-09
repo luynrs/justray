@@ -22,7 +22,7 @@
 - **Flexible:** import subscriptions from raw links or Clash/Mihomo YAML, with automatic refresh and a wide range of settings
 - **Headless:** the daemon and embedded sing-box core run independently from the TUI, keeping connections alive after you detach
 - **Lightweight:** ~50 MB RAM on Linux/macOS and ~100 MB on Windows
-- **Cross-platform:** runs in modern terminals on Linux, macOS, and Windows, including native PowerShell and WSL
+- **Cross-platform:** runs in modern terminals on Linux, macOS 13+, and Windows 1803+, including native PowerShell and WSL
 
 ### Installation
 

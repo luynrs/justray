@@ -1,6 +1,6 @@
 module github.com/luynrs/justray
 
-go 1.26.0
+go 1.27.1
 
 require (
 	charm.land/bubbles/v2 v2.2.1
@@ -71,21 +71,21 @@ require (
 	github.com/quic-go/qpack v0.6.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rogpeppe/go-internal v1.10.0 // indirect
-	github.com/sagernet/bbolt v0.0.0-20231014093535-ea5cb2fe9f0a // indirect
+	github.com/sagernet/bbolt v0.0.0-20260823094646-e24805439c9c // indirect
 	github.com/sagernet/fswatch v0.1.2 // indirect
 	github.com/sagernet/gvisor v0.0.0-20250811-sing-box-mod.1 // indirect
 	github.com/sagernet/nftables v0.3.0-mod.4 // indirect
 	github.com/sagernet/quic-go v0.61.0-sing-box-mod.7 // indirect
-	github.com/sagernet/sing-mux v0.3.5 // indirect
+	github.com/sagernet/sing-mux v0.3.6 // indirect
 	github.com/sagernet/sing-quic v0.7.0 // indirect
 	github.com/sagernet/sing-shadowsocks v0.2.9 // indirect
 	github.com/sagernet/sing-shadowsocks2 v0.2.2 // indirect
 	github.com/sagernet/sing-shadowtls v0.2.1 // indirect
-	github.com/sagernet/sing-tun v0.9.0 // indirect
+	github.com/sagernet/sing-tun v0.9.1-0.20260902150428-1bd9bb8b83e8 // indirect
 	github.com/sagernet/sing-usbip v0.0.0-20260817040617-28bd42667eca // indirect
 	github.com/sagernet/sing-vmess v0.2.8 // indirect
 	github.com/sagernet/smux v1.5.50-sing-box-mod.1 // indirect
-	github.com/sagernet/wireguard-go v0.0.5-0.20260810121456-c6c8a831ef70 // indirect
+	github.com/sagernet/wireguard-go v0.0.5 // indirect
 	github.com/sagernet/ws v0.0.0-20231204124109-acfe8907c854 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/vishvananda/netns v0.0.5 // indirect
@@ -110,10 +110,10 @@ require (
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
 
-replace github.com/sagernet/sing-box => github.com/Leadaxe/sing-box-lx v1.14.0-lx.30
+replace github.com/sagernet/sing-box => github.com/Leadaxe/sing-box-lx v1.14.0-lx.35
 
-replace github.com/sagernet/wireguard-go => github.com/Leadaxe/wireguard-go-awg2-lx v0.0.0-20260814131846-93b5a4d984f6
+replace github.com/sagernet/wireguard-go => github.com/Leadaxe/wireguard-go-awg2-lx v0.0.0-20260905163628-d842fd55e2e9
 
-replace github.com/sagernet/sing-tun => github.com/Leadaxe/sing-tun-lx v0.0.0-20260822014725-f8c508d68d18
+replace github.com/sagernet/sing-tun => github.com/Leadaxe/sing-tun-lx v0.0.0-20260905163834-8fac85a3f2ed
 
 replace github.com/sagernet/gvisor => github.com/Leadaxe/gvisor-lx v0.0.0-20260805115331-117243aa02fa
