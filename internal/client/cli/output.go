@@ -35,8 +35,8 @@ func fields(pairs ...[2]string) {
 func state(st ipc.Status) string {
 	if st.Connected {
 		text := "connected via " + strings.ToUpper(modeWord(st.Tun))
-		if st.Uptime > 0 {
-			text += " for " + style.Uptime(time.Duration(st.Uptime)*time.Second)
+		if uptime := st.Uptime(); uptime > 0 {
+			text += " for " + style.Uptime(uptime)
 		}
 		return text
 	}

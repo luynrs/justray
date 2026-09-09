@@ -65,7 +65,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spin, cmd = m.spin.Update(msg)
 		return m, cmd
 
-	case loaded:
+	case completed:
 		if msg.op == "connect" {
 			m.connecting = false
 		}
@@ -73,44 +73,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err, m.errAt = msg.err.Error(), time.Now()
 			return m, nil
 		}
-		if msg.op != "sync" && msg.op != "probe" {
+		if msg.op != "probe" {
 			m.err = ""
 		}
-		if msg.snapshot.Revision < m.revision {
-			return m, nil
-		}
-		selected, selectedOK := m.at()
-		m.revision = msg.snapshot.Revision
-		m.subs, m.nodes = msg.snapshot.Subscriptions, msg.snapshot.Nodes
-		m.status = msg.snapshot.Status
-		m.since = time.Now().Add(-time.Duration(m.status.Uptime) * time.Second)
-		m.cfg = msg.snapshot.Settings
-		m.live = true
-		if selectedOK {
-			if selected.Kind == tree.Header {
-				m.toHeader(selected.Sub.ID)
-			} else {
-				rows := m.rows()
-				for i, idx := range tree.Selectable(rows) {
-					if rows[idx].Kind == tree.Node && rows[idx].Node.Ref() == selected.Node.Ref() {
-						m.cursor = i
-						break
-					}
-				}
-			}
-		}
-		m.clamp()
 		return m, nil
 
 	case pushed:
-		if msg.live {
-			if msg.revision > m.revision || !m.live {
-				return m, tea.Batch(next(m.statusCh), snapshotCmd("sync", m.client.Snapshot))
-			}
-			return m, next(m.statusCh)
+		if !msg.live {
+			m.live = false
+			m.connecting = false
+			return m, next(m.watchCtx, m.statusCh)
 		}
-		m.live = false
-		return m, next(m.statusCh)
+		selected, selectedOK := m.at()
+		m.snapshot = msg.snapshot
+		m.live = true
+		rows := m.rows()
+		if selectedOK {
+			for i, idx := range tree.Selectable(rows) {
+				row := rows[idx]
+				if row.Kind == selected.Kind && row.Sub.ID == selected.Sub.ID && (row.Kind != tree.Node || row.Node.Ref() == selected.Node.Ref()) {
+					m.cursor = i
+					break
+				}
+			}
+		}
+		m.cursor, m.scroll = tree.Clamp(rows, m.cursor, m.scroll, m.height())
+		return m, next(m.watchCtx, m.statusCh)
 	}
 	return m, nil
 }
@@ -123,7 +111,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		id := m.confirmSub.ID
 		m.confirmSub = ipc.Sub{}
 		if k == "y" || k == "Y" {
-			return m, snapshotCmd("mutation", func() (ipc.Snapshot, error) { return m.client.RemoveSub(id) })
+			return m, actionCmd("mutation", func() error { return m.client.RemoveSub(id) })
 		}
 		return m, nil
 
@@ -138,7 +126,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			if url == "" {
 				return m, nil
 			}
-			return m, snapshotCmd("mutation", func() (ipc.Snapshot, error) { return m.client.AddSub(url) })
+			return m, actionCmd("mutation", func() error { _, err := m.client.AddSub(url); return err })
 		}
 		var cmd tea.Cmd
 		m.editor, cmd = m.editor.Update(msg)
@@ -186,12 +174,12 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "R":
 		return m.refreshAll()
 	case "m":
-		return m.setTun(!m.status.Tun)
+		return m.setTun(!m.snapshot.Status.Tun)
 	case "a":
 		m.editor.SetValue("")
 		return m, tea.Batch(m.editor.Focus(), textinput.Blink)
 	case "o":
-		m.dialog = settings.New(m.cfg, topLines)
+		m.dialog = settings.New(m.snapshot.Settings, topLines)
 		return m, nil
 	case "/":
 		m.filter.CursorEnd()
@@ -281,6 +269,5 @@ func (m Model) closeSettings() (Model, tea.Cmd) {
 	case !changed:
 		return m, nil
 	}
-	m.cfg = next
-	return m, snapshotCmd("settings", func() (ipc.Snapshot, error) { return m.client.SetSettings(next) })
+	return m, actionCmd("settings", func() error { return m.client.SetSettings(next) })
 }

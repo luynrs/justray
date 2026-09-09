@@ -63,9 +63,16 @@ type Status struct {
 	Connected bool
 	NodeRef   domain.NodeRef
 	NodeName  string
-	Uptime    int64 // seconds
+	StartedAt time.Time
 	Port      int
 	Tun       bool
+}
+
+func (s Status) Uptime() time.Duration {
+	if !s.Connected || s.StartedAt.IsZero() {
+		return 0
+	}
+	return max(time.Since(s.StartedAt), 0)
 }
 
 type Snapshot struct {
@@ -76,5 +83,3 @@ type Snapshot struct {
 	Status        Status
 	Active        domain.NodeRef
 }
-
-type Changed struct{ Revision uint64 }

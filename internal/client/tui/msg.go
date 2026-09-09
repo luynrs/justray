@@ -9,21 +9,19 @@ import (
 	"github.com/luynrs/justray/internal/ipc"
 )
 
-type loaded struct {
-	snapshot ipc.Snapshot
-	op       string
-	err      error
+type completed struct {
+	op  string
+	err error
 }
 
 type pushed struct {
-	revision uint64
+	snapshot ipc.Snapshot
 	live     bool
 }
 
-func snapshotCmd(op string, fn func() (ipc.Snapshot, error)) tea.Cmd {
+func actionCmd(op string, fn func() error) tea.Cmd {
 	return func() tea.Msg {
-		snapshot, err := fn()
-		return loaded{snapshot: snapshot, op: op, err: err}
+		return completed{op: op, err: fn()}
 	}
 }
 
@@ -31,40 +29,37 @@ type tick struct{}
 
 func watch(ctx context.Context, c *ipc.Client, ch chan<- pushed) tea.Cmd {
 	return func() tea.Msg {
-		go func() {
-			backoff := time.Second
-			for {
-				if ctx.Err() != nil {
-					return
-				}
-				_ = c.Watch(ctx, func(changed ipc.Changed) {
-					select {
-					case ch <- pushed{revision: changed.Revision, live: true}:
-					case <-ctx.Done():
-					}
-					backoff = time.Second
-				})
+		for ctx.Err() == nil {
+			_ = c.Watch(ctx, func(snap ipc.Snapshot) {
 				select {
-				case ch <- pushed{}:
+				case ch <- pushed{snapshot: snap, live: true}:
 				case <-ctx.Done():
-					return
 				}
-				select {
-				case <-time.After(backoff):
-				case <-ctx.Done():
-					return
-				}
-				if backoff < 2*time.Second {
-					backoff += 500 * time.Millisecond
-				}
+			})
+			select {
+			case ch <- pushed{}:
+			case <-ctx.Done():
+				return nil
 			}
-		}()
+			select {
+			case <-time.After(time.Second):
+			case <-ctx.Done():
+				return nil
+			}
+		}
 		return nil
 	}
 }
 
-func next(ch <-chan pushed) tea.Cmd {
-	return func() tea.Msg { return <-ch }
+func next(ctx context.Context, ch <-chan pushed) tea.Cmd {
+	return func() tea.Msg {
+		select {
+		case msg := <-ch:
+			return msg
+		case <-ctx.Done():
+			return nil
+		}
+	}
 }
 
 func tickCmd() tea.Cmd {

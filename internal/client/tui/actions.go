@@ -25,11 +25,11 @@ func (m Model) activate() (tea.Model, tea.Cmd) {
 
 	m.connecting = true
 	act := m.client.Disconnect
-	if !m.connected() || m.status.NodeRef != r.Node.Ref() {
+	if !m.connected() || m.snapshot.Status.NodeRef != r.Node.Ref() {
 		ref := r.Node.Ref()
-		act = func() (ipc.Snapshot, error) { return m.client.Connect(ref) }
+		act = func() error { return m.client.Connect(ref) }
 	}
-	return m, snapshotCmd("connect", act)
+	return m, actionCmd("connect", act)
 }
 
 func (m Model) collapse() (tea.Model, tea.Cmd) {
@@ -72,16 +72,16 @@ func (m Model) probe() (tea.Model, tea.Cmd) {
 		if r.Node.Probing {
 			return m, nil
 		}
-		return m, snapshotCmd("probe", func() (ipc.Snapshot, error) { return m.client.Probe(r.Node.Sub, r.Node.ID) })
+		return m, actionCmd("probe", func() error { return m.client.Probe(r.Node.Sub, r.Node.ID) })
 	}
 	if r.Sub.ID == tree.Default {
 		return m, nil
 	}
-	return m, snapshotCmd("probe", func() (ipc.Snapshot, error) { return m.client.Probe(r.Sub.ID, "") })
+	return m, actionCmd("probe", func() error { return m.client.Probe(r.Sub.ID, "") })
 }
 
 func (m Model) probeAll() (tea.Model, tea.Cmd) {
-	return m, snapshotCmd("probe", func() (ipc.Snapshot, error) { return m.client.Probe("", "") })
+	return m, actionCmd("probe", func() error { return m.client.Probe("", "") })
 }
 
 func (m Model) refresh() (tea.Model, tea.Cmd) {
@@ -93,11 +93,11 @@ func (m Model) refresh() (tea.Model, tea.Cmd) {
 	if id == tree.Default {
 		return m, nil
 	}
-	return m, snapshotCmd("refresh", func() (ipc.Snapshot, error) { return m.client.Refresh(id) })
+	return m, actionCmd("refresh", func() error { return m.client.Refresh(id) })
 }
 
 func (m Model) refreshAll() (tea.Model, tea.Cmd) {
-	return m, snapshotCmd("refresh", m.client.RefreshAll)
+	return m, actionCmd("refresh", m.client.RefreshAll)
 }
 
 func (m Model) moveSub(dir int) (tea.Model, tea.Cmd) {
@@ -106,12 +106,12 @@ func (m Model) moveSub(dir int) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	id := r.Sub.ID
-	i := slices.IndexFunc(m.subs, func(s ipc.Sub) bool { return s.ID == id })
+	i := slices.IndexFunc(m.snapshot.Subscriptions, func(s ipc.Sub) bool { return s.ID == id })
 	j := i + dir
-	if i < 0 || j < 0 || j >= len(m.subs) {
+	if i < 0 || j < 0 || j >= len(m.snapshot.Subscriptions) {
 		return m, nil
 	}
-	return m, snapshotCmd("mutation", func() (ipc.Snapshot, error) { return m.client.MoveSub(id, dir) })
+	return m, actionCmd("mutation", func() error { return m.client.MoveSub(id, dir) })
 }
 
 func (m Model) setTun(enable bool) (tea.Model, tea.Cmd) {
@@ -119,5 +119,5 @@ func (m Model) setTun(enable bool) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.connecting = true
-	return m, snapshotCmd("connect", func() (ipc.Snapshot, error) { return m.client.SetTun(enable) })
+	return m, actionCmd("connect", func() error { return m.client.SetTun(enable) })
 }

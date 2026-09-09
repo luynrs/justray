@@ -27,15 +27,11 @@ var subAddCmd = &cobra.Command{
 
 func (a *app) subAdd(cmd *cobra.Command, args []string) error {
 	stop := spin("Fetching subscription")
-	snapshot, err := a.client.AddSub(args[0])
+	sub, err := a.client.AddSub(args[0])
 	stop()
 	if err != nil {
 		return err
 	}
-	if len(snapshot.Subscriptions) == 0 {
-		return fmt.Errorf("subscription was not added")
-	}
-	sub := snapshot.Subscriptions[len(snapshot.Subscriptions)-1]
 	done("Added " + a.clean(sub.Name))
 	fields([2]string{"ID", sub.ID}, [2]string{"Nodes", strconv.Itoa(sub.Nodes)}, [2]string{"Traffic", style.Usage(sub.Traffic)})
 	return nil
@@ -54,7 +50,7 @@ func (a *app) subRemove(cmd *cobra.Command, args []string) error {
 	}
 	name := a.clean(sub.Name)
 	stop := spin("Removing " + name)
-	_, err = a.client.RemoveSub(sub.ID)
+	err = a.client.RemoveSub(sub.ID)
 	stop()
 	if err != nil {
 		return err

@@ -15,6 +15,7 @@ import (
 	"github.com/luynrs/justray/internal/daemon/core"
 	"github.com/luynrs/justray/internal/daemon/store"
 	"github.com/luynrs/justray/internal/daemon/subscription"
+	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/ipc"
 )
 
@@ -58,9 +59,39 @@ func TestShutdownWatch(t *testing.T) {
 	if err := json.NewEncoder(c).Encode(ipc.Req{Method: "Watch"}); err != nil {
 		t.Fatal(err)
 	}
-	_ = c.SetReadDeadline(time.Now().Add(time.Second))
-	if err := json.NewDecoder(c).Decode(&ipc.Changed{}); err != nil {
-		t.Fatalf("initial Watch revision: %v", err)
+	_ = c.SetReadDeadline(time.Now().Add(3 * time.Second))
+	dec := json.NewDecoder(c)
+	var initial ipc.Snapshot
+	if err := dec.Decode(&initial); err != nil {
+		t.Fatalf("initial Watch snapshot: %v", err)
+	}
+	if initial.Revision == 0 || initial.Settings.Port != domain.DefaultPort {
+		t.Fatalf("incomplete initial snapshot: %+v", initial)
+	}
+	client := ipc.NewClient(ln.Addr().String())
+	sub, err := client.AddSub("vless://11111111-1111-1111-1111-111111111111@127.0.0.1:443?security=tls#node")
+	if err != nil || sub.ID == "" || sub.Nodes != 1 {
+		t.Fatalf("AddSub result=%+v error=%v", sub, err)
+	}
+	var added ipc.Snapshot
+	if err := dec.Decode(&added); err != nil {
+		t.Fatal(err)
+	}
+	if added.Revision <= initial.Revision || len(added.Nodes) != 1 || added.Nodes[0].Sub != sub.ID {
+		t.Fatalf("subscription was not pushed: %+v", added)
+	}
+	if err := client.SetTun(true); err != nil {
+		t.Fatal(err)
+	}
+	var changed ipc.Snapshot
+	if err := dec.Decode(&changed); err != nil {
+		t.Fatal(err)
+	}
+	if changed.Revision <= added.Revision || !changed.Status.Tun {
+		t.Fatalf("mode was not pushed: %+v", changed)
+	}
+	if result, err := srv.dispatch(context.Background(), ipc.Req{Method: "SetTun"}); err != nil || result != nil {
+		t.Fatalf("command returned an unnecessary snapshot: result=%v error=%v", result, err)
 	}
 
 	done := make(chan struct{})

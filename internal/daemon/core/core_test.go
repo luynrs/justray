@@ -180,12 +180,9 @@ func TestProbe(t *testing.T) {
 		t.Fatal(err)
 	}
 	logger := log.New(io.Discard, "", 0)
-	probe := func(_ context.Context, _ []domain.Node, _ domain.Settings, _ string, onResult func(string, engine.Result)) (map[string]engine.Result, error) {
-		res := map[string]engine.Result{"node": {Alive: true, MS: 12}}
-		if onResult != nil {
-			onResult("node", res["node"])
-		}
-		return res, nil
+	probe := func(_ context.Context, _ []domain.Node, _ domain.Settings, _ string, onResult func(string, engine.Result)) error {
+		onResult("node", engine.Result{Alive: true, MS: 12})
+		return nil
 	}
 	app, err := New(disk, connection.New(context.Background(), "", nil, probe, logger), subscription.New(context.Background(), logger))
 	if err != nil {
@@ -243,7 +240,7 @@ func (e *fakeEngine) Apply(context.Context, engine.SessionSpec) error { return n
 func (e *fakeEngine) Stop() error                                     { e.stopped = true; return e.closeErr }
 func (e *fakeEngine) Running() bool                                   { return !e.stopped }
 
-func testCore(t *testing.T, eng engine.Engine, state store.PersistentState) *Core {
+func testCore(t testing.TB, eng engine.Engine, state store.PersistentState) *Core {
 	t.Helper()
 	disk := store.Disk{Dir: t.TempDir()}
 	if err := disk.Save(state); err != nil {
@@ -295,7 +292,7 @@ func TestContextCancelled(t *testing.T) {
 		func() error { return app.Disconnect(ctx) },
 		func() error { return app.SetTun(ctx, true) },
 		func() error { return app.SetSettings(ctx, settings) },
-		func() error { return app.AddSubscription(ctx, "https://example.com/sub") },
+		func() error { _, err := app.AddSubscription(ctx, "https://example.com/sub"); return err },
 	} {
 		if err := fn(); !errors.Is(err, context.Canceled) {
 			t.Fatalf("want context.Canceled, got %v", err)
@@ -344,12 +341,13 @@ func TestSnapshotUptime(t *testing.T) {
 		t.Fatal(err)
 	}
 	snap1 := app.Snapshot()
+	uptime := snap1.Status.Uptime()
 	if !snap1.Status.Connected {
 		t.Fatal("expected connected status")
 	}
 	time.Sleep(1100 * time.Millisecond)
 	snap2 := app.Snapshot()
-	if snap2.Status.Uptime <= snap1.Status.Uptime {
-		t.Fatalf("expected snap2 uptime (%d) > snap1 uptime (%d)", snap2.Status.Uptime, snap1.Status.Uptime)
+	if snap2.Status.Uptime() <= uptime || snap2.Status.StartedAt != snap1.Status.StartedAt || snap2.Revision != snap1.Revision {
+		t.Fatalf("uptime should advance without republishing: before=%+v after=%+v", snap1, snap2)
 	}
 }

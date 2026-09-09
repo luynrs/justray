@@ -82,11 +82,11 @@ func (a *app) connectNode(key string, mode *bool) error {
 func (a *app) connect(n ipc.Node, mode *bool) error {
 	spinText := "Connecting to " + a.clean(n.Name)
 	if mode != nil {
-		if _, err := a.runOp(spinText, func() (ipc.Snapshot, error) { return a.client.SetTun(*mode) }, mode); err != nil {
+		if _, err := a.runOp(spinText, func() error { return a.client.SetTun(*mode) }, mode); err != nil {
 			return err
 		}
 	}
-	st, err := a.runOp(spinText, func() (ipc.Snapshot, error) {
+	st, err := a.runOp(spinText, func() error {
 		return a.client.Connect(n.Ref())
 	}, mode)
 	if err != nil {
@@ -97,22 +97,28 @@ func (a *app) connect(n ipc.Node, mode *bool) error {
 }
 
 // runOp waits out the daemon re-execing itself with tun caps
-func (a *app) runOp(text string, op func() (ipc.Snapshot, error), want *bool) (ipc.Status, error) {
-	stop := spin(text)
-	snapshot, err := op()
-	stop()
-	if err == nil || err.Error() != ipc.ErrElevate.Error() {
+func (a *app) runOp(text string, op func() error, want *bool) (ipc.Status, error) {
+	status := func() (ipc.Status, error) {
+		snapshot, err := a.client.Snapshot()
 		return snapshot.Status, err
+	}
+	stop := spin(text)
+	err := op()
+	stop()
+	if err == nil {
+		return status()
+	}
+	if err.Error() != ipc.ErrElevate.Error() {
+		return ipc.Status{}, err
 	}
 	stop = spin("Granting permissions")
 	defer stop()
-	st, err := awaitElevate(func() (ipc.Status, error) {
-		snapshot, err := a.client.Snapshot()
-		return snapshot.Status, err
-	}, want, 30*time.Second)
+	st, err := awaitElevate(status, want, 30*time.Second)
 	if err == nil && want != nil && (!st.Connected || st.Tun != *want) {
-		snapshot, err := op()
-		return snapshot.Status, err
+		if err := op(); err != nil {
+			return ipc.Status{}, err
+		}
+		return status()
 	}
 	return st, err
 }
@@ -141,7 +147,7 @@ func (a *app) switchMode(st ipc.Status, tun bool) error {
 		a.report(upperFirst(state(st)), st)
 		return nil
 	}
-	next, err := a.runOp("Switching to "+strings.ToUpper(modeWord(tun)), func() (ipc.Snapshot, error) {
+	next, err := a.runOp("Switching to "+strings.ToUpper(modeWord(tun)), func() error {
 		return a.client.SetTun(tun)
 	}, &tun)
 	if err != nil {

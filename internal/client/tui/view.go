@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -66,7 +65,7 @@ func (m Model) titleLine() string {
 
 	var right string
 	if m.dialog == nil {
-		right = style.Segment(modeProxy, !m.status.Tun) + style.Segment(modeTun, m.status.Tun)
+		right = style.Segment(modeProxy, !m.snapshot.Status.Tun) + style.Segment(modeTun, m.snapshot.Status.Tun)
 	}
 	return m.clip(style.Flush(left, right, m.w))
 }
@@ -145,7 +144,7 @@ func (m Model) footer() string {
 		if m.connecting {
 			iconStyle = style.Pending
 		}
-		status = iconStyle.Render(icon) + " " + style.Sanitize(m.status.NodeName, m.cfg.Emoji == "on") + " " + style.Dim.Render("·") + " " + style.Uptime(time.Since(m.since))
+		status = iconStyle.Render(icon) + " " + style.Sanitize(m.snapshot.Status.NodeName, m.snapshot.Settings.Emoji == "on") + " " + style.Dim.Render("·") + " " + style.Uptime(m.snapshot.Status.Uptime())
 	case m.live:
 		iconStyle := style.Dim
 		if m.connecting {

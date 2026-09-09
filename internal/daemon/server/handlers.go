@@ -62,34 +62,27 @@ func (s *Server) dispatch(ctx context.Context, req ipc.Req) (any, error) {
 	case "Snapshot":
 		return s.core.Snapshot(), nil
 	case "AddSub":
-		return s.mutation(s.core.AddSubscription(ctx, a.URL))
+		return s.core.AddSubscription(ctx, a.URL)
 	case "RemoveSub":
-		return s.mutation(s.core.RemoveSubscription(a.ID))
+		return nil, s.core.RemoveSubscription(a.ID)
 	case "MoveSub":
-		return s.mutation(s.core.MoveSubscription(a.ID, a.Dir))
+		return nil, s.core.MoveSubscription(a.ID, a.Dir)
 	case "RefreshAll":
-		return s.mutation(s.core.RefreshSubscriptions(ctx))
+		return nil, s.core.RefreshSubscriptions(ctx)
 	case "Refresh":
-		return s.mutation(s.core.RefreshSubscription(ctx, a.ID))
+		return nil, s.core.RefreshSubscription(ctx, a.ID)
 	case "Probe":
-		return s.mutation(s.core.Probe(ctx, a.Sub, a.ID))
+		return nil, s.core.Probe(ctx, a.Sub, a.ID)
 	case "Connect":
-		return s.mutation(s.core.Connect(ctx, a.ID, a.Sub))
+		return nil, s.core.Connect(ctx, a.ID, a.Sub)
 	case "Disconnect":
-		return s.mutation(s.core.Disconnect(ctx))
+		return nil, s.core.Disconnect(ctx)
 	case "SetTun":
-		return s.mutation(s.core.SetTun(ctx, a.Tun))
+		return nil, s.core.SetTun(ctx, a.Tun)
 	case "SetSettings":
-		return s.mutation(s.core.SetSettings(ctx, a.Settings))
+		return nil, s.core.SetSettings(ctx, a.Settings)
 	}
 	return nil, fmt.Errorf("unknown method %q", req.Method)
-}
-
-func (s *Server) mutation(err error) (any, error) {
-	if err != nil {
-		return nil, err
-	}
-	return s.core.Snapshot(), nil
 }
 
 func (s *Server) watch(conn net.Conn) {

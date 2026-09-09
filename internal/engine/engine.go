@@ -33,4 +33,4 @@ type Result struct {
 
 type NewFunc func(context.Context, string) Engine
 
-type ProbeFunc func(context.Context, []domain.Node, domain.Settings, string, func(string, Result)) (map[string]Result, error)
+type ProbeFunc func(context.Context, []domain.Node, domain.Settings, string, func(string, Result)) error

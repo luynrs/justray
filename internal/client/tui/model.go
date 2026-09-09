@@ -12,7 +12,6 @@ import (
 
 	"github.com/luynrs/justray/internal/client/tui/settings"
 	"github.com/luynrs/justray/internal/client/tui/tree"
-	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/ipc"
 )
 
@@ -24,8 +23,7 @@ const (
 type Model struct {
 	client *ipc.Client
 
-	subs  []ipc.Sub
-	nodes []ipc.Node
+	snapshot ipc.Snapshot
 
 	collapsed map[string]bool
 	spin      spinner.Model
@@ -38,11 +36,7 @@ type Model struct {
 	dialog     *settings.Settings
 	filter     textinput.Model
 
-	status     ipc.Status
-	revision   uint64
 	live       bool
-	cfg        domain.Settings
-	since      time.Time
 	statusCh   chan pushed
 	watchCtx   context.Context
 	stopWatch  context.CancelFunc
@@ -77,18 +71,18 @@ func New(c *ipc.Client) Model {
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(snapshotCmd("sync", m.client.Snapshot), watch(m.watchCtx, m.client, m.statusCh), next(m.statusCh), tickCmd(), m.spin.Tick)
+	return tea.Batch(watch(m.watchCtx, m.client, m.statusCh), next(m.watchCtx, m.statusCh), tickCmd(), m.spin.Tick)
 }
 
 func (m Model) data() tree.Data {
 	return tree.Data{
-		Subs:      m.subs,
-		Nodes:     m.nodes,
+		Subs:      m.snapshot.Subscriptions,
+		Nodes:     m.snapshot.Nodes,
 		Collapsed: m.collapsed,
 		Query:     m.filter.Value(),
-		Status:    m.status,
+		Status:    m.snapshot.Status,
 		Live:      m.live,
-		Emoji:     m.cfg.Emoji == "on",
+		Emoji:     m.snapshot.Settings.Emoji == "on",
 		Spinner:   m.spin.View(),
 	}
 }
@@ -97,7 +91,7 @@ func (m Model) rows() []tree.Row { return m.data().Rows() }
 
 func (m Model) at() (tree.Row, bool) { return tree.At(m.rows(), m.cursor) }
 
-func (m Model) connected() bool { return m.live && m.status.Connected }
+func (m Model) connected() bool { return m.live && m.snapshot.Status.Connected }
 
 func (m Model) height() int { return max(m.h-topLines-footerLines, 1) }
 

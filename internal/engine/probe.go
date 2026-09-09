@@ -15,27 +15,25 @@ import (
 	"github.com/luynrs/justray/internal/domain"
 )
 
-func Probe(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath string, onResult func(string, Result)) (map[string]Result, error) {
+func Probe(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath string, onResult func(string, Result)) error {
 	if len(nodes) > maxProbeNodes {
-		return nil, fmt.Errorf("too many nodes to probe: %d (maximum %d)", len(nodes), maxProbeNodes)
+		return fmt.Errorf("too many nodes to probe: %d (maximum %d)", len(nodes), maxProbeNodes)
 	}
 	if len(nodes) == 0 {
-		return map[string]Result{}, nil
+		return nil
 	}
 	opts := ProbeConfig(ctx, nodes, s, logPath)
 	inst, err := sbox.New(sbox.Options{Options: *opts, Context: Context(ctx)})
 	if err != nil {
-		return nil, fmt.Errorf("build probe engine: %w", err)
+		return fmt.Errorf("build probe engine: %w", err)
 	}
 	if err := inst.Start(); err != nil {
 		_ = inst.Close()
-		return nil, fmt.Errorf("start probe engine: %w", err)
+		return fmt.Errorf("start probe engine: %w", err)
 	}
 	defer func() { _ = inst.Close() }()
 
-	out := map[string]Result{}
 	sem := make(chan struct{}, probeWorkers(len(nodes)))
-	var mu sync.Mutex
 	var wg sync.WaitGroup
 	for i, n := range nodes {
 		tag := ProbeTag(i)
@@ -46,36 +44,24 @@ func Probe(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath 
 			dialer = ep
 		}
 		if dialer == nil {
-			res := Result{}
-			mu.Lock()
-			out[n.ID] = res
-			mu.Unlock()
-			if onResult != nil {
-				onResult(n.ID, res)
-			}
+			onResult(n.ID, Result{})
 			continue
 		}
 		select {
 		case sem <- struct{}{}:
 		case <-ctx.Done():
 			wg.Wait()
-			return nil, ctx.Err()
+			return ctx.Err()
 		}
 		wg.Go(func() {
 			defer func() { <-sem }()
 
 			ms, err := delay(ctx, dialer, s.ProbeURL)
-			res := Result{Alive: err == nil, MS: ms}
-			mu.Lock()
-			out[n.ID] = res
-			mu.Unlock()
-			if onResult != nil {
-				onResult(n.ID, res)
-			}
+			onResult(n.ID, Result{Alive: err == nil, MS: ms})
 		})
 	}
 	wg.Wait()
-	return out, nil
+	return ctx.Err()
 }
 
 func delay(ctx context.Context, dialer N.Dialer, url string) (int, error) {

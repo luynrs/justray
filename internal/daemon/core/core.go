@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/luynrs/justray/internal/daemon/connection"
 	"github.com/luynrs/justray/internal/daemon/store"
@@ -33,10 +34,9 @@ type Core struct {
 	jobsMu    sync.Mutex
 	refreshes map[string]*refreshCall
 
-	revision atomic.Uint64
+	revision uint64
 	snapshot atomic.Pointer[ipc.Snapshot]
-	watchMu  sync.Mutex
-	watchers map[chan ipc.Changed]struct{}
+	watchers map[chan ipc.Snapshot]struct{}
 	pubMu    sync.Mutex
 }
 
@@ -53,7 +53,7 @@ func New(st store.Disk, conn *connection.Service, subs *subscription.Service) (*
 		settings.Autostart = "on"
 	}
 	state.Settings = settings
-	c := &Core{store: st, state: state, probes: map[domain.NodeRef]engine.Result{}, probing: map[domain.NodeRef]bool{}, conn: conn, subs: subs, refreshes: map[string]*refreshCall{}, watchers: map[chan ipc.Changed]struct{}{}}
+	c := &Core{store: st, state: state, probes: map[domain.NodeRef]engine.Result{}, probing: map[domain.NodeRef]bool{}, conn: conn, subs: subs, refreshes: map[string]*refreshCall{}, watchers: map[chan ipc.Snapshot]struct{}{}}
 	c.publish()
 	return c, nil
 }
@@ -87,25 +87,27 @@ func (c *Core) Shutdown() {
 }
 
 func (c *Core) Snapshot() ipc.Snapshot {
-	snap := cloneSnapshot(*c.snapshot.Load())
-	snap.Status = c.status(c.current())
-	return snap
+	return cloneSnapshot(*c.snapshot.Load())
 }
 func (c *Core) RestartRequested() <-chan struct{} { return c.conn.RestartRequested() }
 
-func (c *Core) Watch() (ipc.Changed, <-chan ipc.Changed, func()) {
-	ch := make(chan ipc.Changed, 1)
-	c.watchMu.Lock()
+func (c *Core) Watch() (ipc.Snapshot, <-chan ipc.Snapshot, func()) {
+	ch := make(chan ipc.Snapshot, 1)
+	c.pubMu.Lock()
 	c.watchers[ch] = struct{}{}
-	c.watchMu.Unlock()
-	return ipc.Changed{Revision: c.Snapshot().Revision}, ch, func() {
-		c.watchMu.Lock()
+	initial := c.Snapshot()
+	c.pubMu.Unlock()
+	return initial, ch, func() {
+		c.pubMu.Lock()
 		delete(c.watchers, ch)
-		c.watchMu.Unlock()
+		c.pubMu.Unlock()
 	}
 }
 
 func (c *Core) Probe(ctx context.Context, sub, id string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	state := c.current()
 	refs, nodes, err := probeTargets(state.Subscriptions, sub, id)
 	if err != nil {
@@ -131,7 +133,28 @@ func (c *Core) Probe(ctx context.Context, sub, id string) error {
 	}
 	c.publish()
 
+	// Publish intermediate results at most once per frame; always flush on completion.
+	var dirty atomic.Bool
+	done, flushed := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(flushed)
+		ticker := time.NewTicker(50 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				if dirty.Swap(false) {
+					c.publish()
+				}
+			}
+		}
+	}()
+
 	defer func() {
+		close(done)
+		<-flushed
 		c.probeMu.Lock()
 		for _, refs := range pending {
 			for _, ref := range refs {
@@ -151,30 +174,29 @@ func (c *Core) Probe(ctx context.Context, sub, id string) error {
 		delete(pending, nodeID)
 		c.probeMu.Unlock()
 
-		c.publish()
+		dirty.Store(true)
 	}
 
-	_, err = c.conn.Probe(ctx, targets, state.Settings, onResult)
-	return err
+	return c.conn.Probe(ctx, targets, state.Settings, onResult)
 }
 
-func (c *Core) AddSubscription(ctx context.Context, rawURL string) error {
+func (c *Core) AddSubscription(ctx context.Context, rawURL string) (ipc.Sub, error) {
 	sub, err := c.subs.PrepareAdd(ctx, rawURL)
 	if err != nil {
-		return err
+		return ipc.Sub{}, err
 	}
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
 	if err := ctx.Err(); err != nil {
-		return err
+		return ipc.Sub{}, err
 	}
 	next := c.current()
 	next.Subscriptions = append(next.Subscriptions, sub)
 	if err := c.commit(next); err != nil {
-		return err
+		return ipc.Sub{}, err
 	}
 	c.publish()
-	return nil
+	return subView(sub, false), nil
 }
 
 func (c *Core) RemoveSubscription(id string) error {
@@ -300,7 +322,7 @@ func (c *Core) syncAfterRefresh(ctx context.Context, next store.PersistentState,
 	if dropConn {
 		runtimeErr = c.conn.Disconnect(ctx)
 	} else {
-		runtimeErr = c.apply(ctx, next)
+		runtimeErr = c.apply(ctx, next, c.conn.Status().Tun)
 	}
 	c.publish()
 	return runtimeErr
@@ -393,7 +415,7 @@ func (c *Core) SetTun(ctx context.Context, enable bool) error {
 	if err := c.commit(next); err != nil {
 		return err
 	}
-	applyErr := c.apply(ctx, next)
+	applyErr := c.apply(ctx, next, enable)
 	c.publish()
 	return applyErr
 }
@@ -426,7 +448,7 @@ func (c *Core) SetSettings(ctx context.Context, settings domain.Settings) error 
 			return err
 		}
 	}
-	applyErr := c.apply(ctx, next)
+	applyErr := c.apply(ctx, next, c.conn.Status().Tun)
 	c.publish()
 	return applyErr
 }
@@ -457,23 +479,16 @@ func (c *Core) publish() {
 	c.jobsMu.Lock()
 	subs := make([]ipc.Sub, len(state.Subscriptions))
 	for i, sub := range state.Subscriptions {
-		subs[i] = ipc.Sub{
-			ID:         sub.ID,
-			Name:       sub.Name,
-			Nodes:      len(sub.Nodes),
-			UpdatedAt:  sub.UpdatedAt,
-			Traffic:    sub.Traffic,
-			Direct:     parser.IsLink(sub.URL),
-			Refreshing: c.refreshes[sub.ID] != nil,
-		}
+		subs[i] = subView(sub, c.refreshes[sub.ID] != nil)
 	}
 	c.jobsMu.Unlock()
 	active := state.Active
 	if active.NodeID == "" {
 		active = state.Last
 	}
+	c.revision++
 	snapshot := &ipc.Snapshot{
-		Revision:      c.revision.Add(1),
+		Revision:      c.revision,
 		Settings:      cloneSettings(state.Settings),
 		Subscriptions: subs,
 		Nodes:         c.nodes(state.Subscriptions),
@@ -481,30 +496,28 @@ func (c *Core) publish() {
 		Active:        active,
 	}
 	c.snapshot.Store(snapshot)
-	c.watchMu.Lock()
 	for ch := range c.watchers {
 		select {
-		case ch <- ipc.Changed{Revision: snapshot.Revision}:
+		case ch <- *snapshot:
 		default:
 			select {
 			case <-ch:
 			default:
 			}
-			ch <- ipc.Changed{Revision: snapshot.Revision}
+			ch <- *snapshot
 		}
 	}
-	c.watchMu.Unlock()
 }
 
-func (c *Core) apply(ctx context.Context, state store.PersistentState) error {
-	if !c.conn.Status().Connected {
+func (c *Core) apply(ctx context.Context, state store.PersistentState, tun bool) error {
+	if !c.conn.Status().Connected || state.Active.NodeID == "" {
 		return nil
 	}
 	node, ref, err := find(state.Subscriptions, state.Active)
 	if err != nil {
 		return err
 	}
-	return c.conn.Apply(ctx, node, ref, state.Settings, state.Tun)
+	return c.conn.Apply(ctx, node, ref, state.Settings, tun)
 }
 
 func (c *Core) status(state store.PersistentState) ipc.Status {
@@ -580,6 +593,14 @@ func cloneSnapshot(snapshot ipc.Snapshot) ipc.Snapshot {
 	snapshot.Subscriptions = slices.Clone(snapshot.Subscriptions)
 	snapshot.Nodes = slices.Clone(snapshot.Nodes)
 	return snapshot
+}
+
+func subView(sub store.Subscription, refreshing bool) ipc.Sub {
+	return ipc.Sub{
+		ID: sub.ID, Name: sub.Name, Nodes: len(sub.Nodes),
+		UpdatedAt: sub.UpdatedAt, Traffic: sub.Traffic,
+		Direct: parser.IsLink(sub.URL), Refreshing: refreshing,
+	}
 }
 
 func cloneSettings(settings domain.Settings) domain.Settings {
