@@ -36,11 +36,11 @@ type Model struct {
 	dialog     *settings.Settings
 	filter     textinput.Model
 
-	live       bool
-	statusCh   chan pushed
-	watchCtx   context.Context
-	stopWatch  context.CancelFunc
-	connecting bool
+	live           bool
+	updates        chan pushed
+	watchCtx       context.Context
+	stopWatch      context.CancelFunc
+	connectionBusy bool
 
 	err   string
 	errAt time.Time
@@ -64,14 +64,14 @@ func New(c *ipc.Client) Model {
 		spin:      spinner.New(spinner.WithSpinner(spinner.MiniDot)),
 		editor:    editor,
 		filter:    filter,
-		statusCh:  make(chan pushed),
+		updates:   make(chan pushed),
 		watchCtx:  watchCtx,
 		stopWatch: stopWatch,
 	}
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(watch(m.watchCtx, m.client, m.statusCh), next(m.watchCtx, m.statusCh), tickCmd(), m.spin.Tick)
+	return tea.Batch(watch(m.watchCtx, m.client, m.updates), next(m.watchCtx, m.updates), tickCmd(), m.spin.Tick)
 }
 
 func (m Model) data() tree.Data {
@@ -124,7 +124,7 @@ func Run(c *ipc.Client) error {
 	}
 
 	m := New(c)
+	defer m.stopWatch()
 	_, err := tea.NewProgram(m).Run()
-	m.stopWatch()
 	return err
 }

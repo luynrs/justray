@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -44,7 +45,12 @@ func TestSettingsWaitForSnapshot(t *testing.T) {
 func TestSnapshotAfterReconnect(t *testing.T) {
 	m := New(nil)
 	defer m.stopWatch()
-	first := ipc.Snapshot{Revision: 100, Nodes: []ipc.Node{{ID: "old"}}}
+	first := ipc.Snapshot{
+		Nodes:         []ipc.Node{{ID: "old"}},
+		Subscriptions: []ipc.Sub{{ID: "old-sub"}},
+		Selected:      domain.NodeRef{NodeID: "old"},
+		Status:        ipc.Status{Connected: true},
+	}
 	updated, _ := m.Update(pushed{live: true, snapshot: first})
 	m = updated.(Model)
 	updated, _ = m.Update(pushed{})
@@ -52,11 +58,26 @@ func TestSnapshotAfterReconnect(t *testing.T) {
 	if m.live {
 		t.Fatal("lost daemon is still live")
 	}
-	restarted := ipc.Snapshot{Revision: 1, Nodes: []ipc.Node{{ID: "new"}}}
+	restarted := ipc.Snapshot{Nodes: []ipc.Node{{ID: "new"}}}
 	updated, _ = m.Update(pushed{live: true, snapshot: restarted})
 	m = updated.(Model)
-	if !m.live || m.snapshot.Revision != 1 || m.snapshot.Nodes[0].ID != "new" {
+	if !m.live || !reflect.DeepEqual(m.snapshot, restarted) {
 		t.Fatalf("new daemon's state was rejected: %+v", m.snapshot)
+	}
+}
+
+func TestQuitFromSettings(t *testing.T) {
+	m := New(nil)
+	defer m.stopWatch()
+	settingsValue, _ := (domain.Settings{}).Normalize()
+	m.dialog = settings.New(settingsValue, topLines)
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	m = updated.(Model)
+	if !m.quitting || m.dialog != nil || cmd == nil {
+		t.Fatal("Ctrl+C did not close settings and quit")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Fatal("Ctrl+C did not return the quit command")
 	}
 }
 

@@ -23,10 +23,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		switch {
 		case msg.String() == "ctrl+c":
-			if m.dialog != nil {
-				m.dialog = nil
-				return m, tea.Quit
-			}
+			m.dialog = nil
 			return m.quit()
 		case m.dialog != nil:
 			return m.updateSettings(msg)
@@ -66,8 +63,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case completed:
-		if msg.op == "connect" {
-			m.connecting = false
+		if msg.op == "connection" {
+			m.connectionBusy = false
 		}
 		if msg.err != nil {
 			m.err, m.errAt = msg.err.Error(), time.Now()
@@ -81,8 +78,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case pushed:
 		if !msg.live {
 			m.live = false
-			m.connecting = false
-			return m, next(m.watchCtx, m.statusCh)
+			m.connectionBusy = false
+			return m, next(m.watchCtx, m.updates)
 		}
 		selected, selectedOK := m.at()
 		m.snapshot = msg.snapshot
@@ -98,7 +95,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.cursor, m.scroll = tree.Clamp(rows, m.cursor, m.scroll, m.height())
-		return m, next(m.watchCtx, m.statusCh)
+		return m, next(m.watchCtx, m.updates)
 	}
 	return m, nil
 }
@@ -126,7 +123,10 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			if url == "" {
 				return m, nil
 			}
-			return m, actionCmd("mutation", func() error { _, err := m.client.AddSub(url); return err })
+			return m, actionCmd("mutation", func() error {
+				_, err := m.client.AddSub(url)
+				return err
+			})
 		}
 		var cmd tea.Cmd
 		m.editor, cmd = m.editor.Update(msg)

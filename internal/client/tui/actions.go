@@ -15,21 +15,21 @@ func (m Model) activate() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if r.Kind == tree.Header {
-		m.collapsed[r.Sub.ID] = !m.collapsed[r.Sub.ID]
+		m.collapsed[r.SubID()] = !m.collapsed[r.SubID()]
 		m.clamp()
 		return m, nil
 	}
-	if m.connecting {
+	if m.connectionBusy {
 		return m, nil
 	}
 
-	m.connecting = true
+	m.connectionBusy = true
 	act := m.client.Disconnect
 	if !m.connected() || m.snapshot.Status.NodeRef != r.Node.Ref() {
 		ref := r.Node.Ref()
 		act = func() error { return m.client.Connect(ref) }
 	}
-	return m, actionCmd("connect", act)
+	return m, actionCmd("connection", act)
 }
 
 func (m Model) collapse() (tea.Model, tea.Cmd) {
@@ -48,7 +48,7 @@ func (m Model) collapse() (tea.Model, tea.Cmd) {
 func (m *Model) toHeader(id string) {
 	rows := m.rows()
 	for i, idx := range tree.Selectable(rows) {
-		if rows[idx].Kind == tree.Header && rows[idx].Sub.ID == id {
+		if rows[idx].Kind == tree.Header && rows[idx].SubID() == id {
 			m.cursor = i
 			return
 		}
@@ -115,9 +115,9 @@ func (m Model) moveSub(dir int) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) setTun(enable bool) (tea.Model, tea.Cmd) {
-	if m.connecting {
+	if m.connectionBusy {
 		return m, nil
 	}
-	m.connecting = true
-	return m, actionCmd("connect", func() error { return m.client.SetTun(enable) })
+	m.connectionBusy = true
+	return m, actionCmd("connection", func() error { return m.client.SetTun(enable) })
 }

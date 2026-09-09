@@ -133,7 +133,7 @@ func (m Model) footer() string {
 	if m.connected() {
 		icon = "●"
 	}
-	if m.connecting {
+	if m.connectionBusy {
 		icon = m.spin.View()
 	}
 
@@ -141,13 +141,13 @@ func (m Model) footer() string {
 	switch {
 	case m.connected():
 		iconStyle := style.Alive
-		if m.connecting {
+		if m.connectionBusy {
 			iconStyle = style.Pending
 		}
 		status = iconStyle.Render(icon) + " " + style.Sanitize(m.snapshot.Status.NodeName, m.snapshot.Settings.Emoji == "on") + " " + style.Dim.Render("·") + " " + style.Uptime(m.snapshot.Status.Uptime())
 	case m.live:
 		iconStyle := style.Dim
-		if m.connecting {
+		if m.connectionBusy {
 			iconStyle = style.Pending
 		}
 		status = iconStyle.Render(icon) + " " + style.Dim.Render("disconnected")
