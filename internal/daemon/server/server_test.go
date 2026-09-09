@@ -65,7 +65,7 @@ func TestShutdownWatch(t *testing.T) {
 	if err := dec.Decode(&initial); err != nil {
 		t.Fatalf("initial Watch snapshot: %v", err)
 	}
-	if initial.Revision == 0 || initial.Settings.Port != domain.DefaultPort {
+	if initial.Settings.Port != domain.DefaultPort {
 		t.Fatalf("incomplete initial snapshot: %+v", initial)
 	}
 	client := ipc.NewClient(ln.Addr().String())
@@ -77,7 +77,7 @@ func TestShutdownWatch(t *testing.T) {
 	if err := dec.Decode(&added); err != nil {
 		t.Fatal(err)
 	}
-	if added.Revision <= initial.Revision || len(added.Nodes) != 1 || added.Nodes[0].Sub != sub.ID {
+	if len(added.Nodes) != 1 || added.Nodes[0].Sub != sub.ID {
 		t.Fatalf("subscription was not pushed: %+v", added)
 	}
 	if err := client.SetTun(true); err != nil {
@@ -87,7 +87,7 @@ func TestShutdownWatch(t *testing.T) {
 	if err := dec.Decode(&changed); err != nil {
 		t.Fatal(err)
 	}
-	if changed.Revision <= added.Revision || !changed.Status.Tun {
+	if !changed.Status.Tun {
 		t.Fatalf("mode was not pushed: %+v", changed)
 	}
 	if result, err := srv.dispatch(context.Background(), ipc.Req{Method: "SetTun"}); err != nil || result != nil {

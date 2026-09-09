@@ -22,7 +22,7 @@ func (c *Client) dial(ctx context.Context) (net.Conn, error) {
 	dialer := net.Dialer{Timeout: 3 * time.Second}
 	conn, err := dialer.DialContext(ctx, "unix", c.socket)
 	if err != nil {
-		return nil, fmt.Errorf("no daemon on %s", c.socket)
+		return nil, fmt.Errorf("no daemon on %s: %w", c.socket, err)
 	}
 	return conn, nil
 }
@@ -121,6 +121,9 @@ func (c *Client) Watch(ctx context.Context, onUpdate func(Snapshot)) error {
 	for {
 		var snap Snapshot
 		if err := dec.Decode(&snap); err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			return fmt.Errorf("watch: %w", err)
 		}
 		onUpdate(snap)

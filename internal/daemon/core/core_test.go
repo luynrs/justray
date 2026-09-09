@@ -9,9 +9,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/luynrs/justray/internal/daemon/connection"
@@ -118,18 +120,18 @@ func TestMoveSubscription(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	init, changed, cancel := app.Watch()
+	_, changed, cancel := app.Watch()
 	defer cancel()
 	if err := app.MoveSubscription("a", 1); err != nil {
 		t.Fatal(err)
 	}
 	select {
 	case up := <-changed:
-		if up.Revision <= init.Revision || app.Snapshot().Revision != up.Revision {
-			t.Fatalf("revision: init=%d update=%d snapshot=%d", init.Revision, up.Revision, app.Snapshot().Revision)
+		if !reflect.DeepEqual(up, app.Snapshot()) || len(up.Subscriptions) != 2 || up.Subscriptions[0].ID != "b" || up.Subscriptions[1].ID != "a" {
+			t.Fatalf("unexpected subscription order: %+v", up)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("watch did not receive mutation revision")
+		t.Fatal("watch did not receive mutation snapshot")
 	}
 	state, err := disk.Load()
 	if err != nil {
@@ -158,7 +160,7 @@ func TestRefreshSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	init, changed, cancel := app.Watch()
+	_, changed, cancel := app.Watch()
 	defer cancel()
 	if err := app.RefreshSubscription(context.Background(), "sub"); err != nil {
 		t.Fatal(err)
@@ -166,11 +168,11 @@ func TestRefreshSnapshot(t *testing.T) {
 	select {
 	case up := <-changed:
 		snap := app.Snapshot()
-		if up.Revision <= init.Revision || snap.Revision != up.Revision || len(snap.Nodes) != 1 {
-			t.Fatalf("update=%+v init=%+v snap=%+v", up, init, snap)
+		if !reflect.DeepEqual(up, snap) || len(snap.Nodes) != 1 || snap.Subscriptions[0].Refreshing {
+			t.Fatalf("update=%+v snap=%+v", up, snap)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("watch did not receive refresh revision")
+		t.Fatal("watch did not receive refresh snapshot")
 	}
 }
 
@@ -188,7 +190,7 @@ func TestProbe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	init, changed, cancel := app.Watch()
+	_, changed, cancel := app.Watch()
 	defer cancel()
 	if err := app.Probe(context.Background(), "sub", "node"); err != nil {
 		t.Fatal(err)
@@ -196,11 +198,11 @@ func TestProbe(t *testing.T) {
 	select {
 	case up := <-changed:
 		snap := app.Snapshot()
-		if up.Revision <= init.Revision || snap.Revision != up.Revision || len(snap.Nodes) != 1 || !snap.Nodes[0].Probed || !snap.Nodes[0].Alive || snap.Nodes[0].MS != 12 {
-			t.Fatalf("update=%+v init=%+v snap=%+v", up, init, snap)
+		if !reflect.DeepEqual(up, snap) || len(snap.Nodes) != 1 || !snap.Nodes[0].Probed || !snap.Nodes[0].Alive || snap.Nodes[0].MS != 12 {
+			t.Fatalf("update=%+v snap=%+v", up, snap)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("watch did not receive probe revision")
+		t.Fatal("watch did not receive probe snapshot")
 	}
 }
 
@@ -211,7 +213,7 @@ func TestSetTun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	init, changed, cancel := app.Watch()
+	_, changed, cancel := app.Watch()
 	defer cancel()
 	if err := app.SetTun(context.Background(), true); err != nil {
 		t.Fatal(err)
@@ -219,11 +221,11 @@ func TestSetTun(t *testing.T) {
 	select {
 	case up := <-changed:
 		snap := app.Snapshot()
-		if up.Revision <= init.Revision || snap.Revision != up.Revision || !snap.Status.Tun {
-			t.Fatalf("update=%+v init=%+v snap=%+v", up, init, snap)
+		if !reflect.DeepEqual(up, snap) || !snap.Status.Tun {
+			t.Fatalf("update=%+v snap=%+v", up, snap)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("watch did not receive TUN revision")
+		t.Fatal("watch did not receive TUN snapshot")
 	}
 	state, err := disk.Load()
 	if err != nil || !state.Tun {
@@ -337,17 +339,21 @@ func TestSnapshotUptime(t *testing.T) {
 		Settings:      settings,
 		Subscriptions: []store.Subscription{{ID: "sub", Nodes: []domain.Node{{ID: "n1"}}}},
 	})
-	if err := app.Connect(context.Background(), "n1", "sub"); err != nil {
-		t.Fatal(err)
-	}
-	snap1 := app.Snapshot()
-	uptime := snap1.Status.Uptime()
-	if !snap1.Status.Connected {
-		t.Fatal("expected connected status")
-	}
-	time.Sleep(1100 * time.Millisecond)
-	snap2 := app.Snapshot()
-	if snap2.Status.Uptime() <= uptime || snap2.Status.StartedAt != snap1.Status.StartedAt || snap2.Revision != snap1.Revision {
-		t.Fatalf("uptime should advance without republishing: before=%+v after=%+v", snap1, snap2)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		if err := app.Connect(context.Background(), "n1", "sub"); err != nil {
+			t.Fatal(err)
+		}
+		before := app.Snapshot()
+		if !before.Status.Connected || before.Status.Uptime() != 0 {
+			t.Fatalf("expected a newly connected session: %+v", before.Status)
+		}
+		synctest.Sleep(time.Second)
+		after := app.Snapshot()
+		if got := after.Status.Uptime(); got != time.Second {
+			t.Fatalf("uptime = %s, want 1s", got)
+		}
+		if !reflect.DeepEqual(before, after) {
+			t.Fatalf("uptime changed the snapshot: before=%+v after=%+v", before, after)
+		}
+	})
 }

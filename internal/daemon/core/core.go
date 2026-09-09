@@ -34,7 +34,6 @@ type Core struct {
 	jobsMu    sync.Mutex
 	refreshes map[string]*refreshCall
 
-	revision uint64
 	snapshot atomic.Pointer[ipc.Snapshot]
 	watchers map[chan ipc.Snapshot]struct{}
 	pubMu    sync.Mutex
@@ -53,7 +52,13 @@ func New(st store.Disk, conn *connection.Service, subs *subscription.Service) (*
 		settings.Autostart = "on"
 	}
 	state.Settings = settings
-	c := &Core{store: st, state: state, probes: map[domain.NodeRef]engine.Result{}, probing: map[domain.NodeRef]bool{}, conn: conn, subs: subs, refreshes: map[string]*refreshCall{}, watchers: map[chan ipc.Snapshot]struct{}{}}
+	c := &Core{
+		store: st, state: state, conn: conn, subs: subs,
+		probes:    map[domain.NodeRef]engine.Result{},
+		probing:   map[domain.NodeRef]bool{},
+		refreshes: map[string]*refreshCall{},
+		watchers:  map[chan ipc.Snapshot]struct{}{},
+	}
 	c.publish()
 	return c, nil
 }
@@ -89,6 +94,7 @@ func (c *Core) Shutdown() {
 func (c *Core) Snapshot() ipc.Snapshot {
 	return cloneSnapshot(*c.snapshot.Load())
 }
+
 func (c *Core) RestartRequested() <-chan struct{} { return c.conn.RestartRequested() }
 
 func (c *Core) Watch() (ipc.Snapshot, <-chan ipc.Snapshot, func()) {
@@ -264,7 +270,7 @@ func (c *Core) RefreshSubscriptions(ctx context.Context) error {
 	if len(subs) == 0 {
 		return nil
 	}
-	updated, refreshErr := c.subs.RefreshAll(ctx, subs, c.refresh, nil)
+	updated, refreshErr := c.subs.RefreshAll(ctx, subs, c.refresh)
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
 	if err := ctx.Err(); err != nil {
@@ -308,10 +314,7 @@ func (c *Core) RefreshSubscription(ctx context.Context, id string) error {
 		return fmt.Errorf("subscription %q not found", id)
 	}
 	next.Subscriptions[i] = sub
-	if err := c.syncAfterRefresh(ctx, next, c.sanitizeRefs(&next, sub)); err != nil {
-		return err
-	}
-	return nil
+	return c.syncAfterRefresh(ctx, next, c.sanitizeRefs(&next, sub))
 }
 
 func (c *Core) syncAfterRefresh(ctx context.Context, next store.PersistentState, dropConn bool) error {
@@ -443,7 +446,9 @@ func (c *Core) SetSettings(ctx context.Context, settings domain.Settings) error 
 		}
 		if err := apply(); err != nil {
 			next.Settings.Autostart = old.Autostart
-			_ = c.commit(next)
+			if rollbackErr := c.commit(next); rollbackErr != nil {
+				err = errors.Join(err, fmt.Errorf("restore autostart setting: %w", rollbackErr))
+			}
 			c.publish()
 			return err
 		}
@@ -482,18 +487,16 @@ func (c *Core) publish() {
 		subs[i] = subView(sub, c.refreshes[sub.ID] != nil)
 	}
 	c.jobsMu.Unlock()
-	active := state.Active
-	if active.NodeID == "" {
-		active = state.Last
+	selected := state.Active
+	if selected.NodeID == "" {
+		selected = state.Last
 	}
-	c.revision++
 	snapshot := &ipc.Snapshot{
-		Revision:      c.revision,
 		Settings:      cloneSettings(state.Settings),
 		Subscriptions: subs,
 		Nodes:         c.nodes(state.Subscriptions),
 		Status:        c.status(state),
-		Active:        active,
+		Selected:      selected,
 	}
 	c.snapshot.Store(snapshot)
 	for ch := range c.watchers {

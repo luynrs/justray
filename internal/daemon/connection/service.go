@@ -96,7 +96,7 @@ func (s *Service) Status() ipc.Status {
 	return ipc.Status{}
 }
 
-func (s *Service) apply(ctx context.Context, n domain.Node, ref domain.NodeRef, settings domain.Settings, tun, resetStarted bool) (err error) {
+func (s *Service) apply(ctx context.Context, n domain.Node, ref domain.NodeRef, settings domain.Settings, tun, resetStarted bool) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -107,22 +107,22 @@ func (s *Service) apply(ctx context.Context, n domain.Node, ref domain.NodeRef, 
 	previous := s.Status()
 	eng := s.eng
 	started := previous.StartedAt
+	creating := eng == nil
 
-	if eng == nil {
-		if err = ipc.ClearLog(ipc.EngineLog(s.dir)); err != nil {
+	if creating {
+		if err := ipc.ClearLog(ipc.EngineLog(s.dir)); err != nil {
 			s.log.Print(err)
 		}
 		eng = s.newEngine(s.ctx, ipc.EngineLog(s.dir))
 		if eng == nil {
-			err = errors.New("initialize engine: engine is nil")
-		} else if err = eng.Apply(ctx, engine.SessionSpec{Node: n, Settings: settings, Tun: tun}); err != nil {
+			return errors.New("initialize engine: engine is nil")
+		}
+	}
+	if err := eng.Apply(ctx, engine.SessionSpec{Node: n, Settings: settings, Tun: tun}); err != nil {
+		if creating {
 			err = errors.Join(err, eng.Stop())
 		}
-	} else {
-		err = eng.Apply(ctx, engine.SessionSpec{Node: n, Settings: settings, Tun: tun})
-	}
-	if err != nil {
-		if eng != nil && !eng.Running() {
+		if !eng.Running() {
 			s.eng = nil
 			s.status.Store(nil)
 		}

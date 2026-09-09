@@ -11,7 +11,7 @@ import (
 	"github.com/luynrs/justray/internal/parser"
 )
 
-func (s *Service) RefreshAll(ctx context.Context, subs []store.Subscription, refresh func(context.Context, store.Subscription) (store.Subscription, error), onUpdated func(store.Subscription)) ([]store.Subscription, error) {
+func (s *Service) RefreshAll(ctx context.Context, subs []store.Subscription, refresh func(context.Context, store.Subscription) (store.Subscription, error)) ([]store.Subscription, error) {
 	errs := make([]error, len(subs))
 	jobs := make(chan int)
 	var wg sync.WaitGroup
@@ -19,9 +19,6 @@ func (s *Service) RefreshAll(ctx context.Context, subs []store.Subscription, ref
 		wg.Go(func() {
 			for i := range jobs {
 				subs[i], errs[i] = refresh(ctx, subs[i])
-				if errs[i] == nil && onUpdated != nil {
-					onUpdated(subs[i])
-				}
 			}
 		})
 	}

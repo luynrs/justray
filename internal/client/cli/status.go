@@ -22,7 +22,7 @@ func (a *app) status(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	ref := snapshot.Active
+	ref := snapshot.Selected
 	if ref.NodeID == "" {
 		return nil
 	}

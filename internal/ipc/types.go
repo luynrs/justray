@@ -76,10 +76,9 @@ func (s Status) Uptime() time.Duration {
 }
 
 type Snapshot struct {
-	Revision      uint64
 	Settings      domain.Settings
 	Subscriptions []Sub
 	Nodes         []Node
 	Status        Status
-	Active        domain.NodeRef
+	Selected      domain.NodeRef
 }

@@ -44,7 +44,7 @@ func (a *app) up(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	ref := snapshot.Active
+	ref := snapshot.Selected
 	if ref.NodeID == "" {
 		return fmt.Errorf("no node selected yet; pick one: %s <id | name>", cmd.CommandPath())
 	}

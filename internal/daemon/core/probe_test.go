@@ -35,14 +35,26 @@ func instantProbe(_ context.Context, nodes []domain.Node, _ domain.Settings, _ s
 
 func TestProbeBatchesResults(t *testing.T) {
 	const n = 512
-	app := probeCore(t, n, instantProbe)
-	before := app.Snapshot().Revision
+	var app *Core
+	var publications int
+	probe := func(_ context.Context, nodes []domain.Node, _ domain.Settings, _ string, onResult func(string, engine.Result)) error {
+		previous := app.snapshot.Load()
+		for _, node := range nodes {
+			onResult(node.ID, engine.Result{Alive: true, MS: 10})
+			if current := app.snapshot.Load(); current != previous {
+				publications++
+				previous = current
+			}
+		}
+		return nil
+	}
+	app = probeCore(t, n, probe)
 	if err := app.Probe(context.Background(), "s", ""); err != nil {
 		t.Fatal(err)
 	}
 	after := app.Snapshot()
-	if after.Revision-before >= n/4 {
-		t.Fatalf("probe rebuilt %d snapshots for a burst of %d results", after.Revision-before, n)
+	if publications >= n/4 {
+		t.Fatalf("probe published %d intermediate snapshots for a burst of %d results", publications, n)
 	}
 	for _, node := range after.Nodes {
 		if node.Probing || !node.Probed || !node.Alive || node.MS != 10 {
@@ -53,13 +65,13 @@ func TestProbeBatchesResults(t *testing.T) {
 
 func TestProbeAlreadyCancelled(t *testing.T) {
 	app := probeCore(t, 2, instantProbe)
-	before := app.Snapshot().Revision
+	before := app.snapshot.Load()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if err := app.Probe(ctx, "s", ""); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled probe: %v", err)
 	}
-	if app.Snapshot().Revision != before {
+	if app.snapshot.Load() != before {
 		t.Fatal("cancelled probe changed published state")
 	}
 }
