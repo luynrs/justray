@@ -6,10 +6,10 @@ import (
 )
 
 var (
-	green  = lipgloss.Color("#4ade80")
-	yellow = lipgloss.Color("#facc15")
-	red    = lipgloss.Color("#f87171")
-	gray   = lipgloss.Color("#9ca3af")
+	green  = lipgloss.Color("2")
+	yellow = lipgloss.Color("3")
+	red    = lipgloss.Color("1")
+	gray   = lipgloss.Color("8")
 )
 
 var (
