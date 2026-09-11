@@ -36,6 +36,10 @@ func (s *Settings) Hints() [][2]string {
 		return [][2]string{
 			{move, "Move"}, {tab, "Tab"}, {enter, "Edit"}, {"d", "Remove"}, out,
 		}
+	case ok && f.bare:
+		return [][2]string{
+			{move, "Move"}, {tab, "Tab"}, {enter, "Add"}, out,
+		}
 	}
 	return [][2]string{{move, "Move"}, {tab, "Tab"}, {enter, "Edit"}, out}
 }
@@ -133,12 +137,27 @@ func (s *Settings) fieldBlock(f field, i, width int) (lines, choices []string) {
 
 	switch {
 	case f.set == nil:
-		lines, choices = []string{bar + f.name}, []string{""}
-	case f.bare:
-		text := style.Dim.Render(f.name)
-		if selected && s.input.Focused() {
-			text = s.input.View()
+		line := bar + f.name
+		if f.hint != "" {
+			line += " " + style.Dim.Render(f.hint)
 		}
+		lines, choices = []string{line}, []string{""}
+	case f.bare:
+		var prefix, body string
+		if f.remove != nil {
+			prefix = style.Sep() + " "
+			body = f.name
+		} else {
+			prefix = "+ "
+			body = strings.TrimPrefix(f.name, "+ ")
+		}
+
+		if selected && s.input.Focused() {
+			body = s.input.View()
+		} else if !selected {
+			body = style.Dim.Render(body)
+		}
+		text := style.Dim.Render(prefix) + body
 		lines, choices = []string{bar + text}, []string{""}
 	default:
 		lines = []string{bar + f.name}
@@ -146,10 +165,11 @@ func (s *Settings) fieldBlock(f field, i, width int) (lines, choices []string) {
 		value, picks := s.valueLines(f, selected, bar)
 		lines = append(lines, value...)
 		choices = append(choices, picks...)
-		if selected && s.err != "" {
-			lines = append(lines, bar+style.Err.Render(style.Clip(style.FirstLine(s.err), width-2)))
-			choices = append(choices, "")
-		}
+	}
+
+	if selected && s.err != "" {
+		lines = append(lines, bar+style.Err.Render(style.Clip(style.FirstLine(s.err), width-2)))
+		choices = append(choices, "")
 	}
 
 	if i > 0 && !f.bare {

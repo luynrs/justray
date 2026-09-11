@@ -77,6 +77,13 @@ func (d Disk) Load() (PersistentState, error) {
 }
 
 func (d Disk) Save(state PersistentState) error {
+	if err := d.SaveState(state); err != nil {
+		return err
+	}
+	return d.SaveConfig(state.Settings)
+}
+
+func (d Disk) SaveState(state PersistentState) error {
 	if state.Subscriptions == nil {
 		state.Subscriptions = []Subscription{}
 	}
@@ -93,11 +100,11 @@ func (d Disk) Save(state PersistentState) error {
 	if err != nil {
 		return err
 	}
-	if err := write(ipc.State(d.Dir), stateData); err != nil {
-		return err
-	}
+	return write(ipc.State(d.Dir), stateData)
+}
 
-	cfgData, err := yaml.Marshal(state.Settings)
+func (d Disk) SaveConfig(settings domain.Settings) error {
+	cfgData, err := yaml.Marshal(settings)
 	if err != nil {
 		return err
 	}

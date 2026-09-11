@@ -235,7 +235,7 @@ func (c *Core) RemoveSubscription(id string) error {
 		next.Last = domain.NodeRef{}
 	}
 	next.Collapsed = slices.DeleteFunc(next.Collapsed, func(s string) bool {
-		return s == id || (id == "default" && s == "default")
+		return s == id
 	})
 	if err := c.commit(next); err != nil {
 		return err
@@ -439,9 +439,12 @@ func (c *Core) SetSettings(ctx context.Context, settings domain.Settings) error 
 	next := c.current()
 	old := next.Settings
 	next.Settings = settings
-	if err := c.commit(next); err != nil {
+	if err := c.store.SaveConfig(next.Settings); err != nil {
 		return err
 	}
+	c.stateMu.Lock()
+	c.state.Settings = settings
+	c.stateMu.Unlock()
 	if settings.Autostart != old.Autostart {
 		apply := autostart.Enable
 		if settings.Autostart == "off" {
@@ -449,9 +452,12 @@ func (c *Core) SetSettings(ctx context.Context, settings domain.Settings) error 
 		}
 		if err := apply(); err != nil {
 			next.Settings.Autostart = old.Autostart
-			if rollbackErr := c.commit(next); rollbackErr != nil {
+			if rollbackErr := c.store.SaveConfig(next.Settings); rollbackErr != nil {
 				err = errors.Join(err, fmt.Errorf("restore autostart setting: %w", rollbackErr))
 			}
+			c.stateMu.Lock()
+			c.state.Settings = next.Settings
+			c.stateMu.Unlock()
 			c.publish()
 			return err
 		}
@@ -487,11 +493,12 @@ func (c *Core) current() store.PersistentState {
 	state := c.state
 	state.Subscriptions = slices.Clone(state.Subscriptions)
 	state.Collapsed = slices.Clone(state.Collapsed)
+	state.Settings = cloneSettings(state.Settings)
 	return state
 }
 
 func (c *Core) commit(state store.PersistentState) error {
-	if err := c.store.Save(state); err != nil {
+	if err := c.store.SaveState(state); err != nil {
 		return err
 	}
 	c.stateMu.Lock()

@@ -73,9 +73,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.op != "probe" {
 			m.err = ""
 		}
-		if msg.op == "settings" && msg.err == nil {
-			m.syncTTY()
-		}
 		return m, nil
 
 	case pushed:

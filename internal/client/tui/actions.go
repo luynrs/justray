@@ -19,6 +19,9 @@ func (m Model) activate() (tea.Model, tea.Cmd) {
 		target := !m.collapsed[id]
 		m.collapsed[id] = target
 		m.clamp()
+		if m.client == nil {
+			return m, nil
+		}
 		return m, actionCmd("collapse", func() error { return m.client.SetCollapsed(id, target) })
 	}
 	if m.connectionBusy {
@@ -43,7 +46,9 @@ func (m Model) collapse() (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	if !m.collapsed[id] {
 		m.collapsed[id] = true
-		cmd = actionCmd("collapse", func() error { return m.client.SetCollapsed(id, true) })
+		if m.client != nil {
+			cmd = actionCmd("collapse", func() error { return m.client.SetCollapsed(id, true) })
+		}
 	}
 	if r.Kind == tree.Node {
 		m.toHeader(id)
@@ -71,7 +76,9 @@ func (m Model) expand() (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	if m.collapsed[id] {
 		m.collapsed[id] = false
-		cmd = actionCmd("collapse", func() error { return m.client.SetCollapsed(id, false) })
+		if m.client != nil {
+			cmd = actionCmd("collapse", func() error { return m.client.SetCollapsed(id, false) })
+		}
 	}
 	m.clamp()
 	return m, cmd

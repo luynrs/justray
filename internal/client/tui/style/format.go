@@ -24,7 +24,11 @@ func Pad(s string, w int) string {
 		return ""
 	case n > w:
 		tail := pick("..", "…")
-		t := lipgloss.NewStyle().MaxWidth(max(w-lipgloss.Width(tail), 0)).Render(s) + tail
+		tw := lipgloss.Width(tail)
+		if w <= tw {
+			return tail[:w]
+		}
+		t := lipgloss.NewStyle().MaxWidth(w-tw).Render(s) + tail
 		if shortfall := w - lipgloss.Width(t); shortfall > 0 {
 			t += strings.Repeat(" ", shortfall)
 		}

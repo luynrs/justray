@@ -50,5 +50,9 @@ func Progress(fraction float64) string {
 	}
 	b := progress.New(progress.WithColors(fill), progress.WithoutPercentage(), progress.WithWidth(12))
 	b.EmptyColor = lipgloss.Color("8")
+	if TTY {
+		b.Full = '='
+		b.Empty = '-'
+	}
 	return b.ViewAs(fraction)
 }

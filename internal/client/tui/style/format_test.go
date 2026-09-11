@@ -3,6 +3,8 @@ package style
 import (
 	"testing"
 	"time"
+
+	"charm.land/lipgloss/v2"
 )
 
 func TestUptime(t *testing.T) {
@@ -20,6 +22,15 @@ func TestUptime(t *testing.T) {
 	} {
 		if got := Uptime(tc.d); got != tc.want {
 			t.Errorf("Uptime(%v) = %q, want %q", tc.d, got, tc.want)
+		}
+	}
+}
+
+func TestPad(t *testing.T) {
+	for _, w := range []int{0, 1, 2, 5, 10, 20} {
+		got := Pad("very long text string", w)
+		if n := lipgloss.Width(got); n > w {
+			t.Errorf("Pad(w=%d) width = %d, want <= %d", w, n, w)
 		}
 	}
 }

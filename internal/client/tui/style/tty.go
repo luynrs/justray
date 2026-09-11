@@ -17,10 +17,7 @@ func DetectTTY(force string) bool {
 		return true
 	}
 	loc := strings.ToUpper(cmp.Or(os.Getenv("LC_ALL"), os.Getenv("LC_CTYPE"), os.Getenv("LANG")))
-	if loc == "C" || loc == "POSIX" {
-		return true
-	}
-	return false
+	return loc == "C" || loc == "POSIX"
 }
 
 func pick(tty, rich string) string {

@@ -183,15 +183,18 @@ func New(s domain.Settings, top int) *Settings {
 	input := textinput.New()
 	input.Prompt = ""
 	styles := input.Styles()
-	styles.Focused.Text = style.Dim
 	styles.Focused.Placeholder = style.Dim
 	input.SetStyles(styles)
 	input.CharLimit = 2048
+	orig := s
+	orig.Direct = slices.Clone(s.Direct)
+	orig.Proxy = slices.Clone(s.Proxy)
+	orig.Block = slices.Clone(s.Block)
 	cur := s
 	cur.Direct = slices.Clone(s.Direct)
 	cur.Proxy = slices.Clone(s.Proxy)
 	cur.Block = slices.Clone(s.Block)
-	res := &Settings{top: top, cur: cur, orig: s, input: input}
+	res := &Settings{top: top, cur: cur, orig: orig, input: input}
 	res.move(0)
 	return res
 }
@@ -403,7 +406,7 @@ func (s *Settings) rows() []field {
 func (s *Settings) listRows(l list) []field {
 	entries := *l.at(&s.cur)
 	out := make([]field, 0, len(entries)+2)
-	out = append(out, field{name: l.title})
+	out = append(out, field{name: l.title, hint: fmt.Sprintf("(%d)", len(entries))})
 
 	for i := range entries {
 		set := func(v *domain.Settings, in string) error {
@@ -416,7 +419,7 @@ func (s *Settings) listRows(l list) []field {
 			if err != nil {
 				return err
 			}
-			if err := conflict(v, l.title, rule); err != nil {
+			if err := conflict(v, at, rule); err != nil {
 				return err
 			}
 			(*at)[i] = rule
@@ -425,7 +428,7 @@ func (s *Settings) listRows(l list) []field {
 		out = append(out, field{
 			name:   entries[i],
 			bare:   true,
-			hint:   "empty removes it",
+			hint:   "delete?",
 			get:    func(v domain.Settings) string { return (*l.at(&v))[i] },
 			set:    set,
 			remove: func(v *domain.Settings) { _ = set(v, "") }, // empty input never errors
@@ -433,9 +436,9 @@ func (s *Settings) listRows(l list) []field {
 	}
 
 	return append(out, field{
-		name: "+ add domain, network or app",
+		name: "+ add rule",
 		bare: true,
-		hint: "example.com, 2ip.*, 10.0.0.0/8, firefox",
+		hint: "example.com, *.domain, 10.0.0.0/8, app",
 		get:  func(domain.Settings) string { return "" },
 		set: func(v *domain.Settings, in string) error {
 			if in = strings.TrimSpace(in); in == "" {
@@ -445,23 +448,24 @@ func (s *Settings) listRows(l list) []field {
 			if err != nil {
 				return err
 			}
-			if err := conflict(v, l.title, rule); err != nil {
+			at := l.at(v)
+			if err := conflict(v, at, rule); err != nil {
 				return err
 			}
-			if slices.Contains(*l.at(v), rule) {
+			if slices.Contains(*at, rule) {
 				return nil
 			}
-			*l.at(v) = append(*l.at(v), rule)
+			*at = append(*at, rule)
 			return nil
 		},
 	})
 }
 
-func conflict(s *domain.Settings, title, rule string) error {
-	if title == "Direct" && slices.Contains(s.Proxy, rule) {
+func conflict(s *domain.Settings, target *[]string, rule string) error {
+	if target == &s.Direct && slices.Contains(s.Proxy, rule) {
 		return fmt.Errorf("%q already in proxy", rule)
 	}
-	if title == "Proxy" && slices.Contains(s.Direct, rule) {
+	if target == &s.Proxy && slices.Contains(s.Direct, rule) {
 		return fmt.Errorf("%q already in direct", rule)
 	}
 	return nil
