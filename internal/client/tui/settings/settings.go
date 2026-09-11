@@ -438,7 +438,7 @@ func (s *Settings) listRows(l list) []field {
 	return append(out, field{
 		name: "+ add rule",
 		bare: true,
-		hint: "example.com, *.domain, 10.0.0.0/8, app",
+		hint: "domain, ip, app or path",
 		get:  func(domain.Settings) string { return "" },
 		set: func(v *domain.Settings, in string) error {
 			if in = strings.TrimSpace(in); in == "" {

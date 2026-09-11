@@ -90,11 +90,7 @@ func Execute() error {
 				return nil
 			}
 		}
-		if err := a.connectDaemon(); err != nil {
-			return err
-		}
-		a.client = a.client.WithContext(cmd.Context())
-		return nil
+		return a.connectDaemon(cmd.Context())
 	}
 	rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		return tui.Run(a.client)
@@ -139,7 +135,7 @@ func setHelpText(c *cobra.Command) {
 	}
 }
 
-func (a *app) connectDaemon() error {
+func (a *app) connectDaemon(ctx context.Context) error {
 	dir, err := ipc.Dir()
 	if err != nil {
 		return fmt.Errorf("resolve config dir: %w", err)
@@ -148,22 +144,28 @@ func (a *app) connectDaemon() error {
 		return fmt.Errorf("create config dir: %w", err)
 	}
 
-	a.client = ipc.NewClient(ipc.Socket(dir))
+	a.client = ipc.NewClient(ipc.Socket(dir)).WithContext(ctx)
 	if a.client.Ping() != nil {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err := spawn(dir); err != nil {
 			return fmt.Errorf("start daemon: %w", err)
 		}
 		stop := spin("Starting daemon")
-		err = wait(a.client, 10*time.Second)
+		err = wait(ctx, a.client, 10*time.Second)
 		stop()
 		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				return err
+			}
 			return fmt.Errorf("daemon did not start, see %s", ipc.DaemonLog(dir))
 		}
 	}
 	if snapshot, err := a.client.Snapshot(); err == nil {
 		a.emoji = snapshot.Settings.Emoji == "on"
 	}
-	return nil
+	return ctx.Err()
 }
 
 func spawn(dir string) error {
@@ -229,14 +231,18 @@ func nextToSelf(name string) string {
 	return p
 }
 
-func wait(c *ipc.Client, timeout time.Duration) error {
-	for deadline := time.Now().Add(timeout); time.Now().Before(deadline); {
-		if c.Ping() == nil {
-			return nil
+func wait(ctx context.Context, c *ipc.Client, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	for delay := 5 * time.Millisecond; c.Ping() != nil; delay = min(delay*2, 100*time.Millisecond) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(delay):
 		}
-		time.Sleep(100 * time.Millisecond)
 	}
-	return fmt.Errorf("daemon did not come up within %s", timeout)
+	return nil
 }
 
 // daemon dials silently, for completions — no spawn, no error reporting
