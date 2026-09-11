@@ -16,12 +16,13 @@ type Req struct {
 var ErrElevate = errors.New("granting permissions")
 
 type Args struct {
-	ID       string
-	Sub      string
-	URL      string
-	Dir      int
-	Tun      bool
-	Settings domain.Settings
+	ID        string
+	Sub       string
+	URL       string
+	Dir       int
+	Tun       bool
+	Settings  domain.Settings
+	Collapsed bool
 }
 
 type Resp struct {
@@ -81,4 +82,5 @@ type Snapshot struct {
 	Nodes         []Node
 	Status        Status
 	Selected      domain.NodeRef
+	Collapsed     []string
 }

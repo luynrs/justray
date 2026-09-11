@@ -15,9 +15,11 @@ func (m Model) activate() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if r.Kind == tree.Header {
-		m.collapsed[r.SubID()] = !m.collapsed[r.SubID()]
+		id := r.SubID()
+		target := !m.collapsed[id]
+		m.collapsed[id] = target
 		m.clamp()
-		return m, nil
+		return m, actionCmd("collapse", func() error { return m.client.SetCollapsed(id, target) })
 	}
 	if m.connectionBusy {
 		return m, nil
@@ -37,12 +39,17 @@ func (m Model) collapse() (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	m.collapsed[r.SubID()] = true
+	id := r.SubID()
+	var cmd tea.Cmd
+	if !m.collapsed[id] {
+		m.collapsed[id] = true
+		cmd = actionCmd("collapse", func() error { return m.client.SetCollapsed(id, true) })
+	}
 	if r.Kind == tree.Node {
-		m.toHeader(r.SubID())
+		m.toHeader(id)
 	}
 	m.clamp()
-	return m, nil
+	return m, cmd
 }
 
 func (m *Model) toHeader(id string) {
@@ -56,11 +63,18 @@ func (m *Model) toHeader(id string) {
 }
 
 func (m Model) expand() (tea.Model, tea.Cmd) {
-	if r, ok := m.at(); ok {
-		m.collapsed[r.SubID()] = false
-		m.clamp()
+	r, ok := m.at()
+	if !ok {
+		return m, nil
 	}
-	return m, nil
+	id := r.SubID()
+	var cmd tea.Cmd
+	if m.collapsed[id] {
+		m.collapsed[id] = false
+		cmd = actionCmd("collapse", func() error { return m.client.SetCollapsed(id, false) })
+	}
+	m.clamp()
+	return m, cmd
 }
 
 func (m Model) probe() (tea.Model, tea.Cmd) {

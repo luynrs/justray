@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -321,7 +322,7 @@ func TestDisconnectError(t *testing.T) {
 
 func TestNewMalformed(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "configuration.yaml")
+	path := filepath.Join(dir, "config.yaml")
 	if err := os.WriteFile(path, []byte("invalid: [yaml: broken"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -356,4 +357,45 @@ func TestSnapshotUptime(t *testing.T) {
 			t.Fatalf("uptime changed the snapshot: before=%+v after=%+v", before, after)
 		}
 	})
+}
+
+func TestSetCollapsed(t *testing.T) {
+	settings, _ := domain.Settings{}.Normalize()
+	app := testCore(t, &fakeEngine{}, store.PersistentState{
+		Settings:      settings,
+		Subscriptions: []store.Subscription{{ID: "sub", Nodes: []domain.Node{{ID: "n1"}}}},
+	})
+
+	if err := app.SetCollapsed("sub", true); err != nil {
+		t.Fatal(err)
+	}
+	snap := app.Snapshot()
+	if !slices.Contains(snap.Collapsed, "sub") {
+		t.Fatalf("expected sub to be in Collapsed, got %+v", snap.Collapsed)
+	}
+
+	// Idempotent
+	if err := app.SetCollapsed("sub", true); err != nil {
+		t.Fatal(err)
+	}
+	if len(app.Snapshot().Collapsed) != 1 {
+		t.Fatalf("expected 1 element in Collapsed, got %+v", app.Snapshot().Collapsed)
+	}
+
+	// Uncollapse
+	if err := app.SetCollapsed("sub", false); err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(app.Snapshot().Collapsed, "sub") {
+		t.Fatalf("expected sub to not be in Collapsed, got %+v", app.Snapshot().Collapsed)
+	}
+
+	// Collapse then remove subscription cleans up
+	_ = app.SetCollapsed("sub", true)
+	if err := app.RemoveSubscription("sub"); err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(app.Snapshot().Collapsed, "sub") {
+		t.Fatalf("expected sub to be removed from Collapsed on RemoveSubscription")
+	}
 }

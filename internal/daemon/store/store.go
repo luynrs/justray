@@ -28,56 +28,51 @@ type PersistentState struct {
 	Last          domain.NodeRef
 	Tun           bool
 	Settings      domain.Settings
+	Collapsed     []string
 }
 
 // Disk reads and writes the daemon's persistent state.
 type Disk struct{ Dir string }
 
-type file struct {
-	Subscriptions *[]Subscription `yaml:"subscriptions"`
-	Active        string          `yaml:"active"`
-	ActiveSub     string          `yaml:"active_subscription,omitempty"`
-	Last          string          `yaml:"last,omitempty"`
-	LastSub       string          `yaml:"last_subscription,omitempty"`
-	Tun           bool            `yaml:"tun,omitempty"`
-	Settings      domain.Settings `yaml:"settings,omitempty"`
+type stateFile struct {
+	Subscriptions []Subscription `yaml:"subscriptions"`
+	Active        string         `yaml:"active,omitempty"`
+	ActiveSub     string         `yaml:"active_subscription,omitempty"`
+	Last          string         `yaml:"last,omitempty"`
+	LastSub       string         `yaml:"last_subscription,omitempty"`
+	Tun           bool           `yaml:"tun,omitempty"`
+	Collapsed     []string       `yaml:"collapsed,omitempty"`
 }
 
 func (d Disk) Load() (PersistentState, error) {
-	state := PersistentState{Settings: domain.Settings{General: domain.General{RefreshEvery: domain.DefaultRefresh}}}
-	data, err := os.ReadFile(ipc.Configuration(d.Dir))
-	if err != nil {
-		if err := skipMissing(err); err != nil {
+	state := PersistentState{
+		Settings:      domain.Settings{General: domain.General{RefreshEvery: domain.DefaultRefresh}},
+		Subscriptions: []Subscription{},
+	}
+	if cfgData, err := os.ReadFile(ipc.Config(d.Dir)); err == nil {
+		if err := yaml.Unmarshal(cfgData, &state.Settings); err != nil {
 			return state, err
 		}
-		return d.loadSubscriptions(state)
-	}
-	var f file
-	if err := yaml.Unmarshal(data, &f); err != nil {
+	} else if !os.IsNotExist(err) {
 		return state, err
 	}
-	state.Active = domain.NodeRef{SubscriptionID: f.ActiveSub, NodeID: f.Active}
-	state.Last = domain.NodeRef{SubscriptionID: f.LastSub, NodeID: f.Last}
-	state.Tun, state.Settings = f.Tun, f.Settings
-	if f.Subscriptions != nil {
-		state.Subscriptions = *f.Subscriptions
-		return state, nil
-	}
-	return d.loadSubscriptions(state)
-}
 
-func (d Disk) loadSubscriptions(state PersistentState) (PersistentState, error) {
-	data, err := os.ReadFile(ipc.Subscriptions(d.Dir))
-	if err != nil {
-		return state, skipMissing(err)
-	}
-	var f struct {
-		Subscriptions []Subscription `yaml:"subscriptions"`
-	}
-	if err := yaml.Unmarshal(data, &f); err != nil {
+	if stateData, err := os.ReadFile(ipc.State(d.Dir)); err == nil {
+		var sf stateFile
+		if err := yaml.Unmarshal(stateData, &sf); err != nil {
+			return state, err
+		}
+		state.Active = domain.NodeRef{SubscriptionID: sf.ActiveSub, NodeID: sf.Active}
+		state.Last = domain.NodeRef{SubscriptionID: sf.LastSub, NodeID: sf.Last}
+		state.Tun = sf.Tun
+		state.Collapsed = sf.Collapsed
+		if sf.Subscriptions != nil {
+			state.Subscriptions = sf.Subscriptions
+		}
+	} else if !os.IsNotExist(err) {
 		return state, err
 	}
-	state.Subscriptions = f.Subscriptions
+
 	return state, nil
 }
 
@@ -85,31 +80,28 @@ func (d Disk) Save(state PersistentState) error {
 	if state.Subscriptions == nil {
 		state.Subscriptions = []Subscription{}
 	}
-	f := file{
-		Subscriptions: &state.Subscriptions,
+	sf := stateFile{
+		Subscriptions: state.Subscriptions,
 		Active:        state.Active.NodeID,
 		ActiveSub:     state.Active.SubscriptionID,
 		Last:          state.Last.NodeID,
 		LastSub:       state.Last.SubscriptionID,
 		Tun:           state.Tun,
-		Settings:      state.Settings,
+		Collapsed:     state.Collapsed,
 	}
-	data, err := yaml.Marshal(f)
+	stateData, err := yaml.Marshal(sf)
 	if err != nil {
 		return err
 	}
-	if err := write(ipc.Configuration(d.Dir), data); err != nil {
+	if err := write(ipc.State(d.Dir), stateData); err != nil {
 		return err
 	}
-	_ = os.Remove(ipc.Subscriptions(d.Dir))
-	return nil
-}
 
-func skipMissing(err error) error {
-	if os.IsNotExist(err) {
-		return nil
+	cfgData, err := yaml.Marshal(state.Settings)
+	if err != nil {
+		return err
 	}
-	return err
+	return write(ipc.Config(d.Dir), cfgData)
 }
 
 func write(path string, data []byte) error {

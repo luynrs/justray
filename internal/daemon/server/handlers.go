@@ -81,6 +81,8 @@ func (s *Server) dispatch(ctx context.Context, req ipc.Req) (any, error) {
 		return nil, s.core.SetTun(ctx, a.Tun)
 	case "SetSettings":
 		return nil, s.core.SetSettings(ctx, a.Settings)
+	case "SetCollapsed":
+		return nil, s.core.SetCollapsed(a.ID, a.Collapsed)
 	}
 	return nil, fmt.Errorf("unknown method %q", req.Method)
 }

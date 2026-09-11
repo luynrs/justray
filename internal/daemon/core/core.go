@@ -234,6 +234,9 @@ func (c *Core) RemoveSubscription(id string) error {
 	if belongs(next.Last) {
 		next.Last = domain.NodeRef{}
 	}
+	next.Collapsed = slices.DeleteFunc(next.Collapsed, func(s string) bool {
+		return s == id || (id == "default" && s == "default")
+	})
 	if err := c.commit(next); err != nil {
 		return err
 	}
@@ -458,11 +461,32 @@ func (c *Core) SetSettings(ctx context.Context, settings domain.Settings) error 
 	return applyErr
 }
 
+func (c *Core) SetCollapsed(id string, collapsed bool) error {
+	c.opMu.Lock()
+	defer c.opMu.Unlock()
+	next := c.current()
+	has := slices.Contains(next.Collapsed, id)
+	if has == collapsed {
+		return nil
+	}
+	if collapsed {
+		next.Collapsed = append(next.Collapsed, id)
+	} else {
+		next.Collapsed = slices.DeleteFunc(next.Collapsed, func(s string) bool { return s == id })
+	}
+	if err := c.commit(next); err != nil {
+		return err
+	}
+	c.publish()
+	return nil
+}
+
 func (c *Core) current() store.PersistentState {
 	c.stateMu.RLock()
 	defer c.stateMu.RUnlock()
 	state := c.state
 	state.Subscriptions = slices.Clone(state.Subscriptions)
+	state.Collapsed = slices.Clone(state.Collapsed)
 	return state
 }
 
@@ -497,6 +521,7 @@ func (c *Core) publish() {
 		Nodes:         c.nodes(state.Subscriptions),
 		Status:        c.status(state),
 		Selected:      selected,
+		Collapsed:     slices.Clone(state.Collapsed),
 	}
 	c.snapshot.Store(snapshot)
 	for ch := range c.watchers {
@@ -595,6 +620,7 @@ func cloneSnapshot(snapshot ipc.Snapshot) ipc.Snapshot {
 	snapshot.Settings = cloneSettings(snapshot.Settings)
 	snapshot.Subscriptions = slices.Clone(snapshot.Subscriptions)
 	snapshot.Nodes = slices.Clone(snapshot.Nodes)
+	snapshot.Collapsed = slices.Clone(snapshot.Collapsed)
 	return snapshot
 }
 

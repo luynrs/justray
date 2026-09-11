@@ -98,6 +98,10 @@ func (c *Client) SetSettings(s domain.Settings) error {
 	return c.command("SetSettings", Args{Settings: s})
 }
 
+func (c *Client) SetCollapsed(id string, collapsed bool) error {
+	return c.command("SetCollapsed", Args{ID: id, Collapsed: collapsed})
+}
+
 func (c *Client) Shutdown() error { return c.command("Shutdown", Args{}) }
 
 func (c *Client) command(method string, args Args) error {
