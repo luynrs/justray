@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/luynrs/justray/internal/client/tui/settings"
+	"github.com/luynrs/justray/internal/client/tui/tree"
 	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/ipc"
 )
@@ -19,7 +20,7 @@ func TestSettingsWaitForSnapshot(t *testing.T) {
 	defer m.stopWatch()
 	m.snapshot.Settings = original
 	m.dialog = settings.New(original, topLines)
-	for range 3 {
+	for range 2 {
 		m.dialog.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	}
 	m.dialog.Update(tea.KeyPressMsg{Code: tea.KeyRight})
@@ -106,5 +107,45 @@ func TestSnapshotPreservesSelection(t *testing.T) {
 		if !ok || row.Kind != selected.Kind || row.Sub.ID != selected.Sub.ID || row.Node.Ref() != selected.Node.Ref() {
 			t.Fatalf("cursor %d lost its selection: before=%+v after=%+v", cursor, selected, row)
 		}
+	}
+}
+
+func TestAutofocus(t *testing.T) {
+	m := New(nil)
+	defer m.stopWatch()
+
+	snap := ipc.Snapshot{
+		Subscriptions: []ipc.Sub{{ID: "sub1", Name: "Sub 1"}},
+		Nodes: []ipc.Node{
+			{ID: "node1", Sub: "sub1", Name: "Node 1"},
+			{ID: "node2", Sub: "sub1", Name: "Node 2"},
+		},
+		Status: ipc.Status{
+			Connected: true,
+			NodeRef:   domain.NodeRef{SubscriptionID: "sub1", NodeID: "node2"},
+		},
+	}
+
+	updated, _ := m.Update(pushed{live: true, snapshot: snap})
+	row, ok := updated.(Model).at()
+	if !ok || row.Kind != tree.Node || row.Node.ID != "node2" {
+		t.Fatalf("expected autofocus on node2, got %+v", row)
+	}
+}
+
+func TestCollapsedSnapshot(t *testing.T) {
+	m := New(nil)
+	defer m.stopWatch()
+
+	snap := ipc.Snapshot{
+		Subscriptions: []ipc.Sub{{ID: "sub1", Name: "Sub 1"}},
+		Nodes:         []ipc.Node{{ID: "node1", Sub: "sub1", Name: "Node 1"}},
+		Collapsed:     []string{"sub1"},
+	}
+
+	updated, _ := m.Update(pushed{live: true, snapshot: snap})
+	mUpdated := updated.(Model)
+	if !mUpdated.collapsed["sub1"] {
+		t.Fatal("expected sub1 to be collapsed from snapshot")
 	}
 }

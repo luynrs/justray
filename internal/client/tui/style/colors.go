@@ -6,10 +6,10 @@ import (
 )
 
 var (
-	green  = lipgloss.Color("#4ade80")
-	yellow = lipgloss.Color("#facc15")
-	red    = lipgloss.Color("#f87171")
-	gray   = lipgloss.Color("#9ca3af")
+	green  = lipgloss.Color("2")
+	yellow = lipgloss.Color("3")
+	red    = lipgloss.Color("1")
+	gray   = lipgloss.Color("8")
 )
 
 var (
@@ -34,10 +34,13 @@ func Segment(s string, active bool) string {
 	if !active {
 		return " " + Dim.Render(s) + " "
 	}
+	if TTY {
+		return Strong.Render("[" + s + "]")
+	}
 	return pillCap.Render("▐") + pill.Render(s) + pillCap.Render("▌")
 }
 
-func Bar(fraction float64) string {
+func Progress(fraction float64) string {
 	fill := green
 	switch {
 	case fraction >= 0.9:
@@ -47,5 +50,9 @@ func Bar(fraction float64) string {
 	}
 	b := progress.New(progress.WithColors(fill), progress.WithoutPercentage(), progress.WithWidth(12))
 	b.EmptyColor = lipgloss.Color("8")
+	if TTY {
+		b.Full = '='
+		b.Empty = '-'
+	}
 	return b.ViewAs(fraction)
 }

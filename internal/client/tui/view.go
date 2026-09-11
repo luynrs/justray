@@ -105,10 +105,10 @@ func (m Model) keys() [][2]string {
 	case m.confirmSub.ID != "":
 		return [][2]string{{"y", "Delete"}, {"any", "Cancel"}}
 	case m.editor.Focused():
-		return [][2]string{{"↵", "Add"}, {"esc", "Cancel"}}
+		return [][2]string{{style.Enter(), "Add"}, {"esc", "Cancel"}}
 	}
 	return [][2]string{
-		{"↑/↓", "Move"}, {"←/→", "Fold"}, {"↵", "Toggle"}, {"t", "Ping"}, {"r", "Refresh"},
+		{style.Move(), "Move"}, {style.Fold(), "Fold"}, {style.Enter(), "Toggle"}, {"t", "Ping"}, {"r", "Refresh"},
 		{"m", "Mode"}, {"/", "Filter"}, {"a", "Add"}, {"d", "Delete"}, {"o", "Settings"}, {"q", "Quit"},
 	}
 }
@@ -129,9 +129,9 @@ func (m Model) hints(maxW int) string {
 }
 
 func (m Model) footer() string {
-	icon := "○"
+	icon := style.Dot(false)
 	if m.connected() {
-		icon = "●"
+		icon = style.Dot(true)
 	}
 	if m.connectionBusy {
 		icon = m.spin.View()
@@ -144,7 +144,7 @@ func (m Model) footer() string {
 		if m.connectionBusy {
 			iconStyle = style.Pending
 		}
-		status = iconStyle.Render(icon) + " " + style.Sanitize(m.snapshot.Status.NodeName, m.snapshot.Settings.Emoji == "on") + " " + style.Dim.Render("·") + " " + style.Uptime(m.snapshot.Status.Uptime())
+		status = iconStyle.Render(icon) + " " + style.Sanitize(m.snapshot.Status.NodeName, m.emoji()) + " " + style.Dim.Render(style.Sep()) + " " + style.Uptime(m.snapshot.Status.Uptime())
 	case m.live:
 		iconStyle := style.Dim
 		if m.connectionBusy {

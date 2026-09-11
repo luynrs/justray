@@ -35,35 +35,38 @@ var (
 )
 
 type Settings struct {
-	General `yaml:"general,omitempty"`
-	Network `yaml:"network,omitempty"`
-	Routing `yaml:"routing,omitempty"`
+	General    `yaml:"general,omitempty"`
+	Connection `yaml:"connection,omitempty"`
+	Routing    `yaml:"routing,omitempty"`
 }
 
 type General struct {
 	Autostart    string `yaml:"-"`                       // on/off, kept by the OS
 	RefreshEvery int    `yaml:"refresh_hours,omitempty"` // 0 = never
-	Port         int    `yaml:"port,omitempty"`
+	Emoji        string `yaml:"emoji,omitempty"`
+	ForceTTY     string `yaml:"force_tty,omitempty"` // on/off
 	LogLevel     string `yaml:"log_level,omitempty"`
 	ProbeURL     string `yaml:"probe_url,omitempty"`
-	Emoji        string `yaml:"emoji,omitempty"`
 }
 
-type Network struct {
-	DNSHijack string `yaml:"dns_hijack,omitempty"` // on/off, empty = on
-	DNS       string `yaml:"dns,omitempty"`
-	IPVersion string `yaml:"ip_version,omitempty"`
+type Connection struct {
+	Port      int    `yaml:"port,omitempty"`
+	AllowLAN  string `yaml:"allow_lan,omitempty"` // on/off
 	TunStack  string `yaml:"stack,omitempty"`
 	TunMTU    int    `yaml:"mtu,omitempty"`
-	TunStrict string `yaml:"strict_route,omitempty"` // on/off, empty = on
+	DNS       string `yaml:"dns,omitempty"`
+	DNSHijack string `yaml:"dns_hijack,omitempty"` // on/off, empty = on
+	IPVersion string `yaml:"ip_version,omitempty"`
 }
 
 type Routing struct {
-	Mode        string   `yaml:"mode,omitempty"`         // proxy-all/direct-all, empty = proxy-all
+	Mode        string   `yaml:"mode,omitempty"`         // proxy all/direct all, empty = proxy all
 	BypassLocal string   `yaml:"bypass_local,omitempty"` // on/off, empty = on
+	TunStrict   string   `yaml:"strict_route,omitempty"` // on/off, empty = on
 	BlockQUIC   string   `yaml:"block_quic,omitempty"`   // on/off, empty = off
-	Except      []string `yaml:"except,omitempty"`
-	Blocked     []string `yaml:"blocked,omitempty"`
+	Direct      []string `yaml:"direct,omitempty"`       // forced direct
+	Proxy       []string `yaml:"proxy,omitempty"`        // forced through proxy
+	Block       []string `yaml:"block,omitempty"`        // rejected
 }
 
 func (s Settings) IPv4() bool            { return s.IPVersion != "ipv6" }
@@ -82,14 +85,18 @@ func (s Settings) Normalize() (Settings, error) {
 		one("mode", &s.Mode, ProxyAll, Modes),
 		one("strict route", &s.TunStrict, "on", Toggle),
 		one("dns hijack", &s.DNSHijack, "on", Toggle),
+		one("allow lan", &s.AllowLAN, "off", Toggle),
+		one("direct lan", &s.BypassLocal, "on", Toggle),
 		one("block quic", &s.BlockQUIC, "off", Toggle),
-		one("local networks", &s.BypassLocal, "on", Toggle),
+		one("force tty", &s.ForceTTY, "off", Toggle),
 		one("autostart", &s.Autostart, "off", Toggle),
 		one("emoji", &s.Emoji, "off", Toggle),
 		text("dns", &s.DNS, DefaultDNS, "an IP address or an HTTPS URL", isDNS),
 		text("probe url", &s.ProbeURL, DefaultProbeURL, "a url", isURL),
-		canon(&s.Except),
-		canon(&s.Blocked),
+		canon(&s.Direct),
+		canon(&s.Proxy),
+		canon(&s.Block),
+		disjoint(s.Direct, s.Proxy),
 	}
 	for _, err := range checks {
 		if err != nil {
@@ -141,6 +148,15 @@ func canon(list *[]string) error {
 		}
 	}
 	*list = out
+	return nil
+}
+
+func disjoint(a, b []string) error {
+	for _, x := range a {
+		if slices.Contains(b, x) {
+			return fmt.Errorf("%q cannot be in both direct and proxy", x)
+		}
+	}
 	return nil
 }
 

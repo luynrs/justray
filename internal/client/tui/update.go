@@ -81,11 +81,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.connectionBusy = false
 			return m, next(m.watchCtx, m.updates)
 		}
+		initial := !m.live
 		selected, selectedOK := m.at()
 		m.snapshot = msg.snapshot
+		m.syncTTY()
 		m.live = true
+		if initial {
+			for _, id := range m.snapshot.Collapsed {
+				m.collapsed[id] = true
+			}
+		}
 		rows := m.rows()
-		if selectedOK {
+		switch {
+		case initial && m.snapshot.Status.Connected:
+			for i, idx := range tree.Selectable(rows) {
+				if r := rows[idx]; r.Kind == tree.Node && r.Node.Ref() == m.snapshot.Status.NodeRef {
+					m.cursor = i
+					break
+				}
+			}
+		case selectedOK:
 			for i, idx := range tree.Selectable(rows) {
 				row := rows[idx]
 				if row.Kind == selected.Kind && row.Sub.ID == selected.Sub.ID && (row.Kind != tree.Node || row.Node.Ref() == selected.Node.Ref()) {
@@ -108,6 +123,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		id := m.confirmSub.ID
 		m.confirmSub = ipc.Sub{}
 		if k == "y" || k == "Y" {
+			delete(m.collapsed, id)
 			return m, actionCmd("mutation", func() error { return m.client.RemoveSub(id) })
 		}
 		return m, nil
@@ -180,6 +196,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.editor.Focus(), textinput.Blink)
 	case "o":
 		m.dialog = settings.New(m.snapshot.Settings, topLines)
+		m.syncTTY()
 		return m, nil
 	case "/":
 		m.filter.CursorEnd()
@@ -252,6 +269,7 @@ func (m Model) click(x, y int) (tea.Model, tea.Cmd) {
 
 func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 	closed, cmd := m.dialog.Update(msg)
+	m.syncTTY()
 	if !closed {
 		return m, cmd
 	}
@@ -262,6 +280,7 @@ func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) closeSettings() (Model, tea.Cmd) {
 	next, changed, err := m.dialog.Result()
 	m.dialog = nil
+	m.syncTTY()
 	switch {
 	case err != nil:
 		m.err, m.errAt = err.Error(), time.Now()

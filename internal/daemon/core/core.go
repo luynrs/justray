@@ -234,6 +234,9 @@ func (c *Core) RemoveSubscription(id string) error {
 	if belongs(next.Last) {
 		next.Last = domain.NodeRef{}
 	}
+	next.Collapsed = slices.DeleteFunc(next.Collapsed, func(s string) bool {
+		return s == id
+	})
 	if err := c.commit(next); err != nil {
 		return err
 	}
@@ -436,9 +439,12 @@ func (c *Core) SetSettings(ctx context.Context, settings domain.Settings) error 
 	next := c.current()
 	old := next.Settings
 	next.Settings = settings
-	if err := c.commit(next); err != nil {
+	if err := c.store.SaveConfig(next.Settings); err != nil {
 		return err
 	}
+	c.stateMu.Lock()
+	c.state.Settings = settings
+	c.stateMu.Unlock()
 	if settings.Autostart != old.Autostart {
 		apply := autostart.Enable
 		if settings.Autostart == "off" {
@@ -446,9 +452,12 @@ func (c *Core) SetSettings(ctx context.Context, settings domain.Settings) error 
 		}
 		if err := apply(); err != nil {
 			next.Settings.Autostart = old.Autostart
-			if rollbackErr := c.commit(next); rollbackErr != nil {
+			if rollbackErr := c.store.SaveConfig(next.Settings); rollbackErr != nil {
 				err = errors.Join(err, fmt.Errorf("restore autostart setting: %w", rollbackErr))
 			}
+			c.stateMu.Lock()
+			c.state.Settings = next.Settings
+			c.stateMu.Unlock()
 			c.publish()
 			return err
 		}
@@ -458,16 +467,38 @@ func (c *Core) SetSettings(ctx context.Context, settings domain.Settings) error 
 	return applyErr
 }
 
+func (c *Core) SetCollapsed(id string, collapsed bool) error {
+	c.opMu.Lock()
+	defer c.opMu.Unlock()
+	next := c.current()
+	has := slices.Contains(next.Collapsed, id)
+	if has == collapsed {
+		return nil
+	}
+	if collapsed {
+		next.Collapsed = append(next.Collapsed, id)
+	} else {
+		next.Collapsed = slices.DeleteFunc(next.Collapsed, func(s string) bool { return s == id })
+	}
+	if err := c.commit(next); err != nil {
+		return err
+	}
+	c.publish()
+	return nil
+}
+
 func (c *Core) current() store.PersistentState {
 	c.stateMu.RLock()
 	defer c.stateMu.RUnlock()
 	state := c.state
 	state.Subscriptions = slices.Clone(state.Subscriptions)
+	state.Collapsed = slices.Clone(state.Collapsed)
+	state.Settings = cloneSettings(state.Settings)
 	return state
 }
 
 func (c *Core) commit(state store.PersistentState) error {
-	if err := c.store.Save(state); err != nil {
+	if err := c.store.SaveState(state); err != nil {
 		return err
 	}
 	c.stateMu.Lock()
@@ -497,6 +528,7 @@ func (c *Core) publish() {
 		Nodes:         c.nodes(state.Subscriptions),
 		Status:        c.status(state),
 		Selected:      selected,
+		Collapsed:     slices.Clone(state.Collapsed),
 	}
 	c.snapshot.Store(snapshot)
 	for ch := range c.watchers {
@@ -595,6 +627,7 @@ func cloneSnapshot(snapshot ipc.Snapshot) ipc.Snapshot {
 	snapshot.Settings = cloneSettings(snapshot.Settings)
 	snapshot.Subscriptions = slices.Clone(snapshot.Subscriptions)
 	snapshot.Nodes = slices.Clone(snapshot.Nodes)
+	snapshot.Collapsed = slices.Clone(snapshot.Collapsed)
 	return snapshot
 }
 
@@ -607,8 +640,9 @@ func subView(sub store.Subscription, refreshing bool) ipc.Sub {
 }
 
 func cloneSettings(settings domain.Settings) domain.Settings {
-	settings.Except = slices.Clone(settings.Except)
-	settings.Blocked = slices.Clone(settings.Blocked)
+	settings.Direct = slices.Clone(settings.Direct)
+	settings.Proxy = slices.Clone(settings.Proxy)
+	settings.Block = slices.Clone(settings.Block)
 	return settings
 }
 

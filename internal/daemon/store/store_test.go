@@ -1,7 +1,6 @@
 package store
 
 import (
-	"errors"
 	"os"
 	"reflect"
 	"strings"
@@ -24,20 +23,28 @@ func TestRoundtrip(t *testing.T) {
 				Server: "1.2.3.4", Port: 443, Auth: domain.Auth{UUID: "uuid"},
 			}},
 		}},
-		Active:   domain.NodeRef{SubscriptionID: "a", NodeID: "n1"},
-		Last:     domain.NodeRef{SubscriptionID: "old", NodeID: "n0"},
-		Tun:      true,
-		Settings: domain.Settings{General: domain.General{RefreshEvery: 12}},
+		Active:    domain.NodeRef{SubscriptionID: "a", NodeID: "n1"},
+		Last:      domain.NodeRef{SubscriptionID: "old", NodeID: "n0"},
+		Tun:       true,
+		Settings:  domain.Settings{General: domain.General{RefreshEvery: 12}},
+		Collapsed: []string{"a"},
 	}
 	if err := d.Save(state); err != nil {
 		t.Fatal(err)
 	}
-	raw, err := os.ReadFile(ipc.Configuration(d.Dir))
+	rawState, err := os.ReadFile(ipc.State(d.Dir))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(raw), "tls:") || strings.Contains(string(raw), "password:") {
-		t.Fatalf("expected empty fields to be omitted, got:\n%s", raw)
+	if strings.Contains(string(rawState), "tls:") || strings.Contains(string(rawState), "password:") {
+		t.Fatalf("expected empty fields to be omitted, got:\n%s", rawState)
+	}
+	rawConfig, err := os.ReadFile(ipc.Config(d.Dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(rawConfig), "refresh_hours: 12") {
+		t.Fatalf("expected settings in config.yaml, got:\n%s", rawConfig)
 	}
 	got, err := d.Load()
 	if err != nil {
@@ -48,35 +55,9 @@ func TestRoundtrip(t *testing.T) {
 	}
 }
 
-func TestLoadMigrates(t *testing.T) {
-	d := Disk{Dir: t.TempDir()}
-	if err := os.WriteFile(ipc.Configuration(d.Dir), []byte("active: node\nactive_subscription: sub\nlast: old\nlast_subscription: old-sub\ntun: true\nsettings:\n  general:\n    refresh_hours: 12\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(ipc.Subscriptions(d.Dir), []byte("subscriptions:\n  - id: sub\n    name: test\n    url: https://example.com/sub\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	state, err := d.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if state.Active != (domain.NodeRef{SubscriptionID: "sub", NodeID: "node"}) || state.Last != (domain.NodeRef{SubscriptionID: "old-sub", NodeID: "old"}) || !state.Tun || len(state.Subscriptions) != 1 {
-		t.Fatalf("migration state = %+v", state)
-	}
-	if err := d.Save(state); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(ipc.Subscriptions(d.Dir)); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("legacy subscriptions file: %v", err)
-	}
-}
-
 func TestEmptySnapshot(t *testing.T) {
 	d := Disk{Dir: t.TempDir()}
 	if err := d.Save(PersistentState{}); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(ipc.Subscriptions(d.Dir), []byte("subscriptions:\n  - id: legacy\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	state, err := d.Load()

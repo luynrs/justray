@@ -13,19 +13,21 @@ func TestRebuilds(t *testing.T) {
 	}
 
 	rebuilds := map[string]func(*domain.Settings){
-		"port":           func(s *domain.Settings) { s.Port = 1081 },
-		"dns":            func(s *domain.Settings) { s.DNS = "9.9.9.9" },
-		"dns hijack":     func(s *domain.Settings) { s.DNSHijack = "off" },
-		"log level":      func(s *domain.Settings) { s.LogLevel = "debug" },
-		"mtu":            func(s *domain.Settings) { s.TunMTU = 1400 },
-		"stack":          func(s *domain.Settings) { s.TunStack = "system" },
-		"strict route":   func(s *domain.Settings) { s.TunStrict = "off" },
-		"ip version":     func(s *domain.Settings) { s.IPVersion = "ipv4" },
-		"local networks": func(s *domain.Settings) { s.BypassLocal = "off" },
-		"block quic":     func(s *domain.Settings) { s.BlockQUIC = "on" },
-		"except list":    func(s *domain.Settings) { s.Except = []string{"10.0.0.0/8"} },
-		"blocked list":   func(s *domain.Settings) { s.Blocked = []string{"ads.example.com"} },
-		"mode":           func(s *domain.Settings) { s.Mode = domain.DirectAll },
+		"port":         func(s *domain.Settings) { s.Port = 1081 },
+		"dns":          func(s *domain.Settings) { s.DNS = "9.9.9.9" },
+		"dns hijack":   func(s *domain.Settings) { s.DNSHijack = "off" },
+		"log level":    func(s *domain.Settings) { s.LogLevel = "debug" },
+		"mtu":          func(s *domain.Settings) { s.TunMTU = 1400 },
+		"stack":        func(s *domain.Settings) { s.TunStack = "system" },
+		"strict route": func(s *domain.Settings) { s.TunStrict = "off" },
+		"ip version":   func(s *domain.Settings) { s.IPVersion = "ipv4" },
+		"allow lan":    func(s *domain.Settings) { s.AllowLAN = "on" },
+		"direct lan":   func(s *domain.Settings) { s.BypassLocal = "off" },
+		"block quic":   func(s *domain.Settings) { s.BlockQUIC = "on" },
+		"direct list":  func(s *domain.Settings) { s.Direct = []string{"10.0.0.0/8"} },
+		"proxy list":   func(s *domain.Settings) { s.Proxy = []string{"work.example.com"} },
+		"block list":   func(s *domain.Settings) { s.Block = []string{"ads.example.com"} },
+		"mode":         func(s *domain.Settings) { s.Mode = domain.DirectAll },
 	}
 	for name, edit := range rebuilds {
 		next := base
@@ -40,6 +42,7 @@ func TestRebuilds(t *testing.T) {
 		"refresh":   func(s *domain.Settings) { s.RefreshEvery = 6 },
 		"autostart": func(s *domain.Settings) { s.Autostart = "on" },
 		"emoji":     func(s *domain.Settings) { s.Emoji = "on" },
+		"force tty": func(s *domain.Settings) { s.ForceTTY = "on" },
 	}
 	for name, edit := range live {
 		next := base
@@ -54,7 +57,7 @@ func TestRebuilds(t *testing.T) {
 	}
 
 	empty := base
-	empty.Except, empty.Blocked = []string{}, []string{}
+	empty.Direct, empty.Proxy, empty.Block = []string{}, []string{}, []string{}
 	if Rebuilds(base, empty) {
 		t.Error("nil and empty lists asked for a rebuild")
 	}

@@ -39,13 +39,13 @@ type list struct {
 var tabs = []tab{
 	{name: "General", fields: []field{
 		{
-			name: "Start at login",
+			name: "Autostart",
 			enum: domain.Toggle,
 			get:  func(s domain.Settings) string { return s.Autostart },
 			set:  func(s *domain.Settings, in string) error { s.Autostart = in; return nil },
 		},
 		{
-			name: "Refresh subscriptions",
+			name: "Auto-refresh",
 			hint: "never",
 			get:  func(s domain.Settings) string { return hours(s.RefreshEvery) },
 			set: func(s *domain.Settings, in string) error {
@@ -58,18 +58,19 @@ var tabs = []tab{
 			},
 		},
 		{
-			name: "Mixed port",
-			get:  func(s domain.Settings) string { return strconv.Itoa(s.Port) },
-			set:  setInt(func(s *domain.Settings) *int { return &s.Port }),
-		},
-		{
-			name: "Unicode emoji",
+			name: "Emoji",
 			enum: domain.Toggle,
 			get:  func(s domain.Settings) string { return s.Emoji },
 			set:  func(s *domain.Settings, in string) error { s.Emoji = in; return nil },
 		},
 		{
-			name: "Logging",
+			name: "Force TTY",
+			enum: domain.Toggle,
+			get:  func(s domain.Settings) string { return s.ForceTTY },
+			set:  func(s *domain.Settings, in string) error { s.ForceTTY = in; return nil },
+		},
+		{
+			name: "Log level",
 			enum: domain.LogLevels,
 			get:  func(s domain.Settings) string { return s.LogLevel },
 			set:  func(s *domain.Settings, in string) error { s.LogLevel = in; return nil },
@@ -80,7 +81,29 @@ var tabs = []tab{
 			set:  func(s *domain.Settings, in string) error { s.ProbeURL = strings.TrimSpace(in); return nil },
 		},
 	}},
-	{name: "Network", fields: []field{
+	{name: "Connection", fields: []field{
+		{
+			name: "Proxy port",
+			get:  func(s domain.Settings) string { return strconv.Itoa(s.Port) },
+			set:  setInt(func(s *domain.Settings) *int { return &s.Port }),
+		},
+		{
+			name: "Allow LAN",
+			enum: domain.Toggle,
+			get:  func(s domain.Settings) string { return s.AllowLAN },
+			set:  func(s *domain.Settings, in string) error { s.AllowLAN = in; return nil },
+		},
+		{
+			name: "Stack",
+			enum: domain.TunStacks,
+			get:  func(s domain.Settings) string { return s.TunStack },
+			set:  func(s *domain.Settings, in string) error { s.TunStack = in; return nil },
+		},
+		{
+			name: "MTU",
+			get:  func(s domain.Settings) string { return strconv.Itoa(s.TunMTU) },
+			set:  setInt(func(s *domain.Settings) *int { return &s.TunMTU }),
+		},
 		{
 			name: "DNS hijack",
 			enum: domain.Toggle,
@@ -98,23 +121,6 @@ var tabs = []tab{
 			get:  func(s domain.Settings) string { return s.IPVersion },
 			set:  func(s *domain.Settings, in string) error { s.IPVersion = in; return nil },
 		},
-		{
-			name: "Stack",
-			enum: domain.TunStacks,
-			get:  func(s domain.Settings) string { return s.TunStack },
-			set:  func(s *domain.Settings, in string) error { s.TunStack = in; return nil },
-		},
-		{
-			name: "MTU",
-			get:  func(s domain.Settings) string { return strconv.Itoa(s.TunMTU) },
-			set:  setInt(func(s *domain.Settings) *int { return &s.TunMTU }),
-		},
-		{
-			name: "Strict route",
-			enum: domain.Toggle,
-			get:  func(s domain.Settings) string { return s.TunStrict },
-			set:  func(s *domain.Settings, in string) error { s.TunStrict = in; return nil },
-		},
 	}},
 	{name: "Routing", fields: []field{
 		{
@@ -130,14 +136,21 @@ var tabs = []tab{
 			set:  func(s *domain.Settings, in string) error { s.BypassLocal = in; return nil },
 		},
 		{
+			name: "Strict route",
+			enum: domain.Toggle,
+			get:  func(s domain.Settings) string { return s.TunStrict },
+			set:  func(s *domain.Settings, in string) error { s.TunStrict = in; return nil },
+		},
+		{
 			name: "Block QUIC",
 			enum: domain.Toggle,
 			get:  func(s domain.Settings) string { return s.BlockQUIC },
 			set:  func(s *domain.Settings, in string) error { s.BlockQUIC = in; return nil },
 		},
 	}, lists: []list{
-		{"Except", func(v *domain.Settings) *[]string { return &v.Except }},
-		{"Blocked", func(v *domain.Settings) *[]string { return &v.Blocked }},
+		{"Direct", func(v *domain.Settings) *[]string { return &v.Direct }},
+		{"Proxy", func(v *domain.Settings) *[]string { return &v.Proxy }},
+		{"Block", func(v *domain.Settings) *[]string { return &v.Block }},
 	}},
 }
 
@@ -170,14 +183,20 @@ func New(s domain.Settings, top int) *Settings {
 	input := textinput.New()
 	input.Prompt = ""
 	styles := input.Styles()
-	styles.Focused.Text = style.Dim
 	styles.Focused.Placeholder = style.Dim
 	input.SetStyles(styles)
 	input.CharLimit = 2048
+	orig := s
+	orig.Direct = slices.Clone(s.Direct)
+	orig.Proxy = slices.Clone(s.Proxy)
+	orig.Block = slices.Clone(s.Block)
 	cur := s
-	cur.Except = slices.Clone(s.Except)
-	cur.Blocked = slices.Clone(s.Blocked)
-	return &Settings{top: top, cur: cur, orig: s, input: input}
+	cur.Direct = slices.Clone(s.Direct)
+	cur.Proxy = slices.Clone(s.Proxy)
+	cur.Block = slices.Clone(s.Block)
+	res := &Settings{top: top, cur: cur, orig: orig, input: input}
+	res.move(0)
+	return res
 }
 
 func (s *Settings) Result() (domain.Settings, bool, error) {
@@ -186,6 +205,10 @@ func (s *Settings) Result() (domain.Settings, bool, error) {
 	}
 	next, err := s.cur.Normalize()
 	return next, true, err
+}
+
+func (s *Settings) Current() domain.Settings {
+	return s.cur
 }
 
 func (s *Settings) Update(msg tea.Msg) (closed bool, cmd tea.Cmd) {
@@ -383,7 +406,7 @@ func (s *Settings) rows() []field {
 func (s *Settings) listRows(l list) []field {
 	entries := *l.at(&s.cur)
 	out := make([]field, 0, len(entries)+2)
-	out = append(out, field{name: l.title})
+	out = append(out, field{name: l.title, hint: fmt.Sprintf("(%d)", len(entries))})
 
 	for i := range entries {
 		set := func(v *domain.Settings, in string) error {
@@ -396,13 +419,16 @@ func (s *Settings) listRows(l list) []field {
 			if err != nil {
 				return err
 			}
+			if err := conflict(v, at, rule); err != nil {
+				return err
+			}
 			(*at)[i] = rule
 			return nil
 		}
 		out = append(out, field{
 			name:   entries[i],
 			bare:   true,
-			hint:   "empty removes it",
+			hint:   "delete?",
 			get:    func(v domain.Settings) string { return (*l.at(&v))[i] },
 			set:    set,
 			remove: func(v *domain.Settings) { _ = set(v, "") }, // empty input never errors
@@ -410,9 +436,9 @@ func (s *Settings) listRows(l list) []field {
 	}
 
 	return append(out, field{
-		name: "+ add domain, network or app",
+		name: "+ add rule",
 		bare: true,
-		hint: "example.com, 2ip.*, 10.0.0.0/8, firefox",
+		hint: "example.com, *.domain, 10.0.0.0/8, app",
 		get:  func(domain.Settings) string { return "" },
 		set: func(v *domain.Settings, in string) error {
 			if in = strings.TrimSpace(in); in == "" {
@@ -422,10 +448,27 @@ func (s *Settings) listRows(l list) []field {
 			if err != nil {
 				return err
 			}
-			*l.at(v) = append(*l.at(v), rule)
+			at := l.at(v)
+			if err := conflict(v, at, rule); err != nil {
+				return err
+			}
+			if slices.Contains(*at, rule) {
+				return nil
+			}
+			*at = append(*at, rule)
 			return nil
 		},
 	})
+}
+
+func conflict(s *domain.Settings, target *[]string, rule string) error {
+	if target == &s.Direct && slices.Contains(s.Proxy, rule) {
+		return fmt.Errorf("%q already in proxy", rule)
+	}
+	if target == &s.Proxy && slices.Contains(s.Direct, rule) {
+		return fmt.Errorf("%q already in direct", rule)
+	}
+	return nil
 }
 
 func (s *Settings) at() (field, bool) {

@@ -11,7 +11,7 @@ import (
 func (d Data) Render(r Row, selected bool, width int) string {
 	bar := "  "
 	if selected {
-		bar = style.Accent.Render("▎ ")
+		bar = style.Accent.Render(style.Bar())
 	}
 
 	switch r.Kind {
@@ -26,10 +26,7 @@ func (d Data) Render(r Row, selected bool, width int) string {
 }
 
 func subHeader(s ipc.Sub, collapsed, selected, emoji bool) string {
-	arrow := "▼"
-	if collapsed {
-		arrow = "▶"
-	}
+	arrow := style.Arrow(collapsed)
 	clean := style.Sanitize(s.Name, emoji)
 	if selected {
 		return style.Strong.Render(arrow + " " + clean)
@@ -49,7 +46,7 @@ func subMeta(s ipc.Sub, spinner string) string {
 	if s.Nodes == 1 {
 		plural = ""
 	}
-	return style.Dim.Render(fmt.Sprintf("%d node%s · %s", s.Nodes, plural, age))
+	return style.Dim.Render(fmt.Sprintf("%d node%s %s %s", s.Nodes, plural, style.Sep(), age))
 }
 
 func (d Data) node(n ipc.Node, selected bool) string {
@@ -65,7 +62,7 @@ func (d Data) node(n ipc.Node, selected bool) string {
 }
 
 func info(n ipc.Node) string {
-	return style.Dim.Render(fmt.Sprintf("%s:%d · %s", style.Sanitize(n.Server, true), n.Port, n.Protocol))
+	return style.Dim.Render(fmt.Sprintf("%s:%d %s %s", style.Sanitize(n.Server, true), n.Port, style.Sep(), n.Protocol))
 }
 
 func latency(n ipc.Node) string {
@@ -81,13 +78,13 @@ func latency(n ipc.Node) string {
 func (d Data) dot(n ipc.Node) string {
 	switch {
 	case d.connected() && d.Status.NodeRef == n.Ref():
-		return style.Alive.Render("●")
+		return style.Alive.Render(style.Dot(true))
 	case n.Probing:
-		return style.Pending.Render(cmp.Or(d.Spinner, "○"))
+		return style.Pending.Render(cmp.Or(d.Spinner, style.Dot(false)))
 	case !n.Probed:
-		return style.Unknown.Render("○")
+		return style.Unknown.Render(style.Dot(false))
 	case n.Alive:
-		return style.Alive.Render("○")
+		return style.Alive.Render(style.Dot(false))
 	}
-	return style.Dead.Render("○")
+	return style.Dead.Render(style.Dot(false))
 }

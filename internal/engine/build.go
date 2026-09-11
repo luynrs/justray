@@ -47,7 +47,7 @@ func Build(ctx context.Context, n domain.Node, s domain.Settings, logPath string
 		Inbounds: []option.Inbound{
 			{Type: C.TypeMixed, Tag: "mixed-in", Options: &option.HTTPMixedInboundOptions{
 				ListenOptions: option.ListenOptions{
-					Listen:     common.Ptr(badoption.Addr(netip.MustParseAddr("127.0.0.1"))),
+					Listen:     common.Ptr(badoption.Addr(listenAddr(s))),
 					ListenPort: uint16(s.Port),
 				},
 			}},
@@ -164,4 +164,11 @@ func dnsServer(s domain.Settings) option.DNSServerOptions {
 		RemoteTLSDNSServerOptions: option.RemoteTLSDNSServerOptions{RemoteDNSServerOptions: remote},
 		Path:                      u.EscapedPath(),
 	}}
+}
+
+func listenAddr(s domain.Settings) netip.Addr {
+	if s.AllowLAN == "on" {
+		return netip.IPv4Unspecified()
+	}
+	return netip.MustParseAddr("127.0.0.1")
 }
