@@ -8,7 +8,7 @@ require (
 	charm.land/lipgloss/v2 v2.0.6
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/sagernet/netlink v0.0.0-20260814022025-64455d367bbf
-	github.com/sagernet/sing v0.9.0
+	github.com/sagernet/sing v0.9.2
 	github.com/sagernet/sing-box v1.14.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/sys v0.47.0
