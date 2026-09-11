@@ -66,27 +66,19 @@ func rules(s domain.Settings, direct []string) []option.Rule {
 		out = append(out, refuseV6)
 	}
 
-	// a TUN connection carries only an address, a mixed-in one only a domain
 	out = append(out,
 		option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{RuleAction: option.RuleAction{Action: C.RuleActionTypeSniff}}},
 		option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{RuleAction: option.RuleAction{Action: C.RuleActionTypeResolve}}},
 	)
 	if s.BlockQUIC == "on" {
 		out = append(out, option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{
-			RawDefaultRule: option.RawDefaultRule{
-				Network: []string{"udp"},
-				Port:    []uint16{443},
-			},
-			RuleAction: reject,
+			RawDefaultRule: option.RawDefaultRule{Network: []string{"udp"}, Port: []uint16{443}},
+			RuleAction:     reject,
 		}})
 	}
 
-	toExcept := toDirect
-	if s.Mode == domain.DirectAll {
-		toExcept = toProxy
-	}
-
-	out = append(out, match(s.Blocked, reject, nil)...)
+	// Block > ex. Direct/Proxy > Mode
+	out = append(out, match(s.Block, reject, nil)...)
 
 	if s.BypassLocal == "on" {
 		out = append(out, option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{
@@ -98,7 +90,9 @@ func rules(s domain.Settings, direct []string) []option.Rule {
 		RawDefaultRule: option.RawDefaultRule{IPCIDR: direct},
 		RuleAction:     toDirect,
 	}})
-	return append(out, match(s.Except, toExcept, []string{"tun-in"})...)
+
+	out = append(out, match(s.Direct, toDirect, []string{"tun-in"})...)
+	return append(out, match(s.Proxy, toProxy, []string{"tun-in"})...)
 }
 
 func TunInbound(s domain.Settings, resolverIPs []netip.Prefix) option.Inbound {

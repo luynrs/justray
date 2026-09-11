@@ -19,7 +19,7 @@ func TestSettingsWaitForSnapshot(t *testing.T) {
 	defer m.stopWatch()
 	m.snapshot.Settings = original
 	m.dialog = settings.New(original, topLines)
-	for range 3 {
+	for range 2 {
 		m.dialog.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	}
 	m.dialog.Update(tea.KeyPressMsg{Code: tea.KeyRight})

@@ -607,8 +607,9 @@ func subView(sub store.Subscription, refreshing bool) ipc.Sub {
 }
 
 func cloneSettings(settings domain.Settings) domain.Settings {
-	settings.Except = slices.Clone(settings.Except)
-	settings.Blocked = slices.Clone(settings.Blocked)
+	settings.Direct = slices.Clone(settings.Direct)
+	settings.Proxy = slices.Clone(settings.Proxy)
+	settings.Block = slices.Clone(settings.Block)
 	return settings
 }
 

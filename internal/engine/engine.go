@@ -23,6 +23,7 @@ func Rebuilds(x, y domain.Settings) bool {
 	x.RefreshEvery, y.RefreshEvery = 0, 0
 	x.Autostart, y.Autostart = "", ""
 	x.Emoji, y.Emoji = "", ""
+	x.ForceTTY, y.ForceTTY = "", ""
 	return !x.Equal(y)
 }
 
