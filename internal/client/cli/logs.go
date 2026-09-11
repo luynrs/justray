@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -62,10 +60,7 @@ func (a *app) logs(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
-
-	return followLog(ctx, logPath, cmd.OutOrStdout())
+	return followLog(cmd.Context(), logPath, cmd.OutOrStdout())
 }
 
 func followLog(ctx context.Context, path string, out io.Writer) error {

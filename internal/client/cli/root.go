@@ -1,13 +1,16 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"charm.land/lipgloss/v2"
@@ -77,6 +80,9 @@ func init() {
 func Execute() error {
 	a := &app{}
 
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
 	rootCmd.Use = filepath.Base(os.Args[0]) + " <command>"
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		for c := cmd; c != nil; c = c.Parent() {
@@ -84,7 +90,11 @@ func Execute() error {
 				return nil
 			}
 		}
-		return a.connectDaemon()
+		if err := a.connectDaemon(); err != nil {
+			return err
+		}
+		a.client = a.client.WithContext(cmd.Context())
+		return nil
 	}
 	rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		return tui.Run(a.client)
@@ -111,8 +121,11 @@ func Execute() error {
 	}
 	setHelpText(rootCmd)
 
-	err := rootCmd.Execute()
+	err := rootCmd.ExecuteContext(ctx)
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return nil
+		}
 		return errors.New(a.clean(err.Error()))
 	}
 	return nil

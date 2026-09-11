@@ -1,6 +1,7 @@
 package ipc
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,12 +12,19 @@ import (
 	"github.com/luynrs/justray/internal/domain"
 )
 
-type Client struct{ socket string }
+type Client struct {
+	socket string
+	ctx    context.Context
+}
 
 // IdleTimeout bounds how long either side waits on a quiet connection
 const IdleTimeout = 60 * time.Second
 
-func NewClient(socket string) *Client { return &Client{socket} }
+func NewClient(socket string) *Client { return &Client{socket: socket} }
+
+func (c *Client) WithContext(ctx context.Context) *Client {
+	return &Client{socket: c.socket, ctx: ctx}
+}
 
 func (c *Client) dial(ctx context.Context) (net.Conn, error) {
 	dialer := net.Dialer{Timeout: 3 * time.Second}
@@ -43,19 +51,23 @@ func timeoutFor(method string) time.Duration {
 func call[T any](c *Client, method string, args Args) (T, error) {
 	var out T
 
-	conn, err := c.dial(context.Background())
+	ctx := cmp.Or(c.ctx, context.Background())
+	conn, err := c.dial(ctx)
 	if err != nil {
 		return out, err
 	}
 	defer func() { _ = conn.Close() }()
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
+
 	_ = conn.SetDeadline(time.Now().Add(timeoutFor(method)))
 
 	if err := json.NewEncoder(conn).Encode(Req{method, args}); err != nil {
-		return out, fmt.Errorf("%s: %w", method, err)
+		return out, cmp.Or(ctx.Err(), fmt.Errorf("%s: %w", method, err))
 	}
 	var resp Resp
 	if err := json.NewDecoder(conn).Decode(&resp); err != nil {
-		return out, fmt.Errorf("%s: %w", method, err)
+		return out, cmp.Or(ctx.Err(), fmt.Errorf("%s: %w", method, err))
 	}
 	if !resp.OK {
 		return out, errors.New(resp.Error)

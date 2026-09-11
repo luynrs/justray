@@ -24,7 +24,7 @@ func (a *app) stop(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	socket := ipc.Socket(dir)
-	c := ipc.NewClient(socket)
+	c := ipc.NewClient(socket).WithContext(cmd.Context())
 	if c.Ping() != nil {
 		if err := waitStopped(socket, 6*time.Second); err != nil {
 			return err
