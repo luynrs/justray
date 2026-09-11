@@ -56,8 +56,8 @@ func (a *app) up(cmd *cobra.Command, args []string) error {
 }
 
 func init() {
-	upCmd.Flags().BoolVar(&upTunFlag, "tun", false, "connect in TUN mode")
-	upCmd.Flags().BoolVar(&upProxyFlag, "proxy", false, "connect in proxy mode")
+	upCmd.Flags().BoolVar(&upTunFlag, "tun", false, "Connect in TUN mode")
+	upCmd.Flags().BoolVar(&upProxyFlag, "proxy", false, "Connect in proxy mode")
 }
 
 func tunMode(tun, proxy bool) *bool {

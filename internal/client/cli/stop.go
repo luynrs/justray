@@ -13,7 +13,7 @@ import (
 
 var stopCmd = &cobra.Command{
 	Use:     "stop",
-	Short:   "Shut down",
+	Short:   "Stop daemon",
 	GroupID: cmdGroup,
 	Args:    cobra.NoArgs,
 }

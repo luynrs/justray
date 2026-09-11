@@ -70,7 +70,7 @@ func init() {
 	rootCmd.SetUsageTemplate(usageTemplate)
 	rootCmd.SetVersionTemplate("{{versionBlock}}")
 	rootCmd.AddGroup(&cobra.Group{ID: cmdGroup, Title: "AVAILABLE COMMANDS"})
-	rootCmd.AddCommand(upCmd, downCmd, stopCmd, statusCmd, subCmd, versionCmd)
+	rootCmd.AddCommand(upCmd, downCmd, stopCmd, statusCmd, subCmd, logsCmd, versionCmd)
 }
 
 // Execute runs the justray CLI. The caller (cmd/justray) handles the error.
@@ -80,7 +80,7 @@ func Execute() error {
 	rootCmd.Use = filepath.Base(os.Args[0]) + " <command>"
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		for c := cmd; c != nil; c = c.Parent() {
-			if c.Name() == "completion" || c.Name() == "help" || c.Name() == "stop" || c.Name() == "version" {
+			if c.Name() == "completion" || c.Name() == "help" || c.Name() == "stop" || c.Name() == "version" || c.Name() == "logs" {
 				return nil
 			}
 		}
@@ -96,6 +96,7 @@ func Execute() error {
 	subAddCmd.RunE = a.subAdd
 	subRemoveCmd.RunE = a.subRemove
 	subListCmd.RunE = a.subList
+	logsCmd.RunE = a.logs
 	upCmd.ValidArgsFunction = a.completeNode
 	subRemoveCmd.ValidArgsFunction = a.completeSub
 

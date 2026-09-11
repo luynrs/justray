@@ -85,8 +85,9 @@ Package manager and script installations also provide `jray` as a short alias fo
 
 - `jray up <node> [--tun | --proxy]`: start the daemon and connect
 - `jray down`: disconnect
-- `jray stop`: shut down the daemon
+- `jray stop`: stop the daemon
 - `jray status`: show connection status
+- `jray logs [daemon | engine | tui] [-f]`: view logs
 
 #### Subscriptions & Nodes
 
