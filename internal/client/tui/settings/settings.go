@@ -204,6 +204,10 @@ func (s *Settings) Result() (domain.Settings, bool, error) {
 	return next, true, err
 }
 
+func (s *Settings) Current() domain.Settings {
+	return s.cur
+}
+
 func (s *Settings) Update(msg tea.Msg) (closed bool, cmd tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:

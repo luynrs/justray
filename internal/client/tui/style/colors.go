@@ -34,10 +34,13 @@ func Segment(s string, active bool) string {
 	if !active {
 		return " " + Dim.Render(s) + " "
 	}
+	if TTY {
+		return Strong.Render("[" + s + "]")
+	}
 	return pillCap.Render("▐") + pill.Render(s) + pillCap.Render("▌")
 }
 
-func Bar(fraction float64) string {
+func Progress(fraction float64) string {
 	fill := green
 	switch {
 	case fraction >= 0.9:

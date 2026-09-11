@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/luynrs/justray/internal/client/tui/settings"
+	"github.com/luynrs/justray/internal/client/tui/style"
 	"github.com/luynrs/justray/internal/client/tui/tree"
 	"github.com/luynrs/justray/internal/ipc"
 )
@@ -58,20 +59,41 @@ func New(c *ipc.Client) Model {
 	filter := textinput.New()
 	filter.Prompt = ""
 	filter.CharLimit = 128
-	return Model{
+	m := Model{
 		client:    c,
 		collapsed: map[string]bool{},
-		spin:      spinner.New(spinner.WithSpinner(spinner.MiniDot)),
+		spin:      spinner.New(),
 		editor:    editor,
 		filter:    filter,
 		updates:   make(chan pushed),
 		watchCtx:  watchCtx,
 		stopWatch: stopWatch,
 	}
+	m.syncTTY()
+	return m
 }
 
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(watch(m.watchCtx, m.client, m.updates), next(m.watchCtx, m.updates), tickCmd(), m.spin.Tick)
+}
+
+func (m *Model) syncTTY() {
+	style.TTY = style.DetectTTY(m.forceTTY())
+	m.spin.Spinner = spinner.MiniDot
+	if style.TTY {
+		m.spin.Spinner = spinner.Line
+	}
+}
+
+func (m Model) forceTTY() string {
+	if m.dialog != nil {
+		return m.dialog.Current().ForceTTY
+	}
+	return m.snapshot.Settings.ForceTTY
+}
+
+func (m Model) emoji() bool {
+	return !style.TTY && m.snapshot.Settings.Emoji == "on"
 }
 
 func (m Model) data() tree.Data {
@@ -82,7 +104,7 @@ func (m Model) data() tree.Data {
 		Query:     m.filter.Value(),
 		Status:    m.snapshot.Status,
 		Live:      m.live,
-		Emoji:     m.snapshot.Settings.Emoji == "on",
+		Emoji:     m.emoji(),
 		Spinner:   m.spin.View(),
 	}
 }

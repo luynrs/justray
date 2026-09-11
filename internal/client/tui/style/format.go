@@ -23,7 +23,8 @@ func Pad(s string, w int) string {
 	case w <= 0:
 		return ""
 	case n > w:
-		t := lipgloss.NewStyle().MaxWidth(w-1).Render(s) + "…"
+		tail := pick("..", "…")
+		t := lipgloss.NewStyle().MaxWidth(max(w-lipgloss.Width(tail), 0)).Render(s) + tail
 		if shortfall := w - lipgloss.Width(t); shortfall > 0 {
 			t += strings.Repeat(" ", shortfall)
 		}
@@ -141,7 +142,7 @@ func Usage(t domain.Traffic) string {
 	case t.TotalBytes > 0:
 		parts = append(parts, fmt.Sprintf("%s %s %s",
 			Dim.Render(Bytes(used)),
-			Bar(float64(used)/float64(t.TotalBytes)),
+			Progress(float64(used)/float64(t.TotalBytes)),
 			Dim.Render(Bytes(t.TotalBytes))))
 	case used > 0:
 		parts = append(parts, Dim.Render(Bytes(used)+" used"))
@@ -151,5 +152,5 @@ func Usage(t domain.Traffic) string {
 	if !t.ExpiresAt.IsZero() {
 		parts = append(parts, Dim.Render(Expiry(t.ExpiresAt)))
 	}
-	return strings.Join(parts, Dim.Render(" · "))
+	return strings.Join(parts, Dim.Render(" "+Sep()+" "))
 }

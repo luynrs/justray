@@ -16,8 +16,9 @@ func (s *Settings) View(width, height int) string {
 }
 
 func (s *Settings) Hints() [][2]string {
+	enter := style.Enter()
 	if s.input.Focused() {
-		return [][2]string{{"↵", "Apply"}, {"esc", "Cancel"}}
+		return [][2]string{{enter, "Apply"}, {"esc", "Cancel"}}
 	}
 	out := [2]string{"esc", "Back"}
 	switch {
@@ -26,16 +27,17 @@ func (s *Settings) Hints() [][2]string {
 	case s.dirty():
 		out = [2]string{"esc", "Apply"}
 	}
+	move, tab := style.Move(), style.Tab()
 	f, ok := s.at()
 	switch {
 	case ok && len(f.enum) > 0:
-		return [][2]string{{"↑/↓", "Move"}, {"←/→", "Cycle"}, {"↵", "Choose"}, {"⇥", "Tab"}, out}
+		return [][2]string{{move, "Move"}, {style.Fold(), "Cycle"}, {enter, "Choose"}, {tab, "Tab"}, out}
 	case ok && f.remove != nil:
 		return [][2]string{
-			{"↑/↓", "Move"}, {"⇥", "Tab"}, {"↵", "Edit"}, {"d", "Remove"}, out,
+			{move, "Move"}, {tab, "Tab"}, {enter, "Edit"}, {"d", "Remove"}, out,
 		}
 	}
-	return [][2]string{{"↑/↓", "Move"}, {"⇥", "Tab"}, {"↵", "Edit"}, out}
+	return [][2]string{{move, "Move"}, {tab, "Tab"}, {enter, "Edit"}, out}
 }
 
 type hit struct {
@@ -126,7 +128,7 @@ func (s *Settings) fieldBlock(f field, i, width int) (lines, choices []string) {
 
 	bar := "  "
 	if selected {
-		bar = style.Accent.Render("▎ ")
+		bar = style.Accent.Render(style.Bar())
 	}
 
 	switch {
@@ -165,9 +167,9 @@ func (s *Settings) valueLines(f field, selected bool, bar string) (lines, choice
 	if len(f.enum) > 0 && selected {
 		cur := f.get(s.cur)
 		for _, opt := range f.enum {
-			line := bar + style.Dim.Render("○ "+opt)
+			line := bar + style.Dim.Render(style.Dot(false)+" "+opt)
 			if opt == cur {
-				line = bar + style.Accent.Render("● "+opt)
+				line = bar + style.Accent.Render(style.Dot(true)+" "+opt)
 			}
 			lines = append(lines, line)
 			choices = append(choices, opt)
