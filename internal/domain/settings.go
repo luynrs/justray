@@ -96,6 +96,7 @@ func (s Settings) Normalize() (Settings, error) {
 		canon(&s.Direct),
 		canon(&s.Proxy),
 		canon(&s.Block),
+		disjoint(s.Direct, s.Proxy),
 	}
 	for _, err := range checks {
 		if err != nil {
@@ -147,6 +148,15 @@ func canon(list *[]string) error {
 		}
 	}
 	*list = out
+	return nil
+}
+
+func disjoint(a, b []string) error {
+	for _, x := range a {
+		if slices.Contains(b, x) {
+			return fmt.Errorf("%q cannot be in both direct and proxy", x)
+		}
+	}
 	return nil
 }
 

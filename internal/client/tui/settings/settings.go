@@ -416,6 +416,9 @@ func (s *Settings) listRows(l list) []field {
 			if err != nil {
 				return err
 			}
+			if err := conflict(v, l.title, rule); err != nil {
+				return err
+			}
 			(*at)[i] = rule
 			return nil
 		}
@@ -442,10 +445,26 @@ func (s *Settings) listRows(l list) []field {
 			if err != nil {
 				return err
 			}
+			if err := conflict(v, l.title, rule); err != nil {
+				return err
+			}
+			if slices.Contains(*l.at(v), rule) {
+				return nil
+			}
 			*l.at(v) = append(*l.at(v), rule)
 			return nil
 		},
 	})
+}
+
+func conflict(s *domain.Settings, title, rule string) error {
+	if title == "Direct" && slices.Contains(s.Proxy, rule) {
+		return fmt.Errorf("%q already in proxy", rule)
+	}
+	if title == "Proxy" && slices.Contains(s.Direct, rule) {
+		return fmt.Errorf("%q already in direct", rule)
+	}
+	return nil
 }
 
 func (s *Settings) at() (field, bool) {
