@@ -94,6 +94,12 @@ var tabs = []tab{
 			set:  func(s *domain.Settings, in string) error { s.AllowLAN = in; return nil },
 		},
 		{
+			name: "IP version",
+			enum: domain.IPVersions,
+			get:  func(s domain.Settings) string { return s.IPVersion },
+			set:  func(s *domain.Settings, in string) error { s.IPVersion = in; return nil },
+		},
+		{
 			name: "Stack",
 			enum: domain.TunStacks,
 			get:  func(s domain.Settings) string { return s.TunStack },
@@ -114,12 +120,6 @@ var tabs = []tab{
 			name: "DNS server",
 			get:  func(s domain.Settings) string { return s.DNS },
 			set:  func(s *domain.Settings, in string) error { s.DNS = strings.TrimSpace(in); return nil },
-		},
-		{
-			name: "IP version",
-			enum: domain.IPVersions,
-			get:  func(s domain.Settings) string { return s.IPVersion },
-			set:  func(s *domain.Settings, in string) error { s.IPVersion = in; return nil },
 		},
 	}},
 	{name: "Routing", fields: []field{

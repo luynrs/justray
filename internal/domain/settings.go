@@ -52,11 +52,11 @@ type General struct {
 type Connection struct {
 	Port      int    `json:"port,omitempty"`
 	AllowLAN  string `json:"allow_lan,omitempty"` // on/off
+	IPVersion string `json:"ip_version,omitempty"`
 	TunStack  string `json:"stack,omitempty"`
 	TunMTU    int    `json:"mtu,omitempty"`
 	DNS       string `json:"dns,omitempty"`
 	DNSHijack string `json:"dns_hijack,omitempty"` // on/off, empty = on
-	IPVersion string `json:"ip_version,omitempty"`
 }
 
 type Routing struct {
