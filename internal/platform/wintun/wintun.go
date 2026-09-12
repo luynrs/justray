@@ -42,16 +42,16 @@ func Ensure() (string, error) {
 	}
 	tmpFile, err := os.CreateTemp(filepath.Dir(dst), ".wintun-*.tmp")
 	if err != nil {
-		return "", fmt.Errorf("create temporary %s: %w", dst, err)
+		return "", fmt.Errorf("unpack wintun: %w", err)
 	}
 	tmp := tmpFile.Name()
 	defer func() { _ = os.Remove(tmp) }()
 	if _, err := tmpFile.Write(blob); err != nil {
 		_ = tmpFile.Close()
-		return "", fmt.Errorf("write %s: %w", dst, err)
+		return "", fmt.Errorf("unpack wintun: %w", err)
 	}
 	if err := tmpFile.Close(); err != nil {
-		return "", fmt.Errorf("write %s: %w", dst, err)
+		return "", fmt.Errorf("unpack wintun: %w", err)
 	}
 	from, err := windows.UTF16PtrFromString(tmp)
 	if err != nil {
@@ -62,7 +62,7 @@ func Ensure() (string, error) {
 		return "", err
 	}
 	if err := windows.MoveFileEx(from, to, windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH); err != nil {
-		return "", fmt.Errorf("replace %s: %w", dst, err)
+		return "", fmt.Errorf("install wintun: %w", err)
 	}
 	return dst, nil
 }

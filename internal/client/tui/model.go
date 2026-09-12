@@ -42,6 +42,7 @@ type Model struct {
 	watchCtx       context.Context
 	stopWatch      context.CancelFunc
 	connectionBusy bool
+	startDaemon    func(context.Context) error
 
 	err   string
 	errAt time.Time
@@ -50,7 +51,7 @@ type Model struct {
 	quitting bool
 }
 
-func New(c *ipc.Client) Model {
+func New(c *ipc.Client, startDaemon func(context.Context) error) Model {
 	watchCtx, stopWatch := context.WithCancel(context.Background())
 	editor := textinput.New()
 	editor.Prompt = "Add:  "
@@ -60,14 +61,15 @@ func New(c *ipc.Client) Model {
 	filter.Prompt = ""
 	filter.CharLimit = 128
 	m := Model{
-		client:    c,
-		collapsed: map[string]bool{},
-		spin:      spinner.New(),
-		editor:    editor,
-		filter:    filter,
-		updates:   make(chan pushed),
-		watchCtx:  watchCtx,
-		stopWatch: stopWatch,
+		client:      c,
+		collapsed:   map[string]bool{},
+		spin:        spinner.New(),
+		editor:      editor,
+		filter:      filter,
+		updates:     make(chan pushed),
+		watchCtx:    watchCtx,
+		stopWatch:   stopWatch,
+		startDaemon: startDaemon,
 	}
 	m.syncTTY()
 	return m
@@ -131,7 +133,7 @@ func (m Model) quit() (tea.Model, tea.Cmd) {
 	return m, tea.Quit
 }
 
-func Run(c *ipc.Client) error {
+func Run(c *ipc.Client, start func(context.Context) error) error {
 	prev := log.Writer()
 	defer log.SetOutput(prev)
 
@@ -145,7 +147,7 @@ func Run(c *ipc.Client) error {
 		log.SetOutput(io.Discard)
 	}
 
-	m := New(c)
+	m := New(c, start)
 	defer m.stopWatch()
 	_, err := tea.NewProgram(m).Run()
 	return err

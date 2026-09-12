@@ -62,8 +62,8 @@ func (s *Service) Disconnect(ctx context.Context) error {
 func (s *Service) Restore(n domain.Node, ref domain.NodeRef, settings domain.Settings, tun bool) {
 	err := s.apply(s.ctx, n, ref, settings, tun, true)
 	if tun && elevate.Needed(err) {
-		s.log.Printf("tun requires elevation, starting in proxy mode (port %d)", settings.Port)
-		err = s.apply(s.ctx, n, ref, settings, false, true)
+		s.log.Print("tun requires elevation")
+		return
 	}
 	if err != nil {
 		s.log.Print(err)

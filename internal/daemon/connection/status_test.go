@@ -21,41 +21,23 @@ func TestRestoreFallback(t *testing.T) {
 	if !elevate.Needed(permission) {
 		t.Skip("requires a process without TUN privileges")
 	}
-	for name, proxyErr := range map[string]error{"success": nil, "failure": errors.New("proxy port unavailable")} {
-		t.Run(name, func(t *testing.T) {
-			var logs bytes.Buffer
-			eng := &fakeEngine{tunErr: permission, startErr: proxyErr}
-			s := New(context.Background(), t.TempDir(), func(context.Context, string) engine.Engine { return eng }, nil, log.New(&logs, "", 0))
-			settings, _ := (domain.Settings{}).Normalize()
-			ref := domain.NodeRef{NodeID: "n"}
-			s.Restore(domain.Node{ID: "n"}, ref, settings, true)
-			st := s.Status()
-			if st.Connected != (proxyErr == nil) || st.Tun {
-				t.Fatalf("fallback status=%+v, proxy error=%v", st, proxyErr)
-			}
-			select {
-			case <-s.RestartRequested():
-				t.Fatal("Restore requested elevation")
-			default:
-			}
-			if proxyErr != nil {
-				if !strings.Contains(logs.String(), proxyErr.Error()) {
-					t.Fatalf("proxy failure was not logged: %s", logs.String())
-				}
-				return
-			}
-			if err := s.Apply(context.Background(), domain.Node{ID: "n"}, ref, settings, true); !errors.Is(err, ipc.ErrElevate) {
-				t.Fatalf("explicit TUN request: %v", err)
-			}
-			if s.Status() != st {
-				t.Fatalf("failed TUN change replaced the working proxy status: %+v", s.Status())
-			}
-			select {
-			case <-s.RestartRequested():
-			default:
-				t.Fatal("explicit TUN request did not request elevation")
-			}
-		})
+	var logs bytes.Buffer
+	eng := &fakeEngine{tunErr: permission}
+	s := New(context.Background(), t.TempDir(), func(context.Context, string) engine.Engine { return eng }, nil, log.New(&logs, "", 0))
+	settings, _ := (domain.Settings{}).Normalize()
+	ref := domain.NodeRef{NodeID: "n"}
+	s.Restore(domain.Node{ID: "n"}, ref, settings, true)
+	st := s.Status()
+	if st.Connected {
+		t.Fatalf("expected disconnected when TUN needs elevation, got status=%+v", st)
+	}
+	if !strings.Contains(logs.String(), "tun requires elevation") {
+		t.Fatalf("elevation requirement was not logged: %s", logs.String())
+	}
+	select {
+	case <-s.RestartRequested():
+		t.Fatal("Restore requested elevation")
+	default:
 	}
 }
 

@@ -43,7 +43,11 @@ func (m Model) content() string {
 		return ""
 	case m.dialog != nil:
 		body := m.titleLine() + "\n\n" + m.dialog.View(m.w, max(m.h-topLines-1, 1))
-		return style.Fit(body, m.h-1) + "\n" + m.clip(m.hints(m.w))
+		errLine := ""
+		if e := m.dialog.Err(); e != "" {
+			errLine = "\n" + m.clip(style.Err.Render(style.Sanitize(style.FirstLine(e), true)))
+		}
+		return style.Fit(body, m.h-1) + errLine + "\n" + m.clip(m.hints(m.w))
 	case m.h < topLines+footerLines+1:
 		return m.titleLine()
 	}
@@ -65,7 +69,9 @@ func (m Model) titleLine() string {
 
 	var right string
 	if m.dialog == nil {
-		right = style.Segment(modeProxy, !m.snapshot.Status.Tun) + style.Segment(modeTun, m.snapshot.Status.Tun)
+		activeProxy := m.live && !m.snapshot.Status.Tun
+		activeTun := m.live && m.snapshot.Status.Tun
+		right = style.Segment(modeProxy, activeProxy) + style.Segment(modeTun, activeTun)
 	}
 	return m.clip(style.Flush(left, right, m.w))
 }
@@ -145,14 +151,10 @@ func (m Model) footer() string {
 			iconStyle = style.Pending
 		}
 		status = iconStyle.Render(icon) + " " + style.Sanitize(m.snapshot.Status.NodeName, m.emoji()) + " " + style.Dim.Render(style.Sep()) + " " + style.Uptime(m.snapshot.Status.Uptime())
-	case m.live:
-		iconStyle := style.Dim
-		if m.connectionBusy {
-			iconStyle = style.Pending
-		}
-		status = iconStyle.Render(icon) + " " + style.Dim.Render("disconnected")
-	default:
+	case m.connectionBusy:
 		status = style.Pending.Render(m.spin.View()) + " " + style.Dim.Render("connecting")
+	default:
+		status = style.Dim.Render(icon) + " " + style.Dim.Render("disconnected")
 	}
 	if m.err != "" {
 		status += "   " + style.Err.Render(style.Sanitize(style.FirstLine(m.err), true))

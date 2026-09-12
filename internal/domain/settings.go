@@ -41,7 +41,7 @@ type Settings struct {
 }
 
 type General struct {
-	Autostart    string `json:"-"`                       // on/off, kept by the OS
+	Autostart    string `json:"autostart,omitempty"`     // on/off, kept by the OS
 	RefreshEvery int    `json:"refresh_hours"`           // 0 = never
 	Emoji        string `json:"emoji,omitempty"`
 	ForceTTY     string `json:"force_tty,omitempty"` // on/off

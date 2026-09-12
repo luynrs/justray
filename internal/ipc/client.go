@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"time"
 
 	"github.com/luynrs/justray/internal/domain"
@@ -26,11 +27,16 @@ func (c *Client) WithContext(ctx context.Context) *Client {
 	return &Client{socket: c.socket, ctx: ctx}
 }
 
+var ErrNoDaemon = errors.New("daemon is not running")
+
 func (c *Client) dial(ctx context.Context) (net.Conn, error) {
 	dialer := net.Dialer{Timeout: 3 * time.Second}
 	conn, err := dialer.DialContext(ctx, "unix", c.socket)
 	if err != nil {
-		return nil, fmt.Errorf("no daemon on %s: %w", c.socket, err)
+		if errors.Is(err, os.ErrPermission) {
+			return nil, errors.New("cannot access daemon: permission denied")
+		}
+		return nil, ErrNoDaemon
 	}
 	return conn, nil
 }

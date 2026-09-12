@@ -167,11 +167,6 @@ func (s *Settings) fieldBlock(f field, i, width int) (lines, choices []string) {
 		choices = append(choices, picks...)
 	}
 
-	if selected && s.err != "" {
-		lines = append(lines, bar+style.Err.Render(style.Clip(style.FirstLine(s.err), width-2)))
-		choices = append(choices, "")
-	}
-
 	if i > 0 && !f.bare {
 		lines = append([]string{""}, lines...)
 		choices = append([]string{""}, choices...)

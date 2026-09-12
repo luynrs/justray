@@ -19,8 +19,11 @@ type pushed struct {
 	live     bool
 }
 
-func actionCmd(op string, fn func() error) tea.Cmd {
+func actionCmd(op string, start func(context.Context) error, fn func() error) tea.Cmd {
 	return func() tea.Msg {
+		if start != nil {
+			_ = start(context.Background())
+		}
 		return completed{op: op, err: fn()}
 	}
 }

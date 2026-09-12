@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"net"
 	"os"
@@ -43,7 +42,7 @@ func Listen(socket string) (net.Listener, func(), error) {
 	unlock, err := lock.File(socket + ".lock")
 	if err != nil {
 		if errors.Is(err, lock.ErrLocked) {
-			return nil, nil, fmt.Errorf("another justrayd is already listening on %s", socket)
+			return nil, nil, errors.New("another justrayd is already listening")
 		}
 		return nil, nil, err
 	}
@@ -51,7 +50,7 @@ func Listen(socket string) (net.Listener, func(), error) {
 	if conn, err := net.DialTimeout("unix", socket, time.Second); err == nil {
 		_ = conn.Close()
 		unlock()
-		return nil, nil, fmt.Errorf("another justrayd is already listening on %s", socket)
+		return nil, nil, errors.New("another justrayd is already listening")
 	}
 
 	_ = os.Remove(socket)

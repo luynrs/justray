@@ -94,7 +94,7 @@ func Execute() error {
 		return a.connectDaemon(cmd.Context())
 	}
 	rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return tui.Run(a.client)
+		return tui.Run(a.client, a.start)
 	}
 	upCmd.RunE = a.up
 	downCmd.RunE = a.down
@@ -138,6 +138,20 @@ func setHelpText(c *cobra.Command) {
 	for _, sub := range c.Commands() {
 		setHelpText(sub)
 	}
+}
+
+func (a *app) start(ctx context.Context) error {
+	dir, err := ipc.Dir()
+	if err != nil {
+		return err
+	}
+	if a.daemon().Ping() == nil {
+		return nil
+	}
+	if err := spawn(dir); err != nil {
+		return err
+	}
+	return wait(ctx, a.daemon().WithContext(ctx), 10*time.Second)
 }
 
 func (a *app) connectDaemon(ctx context.Context) error {

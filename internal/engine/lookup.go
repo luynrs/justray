@@ -21,7 +21,7 @@ func resolved(ctx context.Context, n domain.Node, s domain.Settings) (domain.Nod
 	ips, err := net.DefaultResolver.LookupNetIP(ctx, network(s), n.Server)
 	switch {
 	case err != nil:
-		return n, fmt.Errorf("could not resolve %s: %w", n.Server, err)
+		return n, err
 	case len(ips) == 0:
 		return n, fmt.Errorf("no addresses for %s", n.Server)
 	}

@@ -69,6 +69,9 @@ func waitStopped(ctx context.Context, socket string, timeout time.Duration) erro
 		}
 		select {
 		case <-ctx.Done():
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				return errors.New("daemon stop timed out")
+			}
 			return ctx.Err()
 		case <-time.After(delay):
 		}

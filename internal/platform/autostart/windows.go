@@ -73,7 +73,10 @@ func Enable() error {
 		return err
 	}
 	if out, err := cmd("/Create", "/F", "/TN", name, "/XML", f.Name()).CombinedOutput(); err != nil {
-		return fmt.Errorf("enable autostart: %w: %s", err, bytes.TrimSpace(out))
+		if msg := string(bytes.TrimSpace(out)); msg != "" {
+			return fmt.Errorf("enable autostart: %s", msg)
+		}
+		return fmt.Errorf("enable autostart: %w", err)
 	}
 	return nil
 }
@@ -89,5 +92,8 @@ func deleteTask(name string) error {
 	if queryErr := cmd("/Query", "/TN", name, "/HRESULT").Run(); errors.As(queryErr, &exit) && uint32(exit.ExitCode()) == 0x80070002 {
 		return nil // already absent
 	}
-	return fmt.Errorf("disable autostart: %w: %s", err, bytes.TrimSpace(out))
+	if msg := string(bytes.TrimSpace(out)); msg != "" {
+		return fmt.Errorf("disable autostart: %s", msg)
+	}
+	return fmt.Errorf("disable autostart: %w", err)
 }

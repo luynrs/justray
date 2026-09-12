@@ -81,7 +81,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.connectionBusy = false
 			return m, next(m.watchCtx, m.updates)
 		}
-		initial := !m.live
+		initial := m.snapshot.Settings.Port == 0
 		selected, selectedOK := m.at()
 		m.snapshot = msg.snapshot
 		m.syncTTY()
@@ -124,7 +124,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.confirmSub = ipc.Sub{}
 		if k == "y" || k == "Y" {
 			delete(m.collapsed, id)
-			return m, actionCmd("mutation", func() error { return m.client.RemoveSub(id) })
+			return m, actionCmd("mutation", m.startDaemon, func() error { return m.client.RemoveSub(id) })
 		}
 		return m, nil
 
@@ -139,7 +139,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			if url == "" {
 				return m, nil
 			}
-			return m, actionCmd("mutation", func() error {
+			return m, actionCmd("mutation", m.startDaemon, func() error {
 				_, err := m.client.AddSub(url)
 				return err
 			})
@@ -288,5 +288,5 @@ func (m Model) closeSettings() (Model, tea.Cmd) {
 	case !changed:
 		return m, nil
 	}
-	return m, actionCmd("settings", func() error { return m.client.SetSettings(next) })
+	return m, actionCmd("settings", m.startDaemon, func() error { return m.client.SetSettings(next) })
 }

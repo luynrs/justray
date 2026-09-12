@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -16,7 +17,7 @@ import (
 
 func TestSettingsWaitForSnapshot(t *testing.T) {
 	original, _ := (domain.Settings{}).Normalize()
-	m := New(nil)
+	m := New(nil, nil)
 	defer m.stopWatch()
 	m.snapshot.Settings = original
 	m.dialog = settings.New(original, topLines)
@@ -44,7 +45,7 @@ func TestSettingsWaitForSnapshot(t *testing.T) {
 }
 
 func TestSnapshotAfterReconnect(t *testing.T) {
-	m := New(nil)
+	m := New(nil, nil)
 	defer m.stopWatch()
 	first := ipc.Snapshot{
 		Nodes:         []ipc.Node{{ID: "old"}},
@@ -56,8 +57,9 @@ func TestSnapshotAfterReconnect(t *testing.T) {
 	m = updated.(Model)
 	updated, _ = m.Update(pushed{})
 	m = updated.(Model)
-	if m.live {
-		t.Fatal("lost daemon is still live")
+	m.w = 80
+	if m.live || !strings.Contains(m.footer(), "disconnected") {
+		t.Fatal("lost daemon is still live or not disconnected")
 	}
 	restarted := ipc.Snapshot{Nodes: []ipc.Node{{ID: "new"}}}
 	updated, _ = m.Update(pushed{live: true, snapshot: restarted})
@@ -68,7 +70,7 @@ func TestSnapshotAfterReconnect(t *testing.T) {
 }
 
 func TestQuitFromSettings(t *testing.T) {
-	m := New(nil)
+	m := New(nil, nil)
 	defer m.stopWatch()
 	settingsValue, _ := (domain.Settings{}).Normalize()
 	m.dialog = settings.New(settingsValue, topLines)
@@ -92,7 +94,7 @@ func TestNextCancelled(t *testing.T) {
 
 func TestSnapshotPreservesSelection(t *testing.T) {
 	for _, cursor := range []int{0, 1} {
-		m := New(nil)
+		m := New(nil, nil)
 		m.snapshot = ipc.Snapshot{
 			Subscriptions: []ipc.Sub{{ID: "a"}, {ID: "b"}},
 			Nodes:         []ipc.Node{{ID: "1", Sub: "a"}, {ID: "2", Sub: "b"}},
@@ -111,7 +113,7 @@ func TestSnapshotPreservesSelection(t *testing.T) {
 }
 
 func TestAutofocus(t *testing.T) {
-	m := New(nil)
+	m := New(nil, nil)
 	defer m.stopWatch()
 
 	snap := ipc.Snapshot{
@@ -134,7 +136,7 @@ func TestAutofocus(t *testing.T) {
 }
 
 func TestCollapsedSnapshot(t *testing.T) {
-	m := New(nil)
+	m := New(nil, nil)
 	defer m.stopWatch()
 
 	snap := ipc.Snapshot{

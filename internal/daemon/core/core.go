@@ -48,6 +48,7 @@ func New(st store.Disk, conn *connection.Service, subs *subscription.Service) (*
 	if err != nil {
 		return nil, fmt.Errorf("normalize settings: %w", err)
 	}
+	settings.Autostart = "off"
 	if autostart.Enabled() {
 		settings.Autostart = "on"
 	}
