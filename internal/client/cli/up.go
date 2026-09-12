@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -12,8 +13,6 @@ import (
 	"github.com/luynrs/justray/internal/ipc"
 )
 
-var upTunFlag, upProxyFlag bool
-
 var upCmd = &cobra.Command{
 	Use:     "up [id | name]",
 	Short:   "Connect",
@@ -22,13 +21,16 @@ var upCmd = &cobra.Command{
 }
 
 func (a *app) up(cmd *cobra.Command, args []string) error {
-	if upTunFlag && upProxyFlag {
+	tun, _ := cmd.Flags().GetBool("tun")
+	proxy, _ := cmd.Flags().GetBool("proxy")
+	if tun && proxy {
 		return fmt.Errorf("pick either --tun or --proxy")
 	}
-	mode := tunMode(upTunFlag, upProxyFlag)
+	mode := tunMode(tun, proxy)
+	ctx := cmd.Context()
 
 	if len(args) > 0 {
-		return a.connectNode(args[0], mode)
+		return a.connectNode(ctx, args[0], mode)
 	}
 
 	snapshot, err := a.client.Snapshot()
@@ -38,7 +40,7 @@ func (a *app) up(cmd *cobra.Command, args []string) error {
 	st := snapshot.Status
 	if st.Connected {
 		if mode != nil {
-			return a.switchMode(st, *mode)
+			return a.switchMode(ctx, st, *mode)
 		}
 		a.report(upperFirst(state(st)), st)
 		return nil
@@ -52,12 +54,12 @@ func (a *app) up(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	return a.connect(n, mode)
+	return a.connect(ctx, n, mode)
 }
 
 func init() {
-	upCmd.Flags().BoolVar(&upTunFlag, "tun", false, "Connect in TUN mode")
-	upCmd.Flags().BoolVar(&upProxyFlag, "proxy", false, "Connect in proxy mode")
+	upCmd.Flags().Bool("tun", false, "Connect in TUN mode")
+	upCmd.Flags().Bool("proxy", false, "Connect in proxy mode")
 }
 
 func tunMode(tun, proxy bool) *bool {
@@ -71,22 +73,22 @@ func tunMode(tun, proxy bool) *bool {
 	return nil
 }
 
-func (a *app) connectNode(key string, mode *bool) error {
+func (a *app) connectNode(ctx context.Context, key string, mode *bool) error {
 	n, err := a.resolveNode(key, "")
 	if err != nil {
 		return err
 	}
-	return a.connect(n, mode)
+	return a.connect(ctx, n, mode)
 }
 
-func (a *app) connect(n ipc.Node, mode *bool) error {
+func (a *app) connect(ctx context.Context, n ipc.Node, mode *bool) error {
 	spinText := "Connecting to " + a.clean(n.Name)
 	if mode != nil {
-		if _, err := a.runOp(spinText, func() error { return a.client.SetTun(*mode) }, mode); err != nil {
+		if _, err := a.runOp(ctx, spinText, func() error { return a.client.SetTun(*mode) }, mode); err != nil {
 			return err
 		}
 	}
-	st, err := a.runOp(spinText, func() error {
+	st, err := a.runOp(ctx, spinText, func() error {
 		return a.client.Connect(n.Ref())
 	}, mode)
 	if err != nil {
@@ -97,7 +99,7 @@ func (a *app) connect(n ipc.Node, mode *bool) error {
 }
 
 // runOp waits out the daemon re-execing itself with tun caps
-func (a *app) runOp(text string, op func() error, want *bool) (ipc.Status, error) {
+func (a *app) runOp(ctx context.Context, text string, op func() error, want *bool) (ipc.Status, error) {
 	status := func() (ipc.Status, error) {
 		snapshot, err := a.client.Snapshot()
 		return snapshot.Status, err
@@ -113,7 +115,7 @@ func (a *app) runOp(text string, op func() error, want *bool) (ipc.Status, error
 	}
 	stop = spin("Granting permissions")
 	defer stop()
-	st, err := awaitElevate(status, want, 30*time.Second)
+	st, err := awaitElevate(ctx, status, want, 30*time.Second)
 	if err == nil && want != nil && (!st.Connected || st.Tun != *want) {
 		if err := op(); err != nil {
 			return ipc.Status{}, err
@@ -125,29 +127,39 @@ func (a *app) runOp(text string, op func() error, want *bool) (ipc.Status, error
 
 var elevatePoll = 500 * time.Millisecond
 
-func awaitElevate(status func() (ipc.Status, error), want *bool, timeout time.Duration) (ipc.Status, error) {
+func awaitElevate(ctx context.Context, status func() (ipc.Status, error), want *bool, timeout time.Duration) (ipc.Status, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	ticker := time.NewTicker(elevatePoll)
+	defer ticker.Stop()
 	pending := false
-	for deadline := time.Now().Add(timeout); time.Now().Before(deadline); {
-		time.Sleep(elevatePoll)
-		st, err := status()
-		switch {
-		case err != nil: // the daemon is mid exec-restart
-			pending = true
-		case pending:
-			return st, nil
-		case st.Connected && (want == nil || st.Tun == *want):
-			return st, nil
+	for {
+		select {
+		case <-ctx.Done():
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				return ipc.Status{}, errors.New("timed out waiting for permissions")
+			}
+			return ipc.Status{}, ctx.Err()
+		case <-ticker.C:
+			st, err := status()
+			switch {
+			case err != nil: // daemon mid exec-restart
+				pending = true
+			case pending:
+				return st, nil
+			case st.Connected && (want == nil || st.Tun == *want):
+				return st, nil
+			}
 		}
 	}
-	return ipc.Status{}, errors.New("timed out waiting for permissions")
 }
 
-func (a *app) switchMode(st ipc.Status, tun bool) error {
+func (a *app) switchMode(ctx context.Context, st ipc.Status, tun bool) error {
 	if st.Tun == tun {
 		a.report(upperFirst(state(st)), st)
 		return nil
 	}
-	next, err := a.runOp("Switching to "+strings.ToUpper(modeWord(tun)), func() error {
+	next, err := a.runOp(ctx, "Switching to "+strings.ToUpper(modeWord(tun)), func() error {
 		return a.client.SetTun(tun)
 	}, &tun)
 	if err != nil {

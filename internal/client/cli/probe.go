@@ -34,12 +34,11 @@ func (a *app) probe(cmd *cobra.Command, args []string) error {
 		spinnerText = "Probing nodes"
 	} else {
 		key := args[0]
-		var nfe notFoundError
 		sub, subErr := match(key, "subscription", snapshot.Subscriptions, func(s ipc.Sub) (string, string) { return s.ID, s.Name })
 		if subErr == nil {
 			subID = sub.ID
 			spinnerText = "Probing " + a.clean(sub.Name)
-		} else if !errors.As(subErr, &nfe) {
+		} else if !errors.Is(subErr, errNotFound) {
 			return subErr
 		} else {
 			node, nodeErr := match(key, "node", snapshot.Nodes, func(n ipc.Node) (string, string) { return n.ID, n.Name })
@@ -47,7 +46,7 @@ func (a *app) probe(cmd *cobra.Command, args []string) error {
 				subID = node.Sub
 				nodeID = node.ID
 				spinnerText = "Probing " + a.clean(node.Name)
-			} else if !errors.As(nodeErr, &nfe) {
+			} else if !errors.Is(nodeErr, errNotFound) {
 				return nodeErr
 			} else {
 				return fmt.Errorf("no subscription or node matching %q", key)

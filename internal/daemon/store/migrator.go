@@ -1,4 +1,4 @@
-// WILL BE DEPRECATED IN 1.6.0!
+// Deprecated: remove in 1.6.0
 
 package store
 

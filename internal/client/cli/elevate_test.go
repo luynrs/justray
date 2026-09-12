@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -35,7 +36,7 @@ func TestAwaitElevate(t *testing.T) {
 			errors.New("connection refused"),       // prompt still open
 			ipc.Status{Connected: true, Tun: true}, // restored
 		)
-		st, err := awaitElevate(status, &tun, time.Second)
+		st, err := awaitElevate(t.Context(), status, &tun, time.Second)
 		if err != nil || !st.Tun {
 			t.Fatalf("got %+v, %v; want the tun session, nil", st, err)
 		}
@@ -43,8 +44,17 @@ func TestAwaitElevate(t *testing.T) {
 
 	t.Run("times out", func(t *testing.T) {
 		status := func() (ipc.Status, error) { return ipc.Status{}, errors.New("no daemon") }
-		if _, err := awaitElevate(status, &tun, 10*time.Millisecond); err == nil {
+		if _, err := awaitElevate(t.Context(), status, &tun, 10*time.Millisecond); err == nil {
 			t.Fatal("want a timeout error")
+		}
+	})
+
+	t.Run("cancels", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		status := func() (ipc.Status, error) { return ipc.Status{}, nil }
+		if _, err := awaitElevate(ctx, status, &tun, time.Second); !errors.Is(err, context.Canceled) {
+			t.Fatalf("got %v, want context.Canceled", err)
 		}
 	})
 }

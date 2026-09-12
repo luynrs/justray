@@ -40,11 +40,10 @@ func TestMatch(t *testing.T) {
 		t.Errorf("shared id: got %q, %v; want the first hit, nil", got.name, err)
 	}
 
-	var nfe notFoundError
-	if _, err := match("zzz", "node", items, idName); !errors.As(err, &nfe) {
+	if _, err := match("zzz", "node", items, idName); !errors.Is(err, errNotFound) {
 		t.Errorf("match(zzz): want notFoundError, got %v", err)
 	}
-	if _, err := match("frankfurt", "node", items, idName); errors.As(err, &nfe) {
+	if _, err := match("frankfurt", "node", items, idName); errors.Is(err, errNotFound) {
 		t.Errorf("match(frankfurt): want ambiguity error, got %v", err)
 	}
 }

@@ -110,14 +110,11 @@ func (a *app) subRefresh(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-var (
-	subListCmd = &cobra.Command{
-		Use:   "list",
-		Short: "List subscriptions and their nodes",
-		Args:  cobra.NoArgs,
-	}
-	subListJSONFlag bool
-)
+var subListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List subscriptions and their nodes",
+	Args:  cobra.NoArgs,
+}
 
 func (a *app) subList(cmd *cobra.Command, args []string) error {
 	snapshot, err := a.client.Snapshot()
@@ -125,8 +122,8 @@ func (a *app) subList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	subs := snapshot.Subscriptions
-	if subListJSONFlag {
-		type nodeJSON struct {
+	if jsonOut, _ := cmd.Flags().GetBool("json"); jsonOut {
+		type nodeOut struct {
 			ID       string `json:"id"`
 			Name     string `json:"name"`
 			Protocol string `json:"protocol"`
@@ -136,28 +133,28 @@ func (a *app) subList(cmd *cobra.Command, args []string) error {
 			Alive    bool   `json:"alive,omitempty"`
 			MS       int    `json:"ms,omitempty"`
 		}
-		type subJSON struct {
+		type subOut struct {
 			ID      string          `json:"id"`
 			Name    string          `json:"name"`
 			Traffic *domain.Traffic `json:"traffic,omitempty"`
-			Nodes   []nodeJSON      `json:"nodes"`
+			Nodes   []nodeOut       `json:"nodes"`
 		}
 		groups := (tree.Data{Subs: subs, Nodes: snapshot.Nodes}).Groups()
-		out := make([]subJSON, len(groups))
+		result := make([]subOut, len(groups))
 		for i, g := range groups {
-			nodes := make([]nodeJSON, len(g.Nodes))
+			nodes := make([]nodeOut, len(g.Nodes))
 			for j, n := range g.Nodes {
-				nodes[j] = nodeJSON{n.ID, n.Name, n.Protocol, n.Server, n.Port, n.Probed, n.Alive, n.MS}
+				nodes[j] = nodeOut{n.ID, n.Name, n.Protocol, n.Server, n.Port, n.Probed, n.Alive, n.MS}
 			}
-			s := subJSON{ID: g.Sub.ID, Name: g.Sub.Name, Nodes: nodes}
+			s := subOut{ID: g.Sub.ID, Name: g.Sub.Name, Nodes: nodes}
 			if tr := g.Sub.Traffic; tr.TotalBytes > 0 || tr.UploadBytes > 0 || tr.DownloadBytes > 0 {
 				s.Traffic = &tr
 			}
-			out[i] = s
+			result[i] = s
 		}
 		enc := json.NewEncoder(cmd.OutOrStdout())
 		enc.SetIndent("", "  ")
-		return enc.Encode(out)
+		return enc.Encode(result)
 	}
 
 	if len(subs) == 0 {
@@ -170,7 +167,7 @@ func (a *app) subList(cmd *cobra.Command, args []string) error {
 
 func init() {
 	subCmd.AddCommand(subAddCmd, subRemoveCmd, subRefreshCmd, subListCmd)
-	subListCmd.Flags().BoolVar(&subListJSONFlag, "json", false, "Output subscriptions as JSON")
+	subListCmd.Flags().Bool("json", false, "Output subscriptions as JSON")
 }
 
 func (a *app) resolveSub(key string) (ipc.Sub, error) {

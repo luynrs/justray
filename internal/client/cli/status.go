@@ -6,18 +6,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	statusCmd = &cobra.Command{
-		Use:     "status",
-		Short:   "Show status",
-		GroupID: cmdGroup,
-		Args:    cobra.NoArgs,
-	}
-	statusJSONFlag bool
-)
+var statusCmd = &cobra.Command{
+	Use:     "status",
+	Short:   "Show status",
+	GroupID: cmdGroup,
+	Args:    cobra.NoArgs,
+}
 
 func init() {
-	statusCmd.Flags().BoolVar(&statusJSONFlag, "json", false, "Output status as JSON")
+	statusCmd.Flags().Bool("json", false, "Output status as JSON")
 }
 
 func (a *app) status(cmd *cobra.Command, args []string) error {
@@ -27,8 +24,8 @@ func (a *app) status(cmd *cobra.Command, args []string) error {
 	}
 	st := snapshot.Status
 
-	if statusJSONFlag {
-		type statusJSON struct {
+	if jsonOut, _ := cmd.Flags().GetBool("json"); jsonOut {
+		type statusOut struct {
 			Connected bool   `json:"connected"`
 			Mode      string `json:"mode,omitempty"`
 			Node      string `json:"node,omitempty"`
@@ -39,7 +36,7 @@ func (a *app) status(cmd *cobra.Command, args []string) error {
 			Uptime    int64  `json:"uptime,omitempty"`
 			LastNode  string `json:"last_node,omitempty"`
 		}
-		out := statusJSON{Connected: st.Connected}
+		out := statusOut{Connected: st.Connected}
 		if st.Connected {
 			n := a.lookupNode(st.NodeRef, snapshot.Nodes)
 			out.Mode, out.Node = modeWord(st.Tun), a.clean(st.NodeName)

@@ -259,13 +259,14 @@ func (a *app) daemon() *ipc.Client {
 	return a.client
 }
 
+var errNotFound = errors.New("not found")
+
 type notFoundError struct {
 	noun, key string
 }
 
-func (e notFoundError) Error() string {
-	return fmt.Sprintf("no %s matches %q", e.noun, e.key)
-}
+func (e notFoundError) Error() string { return fmt.Sprintf("no %s matches %q", e.noun, e.key) }
+func (e notFoundError) Is(target error) bool { return target == errNotFound }
 
 func match[T any](key, noun string, items []T, idName func(T) (id, name string)) (T, error) {
 	key = strings.ToLower(key)
