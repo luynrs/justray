@@ -86,6 +86,7 @@ Package manager and script installations also provide `jray` as a short alias fo
 - `jray up <node> [--tun | --proxy]`: start the daemon and connect
 - `jray down`: disconnect
 - `jray stop`: stop the daemon
+- `jray probe [sub | id]`: probe node latencies
 - `jray status`: show connection status
 - `jray logs [daemon | engine | tui] [-f]`: view logs
 
@@ -95,6 +96,7 @@ Package manager and script installations also provide `jray` as a short alias fo
 
 - `add`: add a subscription or raw protocol link
 - `remove`: remove a subscription by ID or name
+- `refresh`: refresh subscriptions
 - `list`: list subscriptions and nodes
 
 #### General Options

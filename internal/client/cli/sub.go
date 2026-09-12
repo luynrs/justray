@@ -59,6 +59,55 @@ func (a *app) subRemove(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+var subRefreshCmd = &cobra.Command{
+	Use:   "refresh [id | name]",
+	Short: "Refresh subscriptions",
+	Args:  cobra.MaximumNArgs(1),
+}
+
+func (a *app) subRefresh(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		snapshot, err := a.client.Snapshot()
+		if err != nil {
+			return err
+		}
+		if len(snapshot.Subscriptions) == 0 {
+			out(style.Dim.Render("No subscriptions yet. Add one: " + cmd.Parent().CommandPath() + " add <url>"))
+			return nil
+		}
+		stop := spin("Refreshing subscriptions")
+		err = a.client.RefreshAll()
+		stop()
+		if err != nil {
+			return err
+		}
+		done("Refreshed all subscriptions")
+		return nil
+	}
+
+	sub, err := a.resolveSub(args[0])
+	if err != nil {
+		return err
+	}
+	name := a.clean(sub.Name)
+	stop := spin("Refreshing " + name)
+	err = a.client.Refresh(sub.ID)
+	stop()
+	if err != nil {
+		return err
+	}
+	done("Refreshed " + name)
+	if snap, err := a.client.Snapshot(); err == nil {
+		for _, s := range snap.Subscriptions {
+			if s.ID == sub.ID {
+				fields([2]string{"ID", s.ID}, [2]string{"Nodes", strconv.Itoa(s.Nodes)}, [2]string{"Traffic", style.Usage(s.Traffic)})
+				break
+			}
+		}
+	}
+	return nil
+}
+
 var subListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List subscriptions and their nodes",
@@ -80,7 +129,7 @@ func (a *app) subList(cmd *cobra.Command, args []string) error {
 }
 
 func init() {
-	subCmd.AddCommand(subAddCmd, subRemoveCmd, subListCmd)
+	subCmd.AddCommand(subAddCmd, subRemoveCmd, subRefreshCmd, subListCmd)
 }
 
 func (a *app) resolveSub(key string) (ipc.Sub, error) {
@@ -134,8 +183,16 @@ func (a *app) showTree(subs []ipc.Sub, nodes []ipc.Node) {
 func (a *app) nodeLine(n ipc.Node, branch string, nameW, infoW int) string {
 	name := style.Pad(a.nodeName(n.Name, ""), nameW)
 	info := style.Dim.Render(style.Pad(a.serverProto(n), infoW))
-	id := style.Dim.Render(displayID(n.ID))
-	return fmt.Sprintf("%s %s  %s  %s", style.Dim.Render(branch), name, info, id)
+	id := style.Dim.Render(style.Pad(displayID(n.ID), 8))
+	line := fmt.Sprintf("%s %s  %s  %s", style.Dim.Render(branch), name, info, id)
+	if n.Probed {
+		if n.Alive {
+			line += "  " + style.Alive.Render(fmt.Sprintf("%dms", n.MS))
+		} else {
+			line += "  " + style.Dead.Render("t/o")
+		}
+	}
+	return line
 }
 
 func (a *app) serverProto(n ipc.Node) string {

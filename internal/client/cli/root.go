@@ -73,7 +73,7 @@ func init() {
 	rootCmd.SetUsageTemplate(usageTemplate)
 	rootCmd.SetVersionTemplate("{{versionBlock}}")
 	rootCmd.AddGroup(&cobra.Group{ID: cmdGroup, Title: "AVAILABLE COMMANDS"})
-	rootCmd.AddCommand(upCmd, downCmd, stopCmd, statusCmd, subCmd, logsCmd, versionCmd)
+	rootCmd.AddCommand(upCmd, downCmd, stopCmd, probeCmd, statusCmd, subCmd, logsCmd, versionCmd)
 }
 
 // Execute runs the justray CLI. The caller (cmd/justray) handles the error.
@@ -97,14 +97,18 @@ func Execute() error {
 	}
 	upCmd.RunE = a.up
 	downCmd.RunE = a.down
-	statusCmd.RunE = a.status
 	stopCmd.RunE = a.stop
+	probeCmd.RunE = a.probe
+	statusCmd.RunE = a.status
 	subAddCmd.RunE = a.subAdd
 	subRemoveCmd.RunE = a.subRemove
+	subRefreshCmd.RunE = a.subRefresh
 	subListCmd.RunE = a.subList
 	logsCmd.RunE = a.logs
 	upCmd.ValidArgsFunction = a.completeNode
 	subRemoveCmd.ValidArgsFunction = a.completeSub
+	subRefreshCmd.ValidArgsFunction = a.completeSub
+	probeCmd.ValidArgsFunction = a.completeProbe
 
 	rootCmd.SetOut(lipgloss.Writer)
 	rootCmd.InitDefaultVersionFlag()
@@ -255,6 +259,14 @@ func (a *app) daemon() *ipc.Client {
 	return a.client
 }
 
+type notFoundError struct {
+	noun, key string
+}
+
+func (e notFoundError) Error() string {
+	return fmt.Sprintf("no %s matches %q", e.noun, e.key)
+}
+
 func match[T any](key, noun string, items []T, idName func(T) (id, name string)) (T, error) {
 	key = strings.ToLower(key)
 	var hits []T
@@ -275,7 +287,7 @@ func match[T any](key, noun string, items []T, idName func(T) (id, name string))
 		return hits[0], nil
 	case 0:
 		var zero T
-		return zero, fmt.Errorf("no %s matches %q", noun, key)
+		return zero, notFoundError{noun: noun, key: key}
 	default:
 		var zero T
 		return zero, fmt.Errorf("%q matches %d %ss: %s", key, len(hits), noun, strings.Join(names, ", "))
