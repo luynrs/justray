@@ -78,6 +78,7 @@ func init() {
 
 // Execute runs the justray CLI. The caller (cmd/justray) handles the error.
 func Execute() error {
+	style.TTY = style.DetectTTY("")
 	a := &app{}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -168,6 +169,7 @@ func (a *app) connectDaemon(ctx context.Context) error {
 	}
 	if snapshot, err := a.client.Snapshot(); err == nil {
 		a.emoji = snapshot.Settings.Emoji == "on"
+		style.TTY = style.DetectTTY(snapshot.Settings.ForceTTY)
 	}
 	return ctx.Err()
 }

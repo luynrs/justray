@@ -200,7 +200,7 @@ func (a *app) showTree(subs []ipc.Sub, nodes []ipc.Node) {
 			out(style.Name.Render(a.clean(g.Sub.Name)))
 		} else {
 			out(style.Name.Render(a.clean(g.Sub.Name)) + "  " + style.Dim.Render(g.Sub.ID))
-			out(style.Usage(g.Sub.Traffic) + style.Dim.Render(" · updated "+style.Since(g.Sub.UpdatedAt)))
+			out(style.Usage(g.Sub.Traffic) + style.Dim.Render(" "+style.Sep()+" updated "+style.Since(g.Sub.UpdatedAt)))
 		}
 
 		nameW, infoW := 0, 0
@@ -209,10 +209,7 @@ func (a *app) showTree(subs []ipc.Sub, nodes []ipc.Node) {
 			infoW = max(infoW, lipgloss.Width(a.serverProto(n)))
 		}
 		for j, n := range g.Nodes {
-			branch := "├─"
-			if j == len(g.Nodes)-1 {
-				branch = "└─"
-			}
+			branch := style.Branch(j == len(g.Nodes)-1)
 			out(a.nodeLine(n, branch, nameW, infoW))
 		}
 	}
@@ -222,7 +219,11 @@ func (a *app) nodeLine(n ipc.Node, branch string, nameW, infoW int) string {
 	name := style.Pad(a.nodeName(n.Name, ""), nameW)
 	info := style.Dim.Render(style.Pad(a.serverProto(n), infoW))
 	id := style.Dim.Render(style.Pad(displayID(n.ID), 8))
-	line := fmt.Sprintf("%s %s  %s  %s", style.Dim.Render(branch), name, info, id)
+	prefix := "  "
+	if branch != "" {
+		prefix = style.Dim.Render(branch) + " "
+	}
+	line := fmt.Sprintf("%s%s  %s  %s", prefix, name, info, id)
 	if n.Probed {
 		if n.Alive {
 			line += "  " + style.Alive.Render(fmt.Sprintf("%dms", n.MS))
@@ -234,5 +235,5 @@ func (a *app) nodeLine(n ipc.Node, branch string, nameW, infoW int) string {
 }
 
 func (a *app) serverProto(n ipc.Node) string {
-	return fmt.Sprintf("%s:%d · %s", a.clean(n.Server), n.Port, n.Protocol)
+	return fmt.Sprintf("%s:%d %s %s", a.clean(n.Server), n.Port, style.Sep(), n.Protocol)
 }

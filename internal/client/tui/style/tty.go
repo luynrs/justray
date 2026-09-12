@@ -47,3 +47,17 @@ func Dot(filled bool) string {
 	}
 	return pick("o", "○")
 }
+
+func Check() string { return pick("+", "✓") }
+func Cross() string { return pick("x", "✗") }
+
+func Branch(last bool) string {
+	if TTY {
+		return ""
+	}
+	if last {
+		return "└─"
+	}
+	return "├─"
+}
+

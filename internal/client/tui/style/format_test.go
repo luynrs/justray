@@ -34,3 +34,18 @@ func TestPad(t *testing.T) {
 		}
 	}
 }
+
+func TestTTY(t *testing.T) {
+	orig := TTY
+	defer func() { TTY = orig }()
+
+	TTY = false
+	if Check() != "✓" || Cross() != "✗" || Branch(false) != "├─" || Branch(true) != "└─" || Sep() != "·" {
+		t.Errorf("rich symbols unexpected: %s %s %s %s %s", Check(), Cross(), Branch(false), Branch(true), Sep())
+	}
+
+	TTY = true
+	if Check() != "+" || Cross() != "x" || Branch(false) != "" || Branch(true) != "" || Sep() != "-" {
+		t.Errorf("tty symbols unexpected: %s %s %s %s %s", Check(), Cross(), Branch(false), Branch(true), Sep())
+	}
+}

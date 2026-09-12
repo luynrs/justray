@@ -62,7 +62,7 @@ func FirstLine(s string) string {
 
 func Sanitize(s string, emoji bool) string {
 	return strings.TrimSpace(strings.Map(func(r rune) rune {
-		if r < 0x20 || r == 0x7f {
+		if (r < 0x20 && r != '\n' && r != '\t') || r == 0x7f {
 			return -1
 		}
 		if !emoji {
