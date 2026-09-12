@@ -20,7 +20,7 @@ type legacyFile struct {
 	Tun           bool           `yaml:"tun"`
 	Settings      struct {
 		General struct {
-			RefreshEvery int    `yaml:"refresh_hours"`
+			RefreshEvery *int   `yaml:"refresh_hours"`
 			Port         int    `yaml:"port"`
 			LogLevel     string `yaml:"log_level"`
 			ProbeURL     string `yaml:"probe_url"`
@@ -59,9 +59,9 @@ func (d Disk) migrateLegacy() (bool, error) {
 		return false, err
 	}
 
-	refresh := f.Settings.General.RefreshEvery
-	if refresh == 0 {
-		refresh = domain.DefaultRefresh
+	refresh := domain.DefaultRefresh
+	if f.Settings.General.RefreshEvery != nil {
+		refresh = *f.Settings.General.RefreshEvery
 	}
 
 	settings := domain.Settings{
