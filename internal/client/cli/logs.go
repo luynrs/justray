@@ -55,7 +55,7 @@ func (a *app) logs(cmd *cobra.Command, args []string) error {
 			}
 			return err
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		_, err = io.Copy(cmd.OutOrStdout(), f)
 		return err
 	}
@@ -68,7 +68,7 @@ func followLog(ctx context.Context, path string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
 	dir := filepath.Dir(path)
 	_ = os.MkdirAll(dir, 0o700)
@@ -100,7 +100,7 @@ func followFile(ctx context.Context, w *fsnotify.Watcher, path string, out io.Wr
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	if err := w.Add(path); err != nil {
 		return err
 	}

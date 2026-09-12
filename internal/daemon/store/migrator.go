@@ -88,9 +88,9 @@ func (d Disk) migrateLegacy() (bool, error) {
 		},
 	}
 	if f.Settings.Routing.Mode == domain.DirectAll {
-		settings.Routing.Proxy = f.Settings.Routing.Except
+		settings.Proxy = f.Settings.Routing.Except
 	} else {
-		settings.Routing.Direct = f.Settings.Routing.Except
+		settings.Direct = f.Settings.Routing.Except
 	}
 
 	subs := f.Subscriptions
