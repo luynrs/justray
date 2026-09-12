@@ -130,26 +130,25 @@ var elevatePoll = 500 * time.Millisecond
 func awaitElevate(ctx context.Context, status func() (ipc.Status, error), want *bool, timeout time.Duration) (ipc.Status, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	ticker := time.NewTicker(elevatePoll)
-	defer ticker.Stop()
+
 	pending := false
-	for {
+	for delay := min(5*time.Millisecond, elevatePoll); ; delay = min(delay*2, elevatePoll) {
+		st, err := status()
+		switch {
+		case err != nil: // daemon mid exec-restart
+			pending = true
+		case pending:
+			return st, nil
+		case st.Connected && (want == nil || st.Tun == *want):
+			return st, nil
+		}
 		select {
 		case <-ctx.Done():
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 				return ipc.Status{}, errors.New("timed out waiting for permissions")
 			}
 			return ipc.Status{}, ctx.Err()
-		case <-ticker.C:
-			st, err := status()
-			switch {
-			case err != nil: // daemon mid exec-restart
-				pending = true
-			case pending:
-				return st, nil
-			case st.Connected && (want == nil || st.Tun == *want):
-				return st, nil
-			}
+		case <-time.After(delay):
 		}
 	}
 }
