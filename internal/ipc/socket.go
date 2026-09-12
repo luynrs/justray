@@ -26,8 +26,8 @@ func Socket(dir string) string    { return filepath.Join(dir, "ipc", "justrayd.s
 func DaemonLog(dir string) string { return filepath.Join(dir, "logs", "daemon.log") }
 func EngineLog(dir string) string { return filepath.Join(dir, "logs", "engine.log") }
 func TUILog(dir string) string    { return filepath.Join(dir, "logs", "tui.log") }
-func Config(dir string) string    { return filepath.Join(dir, "config.yaml") }
-func State(dir string) string     { return filepath.Join(dir, "state.yaml") }
+func Config(dir string) string    { return filepath.Join(dir, "config.json") }
+func State(dir string) string     { return filepath.Join(dir, "state.json") }
 
 func ClearLog(path string) error {
 	if err := os.Truncate(path, 0); err != nil && !os.IsNotExist(err) {

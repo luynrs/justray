@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 
@@ -9,6 +10,7 @@ import (
 
 	"github.com/luynrs/justray/internal/client/tui/style"
 	"github.com/luynrs/justray/internal/client/tui/tree"
+	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/ipc"
 )
 
@@ -108,11 +110,14 @@ func (a *app) subRefresh(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-var subListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List subscriptions and their nodes",
-	Args:  cobra.NoArgs,
-}
+var (
+	subListCmd = &cobra.Command{
+		Use:   "list",
+		Short: "List subscriptions and their nodes",
+		Args:  cobra.NoArgs,
+	}
+	subListJSONFlag bool
+)
 
 func (a *app) subList(cmd *cobra.Command, args []string) error {
 	snapshot, err := a.client.Snapshot()
@@ -120,6 +125,41 @@ func (a *app) subList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	subs := snapshot.Subscriptions
+	if subListJSONFlag {
+		type nodeJSON struct {
+			ID       string `json:"id"`
+			Name     string `json:"name"`
+			Protocol string `json:"protocol"`
+			Server   string `json:"server"`
+			Port     int    `json:"port"`
+			Probed   bool   `json:"probed,omitempty"`
+			Alive    bool   `json:"alive,omitempty"`
+			MS       int    `json:"ms,omitempty"`
+		}
+		type subJSON struct {
+			ID      string          `json:"id"`
+			Name    string          `json:"name"`
+			Traffic *domain.Traffic `json:"traffic,omitempty"`
+			Nodes   []nodeJSON      `json:"nodes"`
+		}
+		groups := (tree.Data{Subs: subs, Nodes: snapshot.Nodes}).Groups()
+		out := make([]subJSON, len(groups))
+		for i, g := range groups {
+			nodes := make([]nodeJSON, len(g.Nodes))
+			for j, n := range g.Nodes {
+				nodes[j] = nodeJSON{n.ID, n.Name, n.Protocol, n.Server, n.Port, n.Probed, n.Alive, n.MS}
+			}
+			s := subJSON{ID: g.Sub.ID, Name: g.Sub.Name, Nodes: nodes}
+			if tr := g.Sub.Traffic; tr.TotalBytes > 0 || tr.UploadBytes > 0 || tr.DownloadBytes > 0 {
+				s.Traffic = &tr
+			}
+			out[i] = s
+		}
+		enc := json.NewEncoder(cmd.OutOrStdout())
+		enc.SetIndent("", "  ")
+		return enc.Encode(out)
+	}
+
 	if len(subs) == 0 {
 		out(style.Dim.Render("No subscriptions yet. Add one: " + cmd.Parent().CommandPath() + " add <url>"))
 		return nil
@@ -130,6 +170,7 @@ func (a *app) subList(cmd *cobra.Command, args []string) error {
 
 func init() {
 	subCmd.AddCommand(subAddCmd, subRemoveCmd, subRefreshCmd, subListCmd)
+	subListCmd.Flags().BoolVar(&subListJSONFlag, "json", false, "Output subscriptions as JSON")
 }
 
 func (a *app) resolveSub(key string) (ipc.Sub, error) {

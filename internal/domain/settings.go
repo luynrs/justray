@@ -35,38 +35,38 @@ var (
 )
 
 type Settings struct {
-	General    `yaml:"general,omitempty"`
-	Connection `yaml:"connection,omitempty"`
-	Routing    `yaml:"routing,omitempty"`
+	General    `json:"general,omitempty"`
+	Connection `json:"connection,omitempty"`
+	Routing    `json:"routing,omitempty"`
 }
 
 type General struct {
-	Autostart    string `yaml:"-"`                       // on/off, kept by the OS
-	RefreshEvery int    `yaml:"refresh_hours,omitempty"` // 0 = never
-	Emoji        string `yaml:"emoji,omitempty"`
-	ForceTTY     string `yaml:"force_tty,omitempty"` // on/off
-	LogLevel     string `yaml:"log_level,omitempty"`
-	ProbeURL     string `yaml:"probe_url,omitempty"`
+	Autostart    string `json:"-"`                       // on/off, kept by the OS
+	RefreshEvery int    `json:"refresh_hours,omitempty"` // 0 = never
+	Emoji        string `json:"emoji,omitempty"`
+	ForceTTY     string `json:"force_tty,omitempty"` // on/off
+	LogLevel     string `json:"log_level,omitempty"`
+	ProbeURL     string `json:"probe_url,omitempty"`
 }
 
 type Connection struct {
-	Port      int    `yaml:"port,omitempty"`
-	AllowLAN  string `yaml:"allow_lan,omitempty"` // on/off
-	TunStack  string `yaml:"stack,omitempty"`
-	TunMTU    int    `yaml:"mtu,omitempty"`
-	DNS       string `yaml:"dns,omitempty"`
-	DNSHijack string `yaml:"dns_hijack,omitempty"` // on/off, empty = on
-	IPVersion string `yaml:"ip_version,omitempty"`
+	Port      int    `json:"port,omitempty"`
+	AllowLAN  string `json:"allow_lan,omitempty"` // on/off
+	TunStack  string `json:"stack,omitempty"`
+	TunMTU    int    `json:"mtu,omitempty"`
+	DNS       string `json:"dns,omitempty"`
+	DNSHijack string `json:"dns_hijack,omitempty"` // on/off, empty = on
+	IPVersion string `json:"ip_version,omitempty"`
 }
 
 type Routing struct {
-	Mode        string   `yaml:"mode,omitempty"`         // proxy all/direct all, empty = proxy all
-	BypassLocal string   `yaml:"bypass_local,omitempty"` // on/off, empty = on
-	TunStrict   string   `yaml:"strict_route,omitempty"` // on/off, empty = on
-	BlockQUIC   string   `yaml:"block_quic,omitempty"`   // on/off, empty = off
-	Direct      []string `yaml:"direct,omitempty"`       // forced direct
-	Proxy       []string `yaml:"proxy,omitempty"`        // forced through proxy
-	Block       []string `yaml:"block,omitempty"`        // rejected
+	Mode        string   `json:"mode,omitempty"`         // proxy all/direct all, empty = proxy all
+	BypassLocal string   `json:"bypass_local,omitempty"` // on/off, empty = on
+	TunStrict   string   `json:"strict_route,omitempty"` // on/off, empty = on
+	BlockQUIC   string   `json:"block_quic,omitempty"`   // on/off, empty = off
+	Direct      []string `json:"direct,omitempty"`       // forced direct
+	Proxy       []string `json:"proxy,omitempty"`        // forced through proxy
+	Block       []string `json:"block,omitempty"`        // rejected
 }
 
 func (s Settings) IPv4() bool            { return s.IPVersion != "ipv6" }

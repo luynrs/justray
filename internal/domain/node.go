@@ -3,10 +3,10 @@ package domain
 import "time"
 
 type Traffic struct {
-	UploadBytes   int64     `yaml:"upload_bytes,omitempty"`
-	DownloadBytes int64     `yaml:"download_bytes,omitempty"`
-	TotalBytes    int64     `yaml:"total_bytes,omitempty"`
-	ExpiresAt     time.Time `yaml:"expires_at,omitempty"`
+	UploadBytes   int64     `json:"upload_bytes,omitempty" yaml:"upload_bytes,omitempty"`
+	DownloadBytes int64     `json:"download_bytes,omitempty" yaml:"download_bytes,omitempty"`
+	TotalBytes    int64     `json:"total_bytes,omitempty" yaml:"total_bytes,omitempty"`
+	ExpiresAt     time.Time `json:"expires_at,omitempty" yaml:"expires_at,omitempty"`
 }
 
 type Proto string
@@ -27,24 +27,24 @@ const (
 )
 
 type Node struct {
-	ID             string     `yaml:"id"`
-	Name           string     `yaml:"name,omitempty"`
-	Protocol       Proto      `yaml:"protocol"`
-	Server         string     `yaml:"server"`
-	Port           int        `yaml:"port"`
-	Auth           Auth       `yaml:"auth,omitempty"`
-	Transport      Transport  `yaml:"transport,omitempty"`
-	TLS            *TLS       `yaml:"tls,omitempty"`
-	Reality        *Reality   `yaml:"reality,omitempty"`
-	Obfs           string     `yaml:"obfs,omitempty"`            // hysteria2
-	ObfsPassword   string     `yaml:"obfs_password,omitempty"`   // hysteria2, hysteria xplus
-	UpMbps         int        `yaml:"up_mbps,omitempty"`         // hysteria
-	DownMbps       int        `yaml:"down_mbps,omitempty"`       // hysteria
-	Congestion     string     `yaml:"congestion,omitempty"`      // tuic
-	UDPRelayMode   string     `yaml:"udp_relay_mode,omitempty"`  // tuic
-	PacketEncoding string     `yaml:"packet_encoding,omitempty"` // vless, vmess: xudp, packetaddr; empty = xudp
-	ShadowTLS      *ShadowTLS `yaml:"shadow_tls,omitempty"`
-	WireGuard      *WireGuard `yaml:"wireguard,omitempty"`
+	ID             string     `json:"id" yaml:"id"`
+	Name           string     `json:"name,omitempty" yaml:"name,omitempty"`
+	Protocol       Proto      `json:"protocol" yaml:"protocol"`
+	Server         string     `json:"server" yaml:"server"`
+	Port           int        `json:"port" yaml:"port"`
+	Auth           Auth       `json:"auth,omitempty" yaml:"auth,omitempty"`
+	Transport      Transport  `json:"transport,omitempty" yaml:"transport,omitempty"`
+	TLS            *TLS       `json:"tls,omitempty" yaml:"tls,omitempty"`
+	Reality        *Reality   `json:"reality,omitempty" yaml:"reality,omitempty"`
+	Obfs           string     `json:"obfs,omitempty" yaml:"obfs,omitempty"`                       // hysteria2
+	ObfsPassword   string     `json:"obfs_password,omitempty" yaml:"obfs_password,omitempty"`     // hysteria2, hysteria xplus
+	UpMbps         int        `json:"up_mbps,omitempty" yaml:"up_mbps,omitempty"`                 // hysteria
+	DownMbps       int        `json:"down_mbps,omitempty" yaml:"down_mbps,omitempty"`             // hysteria
+	Congestion     string     `json:"congestion,omitempty" yaml:"congestion,omitempty"`           // tuic
+	UDPRelayMode   string     `json:"udp_relay_mode,omitempty" yaml:"udp_relay_mode,omitempty"`   // tuic
+	PacketEncoding string     `json:"packet_encoding,omitempty" yaml:"packet_encoding,omitempty"` // vless, vmess: xudp, packetaddr; empty = xudp
+	ShadowTLS      *ShadowTLS `json:"shadow_tls,omitempty" yaml:"shadow_tls,omitempty"`
+	WireGuard      *WireGuard `json:"wireguard,omitempty" yaml:"wireguard,omitempty"`
 }
 
 type NodeRef struct {
@@ -55,46 +55,46 @@ type NodeRef struct {
 func ValidPort(port int) bool { return port >= 1 && port <= 65535 }
 
 type Auth struct {
-	UUID     string `yaml:"uuid,omitempty"`     // vmess, vless, tuic
-	Password string `yaml:"password,omitempty"` // trojan, ss, hysteria, anytls, tuic
-	Username string `yaml:"username,omitempty"` // socks, http
-	Method   string `yaml:"method,omitempty"`   // ss cipher, vmess security
-	Flow     string `yaml:"flow,omitempty"`     // vless, e.g. xtls
-	AlterID  int    `yaml:"alter_id,omitempty"` // legacy vmess
+	UUID     string `json:"uuid,omitempty" yaml:"uuid,omitempty"`         // vmess, vless, tuic
+	Password string `json:"password,omitempty" yaml:"password,omitempty"` // trojan, ss, hysteria, anytls, tuic
+	Username string `json:"username,omitempty" yaml:"username,omitempty"` // socks, http
+	Method   string `json:"method,omitempty" yaml:"method,omitempty"`     // ss cipher, vmess security
+	Flow     string `json:"flow,omitempty" yaml:"flow,omitempty"`         // vless, e.g. xtls
+	AlterID  int    `json:"alter_id,omitempty" yaml:"alter_id,omitempty"` // legacy vmess
 }
 
 type ShadowTLS struct {
-	Version  int    `yaml:"version,omitempty"`
-	Password string `yaml:"password,omitempty"`
-	SNI      string `yaml:"sni,omitempty"`
+	Version  int    `json:"version,omitempty" yaml:"version,omitempty"`
+	Password string `json:"password,omitempty" yaml:"password,omitempty"`
+	SNI      string `json:"sni,omitempty" yaml:"sni,omitempty"`
 }
 
 type WireGuard struct {
-	PrivateKey    string   `yaml:"private_key,omitempty"`
-	PeerPublicKey string   `yaml:"peer_public_key,omitempty"`
-	PreSharedKey  string   `yaml:"pre_shared_key,omitempty"`
-	Address       []string `yaml:"address,omitempty"`
-	Reserved      []uint8  `yaml:"reserved,omitempty"`
-	MTU           uint32   `yaml:"mtu,omitempty"`
+	PrivateKey    string   `json:"private_key,omitempty" yaml:"private_key,omitempty"`
+	PeerPublicKey string   `json:"peer_public_key,omitempty" yaml:"peer_public_key,omitempty"`
+	PreSharedKey  string   `json:"pre_shared_key,omitempty" yaml:"pre_shared_key,omitempty"`
+	Address       []string `json:"address,omitempty" yaml:"address,omitempty"`
+	Reserved      []uint8  `json:"reserved,omitempty" yaml:"reserved,omitempty"`
+	MTU           uint32   `json:"mtu,omitempty" yaml:"mtu,omitempty"`
 }
 
 type Transport struct {
-	Network     string `yaml:"network,omitempty"` // tcp, ws, grpc, quic, xhttp
-	Path        string `yaml:"path,omitempty"`
-	Host        string `yaml:"host,omitempty"`
-	ServiceName string `yaml:"service_name,omitempty"` // grpc
-	Mode        string `yaml:"mode,omitempty"`         // xhttp: auto, packet-up, stream-up, stream-one
-	Extra       string `yaml:"extra,omitempty"`
+	Network     string `json:"network,omitempty" yaml:"network,omitempty"` // tcp, ws, grpc, quic, xhttp
+	Path        string `json:"path,omitempty" yaml:"path,omitempty"`
+	Host        string `json:"host,omitempty" yaml:"host,omitempty"`
+	ServiceName string `json:"service_name,omitempty" yaml:"service_name,omitempty"` // grpc
+	Mode        string `json:"mode,omitempty" yaml:"mode,omitempty"`                 // xhttp: auto, packet-up, stream-up, stream-one
+	Extra       string `json:"extra,omitempty" yaml:"extra,omitempty"`
 }
 
 type TLS struct {
-	SNI         string   `yaml:"sni,omitempty"`
-	ALPN        []string `yaml:"alpn,omitempty"`
-	Fingerprint string   `yaml:"fingerprint,omitempty"`
-	Insecure    bool     `yaml:"insecure,omitempty"`
+	SNI         string   `json:"sni,omitempty" yaml:"sni,omitempty"`
+	ALPN        []string `json:"alpn,omitempty" yaml:"alpn,omitempty"`
+	Fingerprint string   `json:"fingerprint,omitempty" yaml:"fingerprint,omitempty"`
+	Insecure    bool     `json:"insecure,omitempty" yaml:"insecure,omitempty"`
 }
 
 type Reality struct {
-	PublicKey string `yaml:"public_key,omitempty"`
-	ShortID   string `yaml:"short_id,omitempty"`
+	PublicKey string `json:"public_key,omitempty" yaml:"public_key,omitempty"`
+	ShortID   string `json:"short_id,omitempty" yaml:"short_id,omitempty"`
 }

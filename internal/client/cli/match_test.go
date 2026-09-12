@@ -65,3 +65,12 @@ func TestLookupNode(t *testing.T) {
 		t.Fatalf("lookupNode unknown = %+v, want empty", n)
 	}
 }
+
+func TestJSONFlags(t *testing.T) {
+	if f := statusCmd.Flags().Lookup("json"); f == nil {
+		t.Error("statusCmd missing --json flag")
+	}
+	if f := subListCmd.Flags().Lookup("json"); f == nil {
+		t.Error("subListCmd missing --json flag")
+	}
+}
