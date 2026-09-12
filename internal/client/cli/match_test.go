@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/luynrs/justray/internal/domain"
@@ -39,11 +40,11 @@ func TestMatch(t *testing.T) {
 		t.Errorf("shared id: got %q, %v; want the first hit, nil", got.name, err)
 	}
 
-	if _, err := match("zzz", "node", items, idName); err == nil {
-		t.Error("match(zzz): want an error")
+	if _, err := match("zzz", "node", items, idName); !errors.Is(err, errNotFound) {
+		t.Errorf("match(zzz): want notFoundError, got %v", err)
 	}
-	if _, err := match("frankfurt", "node", items, idName); err == nil {
-		t.Error("match(frankfurt): want an ambiguity error")
+	if _, err := match("frankfurt", "node", items, idName); errors.Is(err, errNotFound) {
+		t.Errorf("match(frankfurt): want ambiguity error, got %v", err)
 	}
 }
 
@@ -61,5 +62,14 @@ func TestLookupNode(t *testing.T) {
 	}
 	if n := a.lookupNode(domain.NodeRef{SubscriptionID: "sub1", NodeID: "unknown"}, nodes); n.ID != "" {
 		t.Fatalf("lookupNode unknown = %+v, want empty", n)
+	}
+}
+
+func TestJSONFlags(t *testing.T) {
+	if f := statusCmd.Flags().Lookup("json"); f == nil {
+		t.Error("statusCmd missing --json flag")
+	}
+	if f := subListCmd.Flags().Lookup("json"); f == nil {
+		t.Error("subListCmd missing --json flag")
 	}
 }

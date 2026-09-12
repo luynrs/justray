@@ -3,6 +3,7 @@ package store
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"time"
@@ -10,16 +11,15 @@ import (
 	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/ipc"
 	"github.com/luynrs/justray/internal/platform/owner"
-	"gopkg.in/yaml.v3"
 )
 
 type Subscription struct {
-	ID        string         `yaml:"id"`
-	Name      string         `yaml:"name"`
-	URL       string         `yaml:"url"`
-	Nodes     []domain.Node  `yaml:"nodes"`
-	UpdatedAt time.Time      `yaml:"updated_at"`
-	Traffic   domain.Traffic `yaml:"traffic,omitempty"`
+	ID        string         `json:"id" yaml:"id"`
+	Name      string         `json:"name" yaml:"name"`
+	URL       string         `json:"url" yaml:"url"`
+	Nodes     []domain.Node  `json:"nodes" yaml:"nodes"`
+	UpdatedAt time.Time      `json:"updated_at" yaml:"updated_at"`
+	Traffic   domain.Traffic `json:"traffic,omitempty" yaml:"traffic,omitempty"`
 }
 
 type PersistentState struct {
@@ -35,13 +35,13 @@ type PersistentState struct {
 type Disk struct{ Dir string }
 
 type stateFile struct {
-	Subscriptions []Subscription `yaml:"subscriptions"`
-	Active        string         `yaml:"active,omitempty"`
-	ActiveSub     string         `yaml:"active_subscription,omitempty"`
-	Last          string         `yaml:"last,omitempty"`
-	LastSub       string         `yaml:"last_subscription,omitempty"`
-	Tun           bool           `yaml:"tun,omitempty"`
-	Collapsed     []string       `yaml:"collapsed,omitempty"`
+	Subscriptions []Subscription `json:"subscriptions"`
+	Active        string         `json:"active,omitempty"`
+	ActiveSub     string         `json:"active_subscription,omitempty"`
+	Last          string         `json:"last,omitempty"`
+	LastSub       string         `json:"last_subscription,omitempty"`
+	Tun           bool           `json:"tun,omitempty"`
+	Collapsed     []string       `json:"collapsed,omitempty"`
 }
 
 func (d Disk) Load() (PersistentState, error) {
@@ -49,17 +49,28 @@ func (d Disk) Load() (PersistentState, error) {
 		Settings:      domain.Settings{General: domain.General{RefreshEvery: domain.DefaultRefresh}},
 		Subscriptions: []Subscription{},
 	}
-	if cfgData, err := os.ReadFile(ipc.Config(d.Dir)); err == nil {
-		if err := yaml.Unmarshal(cfgData, &state.Settings); err != nil {
+	cfgData, cfgErr := os.ReadFile(ipc.Config(d.Dir))
+	stateData, stateErr := os.ReadFile(ipc.State(d.Dir))
+
+	if os.IsNotExist(cfgErr) && os.IsNotExist(stateErr) {
+		if migrated, err := d.migrateLegacy(); err != nil {
 			return state, err
+		} else if migrated {
+			return d.Load()
 		}
-	} else if !os.IsNotExist(err) {
-		return state, err
 	}
 
-	if stateData, err := os.ReadFile(ipc.State(d.Dir)); err == nil {
+	if cfgErr == nil {
+		if err := json.Unmarshal(cfgData, &state.Settings); err != nil {
+			return state, err
+		}
+	} else if !os.IsNotExist(cfgErr) {
+		return state, cfgErr
+	}
+
+	if stateErr == nil {
 		var sf stateFile
-		if err := yaml.Unmarshal(stateData, &sf); err != nil {
+		if err := json.Unmarshal(stateData, &sf); err != nil {
 			return state, err
 		}
 		state.Active = domain.NodeRef{SubscriptionID: sf.ActiveSub, NodeID: sf.Active}
@@ -69,8 +80,8 @@ func (d Disk) Load() (PersistentState, error) {
 		if sf.Subscriptions != nil {
 			state.Subscriptions = sf.Subscriptions
 		}
-	} else if !os.IsNotExist(err) {
-		return state, err
+	} else if !os.IsNotExist(stateErr) {
+		return state, stateErr
 	}
 
 	return state, nil
@@ -96,18 +107,20 @@ func (d Disk) SaveState(state PersistentState) error {
 		Tun:           state.Tun,
 		Collapsed:     state.Collapsed,
 	}
-	stateData, err := yaml.Marshal(sf)
+	stateData, err := json.MarshalIndent(sf, "", "  ")
 	if err != nil {
 		return err
 	}
+	stateData = append(stateData, '\n')
 	return write(ipc.State(d.Dir), stateData)
 }
 
 func (d Disk) SaveConfig(settings domain.Settings) error {
-	cfgData, err := yaml.Marshal(settings)
+	cfgData, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
 		return err
 	}
+	cfgData = append(cfgData, '\n')
 	return write(ipc.Config(d.Dir), cfgData)
 }
 

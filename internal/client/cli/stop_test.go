@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -19,12 +21,19 @@ func TestWaitStopped(t *testing.T) {
 			unlock()
 		}
 	})
-	if err := waitStopped(sock, 10*time.Millisecond); err == nil {
+	if err := waitStopped(context.Background(), sock, 10*time.Millisecond); err == nil {
 		t.Fatal("reported stopped while lock is held")
 	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := waitStopped(ctx, sock, time.Second); !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+
 	unlock()
 	unlock = nil
-	if err := waitStopped(sock, time.Second); err != nil {
+	if err := waitStopped(context.Background(), sock, time.Second); err != nil {
 		t.Fatal(err)
 	}
 }

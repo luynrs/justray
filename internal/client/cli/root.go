@@ -1,13 +1,16 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"charm.land/lipgloss/v2"
@@ -70,34 +73,43 @@ func init() {
 	rootCmd.SetUsageTemplate(usageTemplate)
 	rootCmd.SetVersionTemplate("{{versionBlock}}")
 	rootCmd.AddGroup(&cobra.Group{ID: cmdGroup, Title: "AVAILABLE COMMANDS"})
-	rootCmd.AddCommand(upCmd, downCmd, stopCmd, statusCmd, subCmd, versionCmd)
+	rootCmd.AddCommand(upCmd, downCmd, stopCmd, probeCmd, statusCmd, subCmd, logsCmd, versionCmd)
 }
 
 // Execute runs the justray CLI. The caller (cmd/justray) handles the error.
 func Execute() error {
+	style.TTY = style.DetectTTY("")
 	a := &app{}
+
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
 
 	rootCmd.Use = filepath.Base(os.Args[0]) + " <command>"
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		for c := cmd; c != nil; c = c.Parent() {
-			if c.Name() == "completion" || c.Name() == "help" || c.Name() == "stop" || c.Name() == "version" {
+			if c.Name() == "completion" || c.Name() == "help" || c.Name() == "stop" || c.Name() == "version" || c.Name() == "logs" {
 				return nil
 			}
 		}
-		return a.connectDaemon()
+		return a.connectDaemon(cmd.Context())
 	}
 	rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		return tui.Run(a.client)
 	}
 	upCmd.RunE = a.up
 	downCmd.RunE = a.down
-	statusCmd.RunE = a.status
 	stopCmd.RunE = a.stop
+	probeCmd.RunE = a.probe
+	statusCmd.RunE = a.status
 	subAddCmd.RunE = a.subAdd
 	subRemoveCmd.RunE = a.subRemove
+	subRefreshCmd.RunE = a.subRefresh
 	subListCmd.RunE = a.subList
+	logsCmd.RunE = a.logs
 	upCmd.ValidArgsFunction = a.completeNode
 	subRemoveCmd.ValidArgsFunction = a.completeSub
+	subRefreshCmd.ValidArgsFunction = a.completeSub
+	probeCmd.ValidArgsFunction = a.completeProbe
 
 	rootCmd.SetOut(lipgloss.Writer)
 	rootCmd.InitDefaultVersionFlag()
@@ -110,8 +122,11 @@ func Execute() error {
 	}
 	setHelpText(rootCmd)
 
-	err := rootCmd.Execute()
+	err := rootCmd.ExecuteContext(ctx)
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return nil
+		}
 		return errors.New(a.clean(err.Error()))
 	}
 	return nil
@@ -125,7 +140,7 @@ func setHelpText(c *cobra.Command) {
 	}
 }
 
-func (a *app) connectDaemon() error {
+func (a *app) connectDaemon(ctx context.Context) error {
 	dir, err := ipc.Dir()
 	if err != nil {
 		return fmt.Errorf("resolve config dir: %w", err)
@@ -134,22 +149,29 @@ func (a *app) connectDaemon() error {
 		return fmt.Errorf("create config dir: %w", err)
 	}
 
-	a.client = ipc.NewClient(ipc.Socket(dir))
+	a.client = ipc.NewClient(ipc.Socket(dir)).WithContext(ctx)
 	if a.client.Ping() != nil {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err := spawn(dir); err != nil {
 			return fmt.Errorf("start daemon: %w", err)
 		}
 		stop := spin("Starting daemon")
-		err = wait(a.client, 10*time.Second)
+		err = wait(ctx, a.client, 10*time.Second)
 		stop()
 		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				return err
+			}
 			return fmt.Errorf("daemon did not start, see %s", ipc.DaemonLog(dir))
 		}
 	}
 	if snapshot, err := a.client.Snapshot(); err == nil {
 		a.emoji = snapshot.Settings.Emoji == "on"
+		style.TTY = style.DetectTTY(snapshot.Settings.ForceTTY)
 	}
-	return nil
+	return ctx.Err()
 }
 
 func spawn(dir string) error {
@@ -215,14 +237,18 @@ func nextToSelf(name string) string {
 	return p
 }
 
-func wait(c *ipc.Client, timeout time.Duration) error {
-	for deadline := time.Now().Add(timeout); time.Now().Before(deadline); {
-		if c.Ping() == nil {
-			return nil
+func wait(ctx context.Context, c *ipc.Client, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	for delay := 5 * time.Millisecond; c.Ping() != nil; delay = min(delay*2, 100*time.Millisecond) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(delay):
 		}
-		time.Sleep(100 * time.Millisecond)
 	}
-	return fmt.Errorf("daemon did not come up within %s", timeout)
+	return nil
 }
 
 // daemon dials silently, for completions — no spawn, no error reporting
@@ -234,6 +260,15 @@ func (a *app) daemon() *ipc.Client {
 	}
 	return a.client
 }
+
+var errNotFound = errors.New("not found")
+
+type notFoundError struct {
+	noun, key string
+}
+
+func (e notFoundError) Error() string { return fmt.Sprintf("no %s matches %q", e.noun, e.key) }
+func (e notFoundError) Is(target error) bool { return target == errNotFound }
 
 func match[T any](key, noun string, items []T, idName func(T) (id, name string)) (T, error) {
 	key = strings.ToLower(key)
@@ -255,7 +290,7 @@ func match[T any](key, noun string, items []T, idName func(T) (id, name string))
 		return hits[0], nil
 	case 0:
 		var zero T
-		return zero, fmt.Errorf("no %s matches %q", noun, key)
+		return zero, notFoundError{noun: noun, key: key}
 	default:
 		var zero T
 		return zero, fmt.Errorf("%q matches %d %ss: %s", key, len(hits), noun, strings.Join(names, ", "))

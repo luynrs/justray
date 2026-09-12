@@ -322,15 +322,15 @@ func TestDisconnectError(t *testing.T) {
 
 func TestNewMalformed(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(path, []byte("invalid: [yaml: broken"), 0o600); err != nil {
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte("invalid: {json: broken"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	logger := log.New(io.Discard, "", 0)
 	conn := connection.New(context.Background(), "", nil, nil, logger)
 	subs := subscription.New(context.Background(), logger)
 	if _, err := New(store.Disk{Dir: dir}, conn, subs); err == nil {
-		t.Fatal("want error on malformed YAML configuration")
+		t.Fatal("want error on malformed JSON configuration")
 	}
 }
 

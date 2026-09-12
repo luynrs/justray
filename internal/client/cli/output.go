@@ -18,7 +18,7 @@ import (
 
 func out(s string) { _, _ = lipgloss.Println(s) }
 
-func done(text string) { out(style.Alive.Bold(true).Render("✓") + " " + text) }
+func done(text string) { out(style.Alive.Bold(true).Render(style.Check()) + " " + text) }
 
 func fields(pairs ...[2]string) {
 	w := 0
@@ -49,7 +49,7 @@ func stateHeadline(st ipc.Status) {
 		done(upperFirst(text))
 		return
 	}
-	out(style.Dim.Render("·") + " " + upperFirst(text))
+	out(style.Dim.Render(style.Sep()) + " " + upperFirst(text))
 }
 
 func (a *app) nodeDetails(st ipc.Status, nodes []ipc.Node) {
@@ -110,7 +110,7 @@ func upperFirst(s string) string {
 }
 
 func Fail(err error) {
-	_, _ = lipgloss.Fprintln(os.Stderr, style.Err.Bold(true).Render("✗"), style.Sanitize(err.Error(), true))
+	_, _ = lipgloss.Fprintln(os.Stderr, style.Err.Bold(true).Render(style.Cross()), style.Sanitize(err.Error(), true))
 }
 
 func (a *app) clean(s string) string { return style.Sanitize(s, a.emoji) }
@@ -120,6 +120,9 @@ func spin(text string) func() {
 		return func() {}
 	}
 	s := spinner.MiniDot
+	if style.TTY {
+		s = spinner.Line
+	}
 	quit, stopped := make(chan struct{}), make(chan struct{})
 	go func() {
 		defer close(stopped)

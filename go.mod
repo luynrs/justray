@@ -7,6 +7,7 @@ require (
 	charm.land/bubbletea/v2 v2.0.9
 	charm.land/lipgloss/v2 v2.0.6
 	github.com/cespare/xxhash/v2 v2.3.0
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/sagernet/netlink v0.0.0-20260814022025-64455d367bbf
 	github.com/sagernet/sing v0.9.0
 	github.com/sagernet/sing-box v1.14.0
@@ -34,7 +35,6 @@ require (
 	github.com/database64128/netx-go v0.1.1 // indirect
 	github.com/database64128/tfo-go/v2 v2.4.0 // indirect
 	github.com/florianl/go-nfqueue/v2 v2.1.0 // indirect
-	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/go-chi/chi/v5 v5.3.2 // indirect
 	github.com/go-chi/render v1.0.3 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect

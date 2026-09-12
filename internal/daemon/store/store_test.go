@@ -36,15 +36,15 @@ func TestRoundtrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(rawState), "tls:") || strings.Contains(string(rawState), "password:") {
+	if strings.Contains(string(rawState), "\"tls\"") || strings.Contains(string(rawState), "\"password\"") {
 		t.Fatalf("expected empty fields to be omitted, got:\n%s", rawState)
 	}
 	rawConfig, err := os.ReadFile(ipc.Config(d.Dir))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(rawConfig), "refresh_hours: 12") {
-		t.Fatalf("expected settings in config.yaml, got:\n%s", rawConfig)
+	if !strings.Contains(string(rawConfig), "\"refresh_hours\": 12") {
+		t.Fatalf("expected settings in config.json, got:\n%s", rawConfig)
 	}
 	got, err := d.Load()
 	if err != nil {
