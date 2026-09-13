@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"strconv"
@@ -77,15 +78,17 @@ var tabs = []tab{
 		},
 		{
 			name: "Probe URL",
+			hint: domain.DefaultProbeURL,
 			get:  func(s domain.Settings) string { return s.ProbeURL },
-			set:  func(s *domain.Settings, in string) error { s.ProbeURL = strings.TrimSpace(in); return nil },
+			set:  setStr(func(s *domain.Settings) *string { return &s.ProbeURL }, domain.DefaultProbeURL),
 		},
 	}},
 	{name: "Connection", fields: []field{
 		{
 			name: "Proxy port",
+			hint: strconv.Itoa(domain.DefaultPort),
 			get:  func(s domain.Settings) string { return strconv.Itoa(s.Port) },
-			set:  setInt(func(s *domain.Settings) *int { return &s.Port }),
+			set:  setInt(func(s *domain.Settings) *int { return &s.Port }, domain.DefaultPort),
 		},
 		{
 			name: "Allow LAN",
@@ -107,8 +110,9 @@ var tabs = []tab{
 		},
 		{
 			name: "MTU",
+			hint: strconv.Itoa(domain.DefaultTunMTU),
 			get:  func(s domain.Settings) string { return strconv.Itoa(s.TunMTU) },
-			set:  setInt(func(s *domain.Settings) *int { return &s.TunMTU }),
+			set:  setInt(func(s *domain.Settings) *int { return &s.TunMTU }, domain.DefaultTunMTU),
 		},
 		{
 			name: "DNS hijack",
@@ -118,8 +122,9 @@ var tabs = []tab{
 		},
 		{
 			name: "DNS server",
+			hint: domain.DefaultDNS,
 			get:  func(s domain.Settings) string { return s.DNS },
-			set:  func(s *domain.Settings, in string) error { s.DNS = strings.TrimSpace(in); return nil },
+			set:  setStr(func(s *domain.Settings) *string { return &s.DNS }, domain.DefaultDNS),
 		},
 	}},
 	{name: "Routing", fields: []field{
@@ -154,9 +159,20 @@ var tabs = []tab{
 	}},
 }
 
-func setInt(at func(*domain.Settings) *int) func(*domain.Settings, string) error {
+func setStr(at func(*domain.Settings) *string, def string) func(*domain.Settings, string) error {
 	return func(s *domain.Settings, in string) error {
-		v, err := strconv.Atoi(strings.TrimSpace(in))
+		*at(s) = cmp.Or(strings.TrimSpace(in), def)
+		return nil
+	}
+}
+
+func setInt(at func(*domain.Settings) *int, def int) func(*domain.Settings, string) error {
+	return func(s *domain.Settings, in string) error {
+		if in = strings.TrimSpace(in); in == "" {
+			*at(s) = def
+			return nil
+		}
+		v, err := strconv.Atoi(in)
 		if err != nil {
 			return fmt.Errorf("%q is not a number", in)
 		}

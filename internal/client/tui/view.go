@@ -42,12 +42,12 @@ func (m Model) content() string {
 	case m.quitting, m.w == 0:
 		return ""
 	case m.dialog != nil:
-		body := m.titleLine() + "\n\n" + m.dialog.View(m.w, max(m.h-topLines-1, 1))
-		errLine := ""
+		body := m.titleLine() + "\n\n" + m.dialog.View(m.w, max(m.h-topLines-footerLines, 1))
+		status := ""
 		if e := m.dialog.Err(); e != "" {
-			errLine = "\n" + m.clip(style.Err.Render(style.Sanitize(style.FirstLine(e), true)))
+			status = style.Err.Render(style.Sanitize(style.FirstLine(e), true))
 		}
-		return style.Fit(body, m.h-1) + errLine + "\n" + m.clip(m.hints(m.w))
+		return style.Fit(body, m.h-footerLines) + "\n\n" + m.clip(status) + "\n" + m.clip(m.hints(m.w))
 	case m.h < topLines+footerLines+1:
 		return m.titleLine()
 	}
