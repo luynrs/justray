@@ -1,7 +1,8 @@
 package style
 
 import (
-	"charm.land/bubbles/v2/progress"
+	"strings"
+
 	"charm.land/lipgloss/v2"
 )
 
@@ -45,14 +46,11 @@ func Progress(fraction float64) string {
 	switch {
 	case fraction >= 0.9:
 		fill = red
-	case fraction >= 0.7:
+	case fraction >= 0.75:
 		fill = yellow
 	}
-	b := progress.New(progress.WithColors(fill), progress.WithoutPercentage(), progress.WithWidth(12))
-	b.EmptyColor = lipgloss.Color("8")
-	if TTY {
-		b.Full = '='
-		b.Empty = '-'
-	}
-	return b.ViewAs(fraction)
+	n := max(0, min(12, int(fraction*12+0.5)))
+	full, empty := pick("=", "█"), pick("-", "░")
+	return lipgloss.NewStyle().Foreground(fill).Render(strings.Repeat(full, n)) +
+		Dim.Render(strings.Repeat(empty, 12-n))
 }
