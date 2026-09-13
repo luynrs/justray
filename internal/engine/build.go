@@ -57,7 +57,8 @@ func Build(ctx context.Context, n domain.Node, s domain.Settings, logPath string
 		},
 		DNS: &option.DNSOptions{RawDNSOptions: option.RawDNSOptions{
 			DNSClientOptions: option.DNSClientOptions{Strategy: dnsStrategy[s.IPVersion]},
-			Servers:          []option.DNSServerOptions{dnsServer(s)},
+			Servers:          dnsServers(s),
+			Final:            "remote",
 		}},
 		Route: &option.RouteOptions{
 			Final:               final(s),
@@ -139,7 +140,7 @@ func attach(opts *option.Options, ep *option.Endpoint, obs []option.Outbound) {
 	opts.Outbounds = append(opts.Outbounds, obs...)
 }
 
-func dnsServer(s domain.Settings) option.DNSServerOptions {
+func dnsServers(s domain.Settings) []option.DNSServerOptions {
 	detour := ""
 	if final(s) == Tag {
 		detour = Tag
@@ -151,7 +152,7 @@ func dnsServer(s domain.Settings) option.DNSServerOptions {
 		DNSServerAddressOptions: option.DNSServerAddressOptions{Server: s.DNS},
 	}
 	if !strings.HasPrefix(s.DNS, "https://") {
-		return option.DNSServerOptions{Type: C.DNSTypeTCP, Tag: "remote", Options: &remote}
+		return []option.DNSServerOptions{{Type: C.DNSTypeTCP, Tag: "remote", Options: &remote}}
 	}
 
 	u, _ := url.Parse(s.DNS) // Settings.Normalize validates the URL
@@ -160,10 +161,27 @@ func dnsServer(s domain.Settings) option.DNSServerOptions {
 		port, _ := strconv.ParseUint(u.Port(), 10, 16)
 		remote.ServerPort = uint16(port)
 	}
-	return option.DNSServerOptions{Type: C.DNSTypeHTTPS, Tag: "remote", Options: &option.RemoteHTTPSDNSServerOptions{
-		RemoteTLSDNSServerOptions: option.RemoteTLSDNSServerOptions{RemoteDNSServerOptions: remote},
-		Path:                      u.EscapedPath(),
-	}}
+	if _, err := netip.ParseAddr(remote.Server); err != nil {
+		remote.DomainResolver = &option.DomainResolveOptions{Server: "local"}
+	}
+	servers := []option.DNSServerOptions{
+		{
+			Type: C.DNSTypeHTTPS,
+			Tag:  "remote",
+			Options: &option.RemoteHTTPSDNSServerOptions{
+				RemoteTLSDNSServerOptions: option.RemoteTLSDNSServerOptions{RemoteDNSServerOptions: remote},
+				Path:                      u.EscapedPath(),
+			},
+		},
+	}
+	if remote.DomainResolver != nil {
+		servers = append(servers, option.DNSServerOptions{
+			Type:    C.DNSTypeLocal,
+			Tag:     "local",
+			Options: &option.LocalDNSServerOptions{},
+		})
+	}
+	return servers
 }
 
 func listenAddr(s domain.Settings) netip.Addr {
