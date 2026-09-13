@@ -64,7 +64,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case completed:
 		if msg.op == "connection" {
-			m.connectionBusy = false
+			m.busy = false
 		}
 		if msg.err != nil {
 			m.err, m.errAt = msg.err.Error(), time.Now()
@@ -78,8 +78,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case pushed:
 		if !msg.live {
 			m.live = false
-			m.connectionBusy = false
-			return m, next(m.watchCtx, m.updates)
+			m.busy = false
+			return m, next(m.watch, m.updates)
 		}
 		initial := m.snapshot.Settings.Port == 0
 		selected, selectedOK := m.at()
@@ -110,7 +110,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.cursor, m.scroll = tree.Clamp(rows, m.cursor, m.scroll, m.height())
-		return m, next(m.watchCtx, m.updates)
+		return m, next(m.watch, m.updates)
 	}
 	return m, nil
 }
@@ -124,7 +124,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.confirmSub = ipc.Sub{}
 		if k == "y" || k == "Y" {
 			delete(m.collapsed, id)
-			return m, actionCmd("mutation", m.startDaemon, func() error { return m.client.RemoveSub(id) })
+			return m, actionCmd("mutation", m.start, func() error { return m.client.RemoveSub(id) })
 		}
 		return m, nil
 
@@ -139,7 +139,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			if url == "" {
 				return m, nil
 			}
-			return m, actionCmd("mutation", m.startDaemon, func() error {
+			return m, actionCmd("mutation", m.start, func() error {
 				_, err := m.client.AddSub(url)
 				return err
 			})
@@ -288,5 +288,5 @@ func (m Model) closeSettings() (Model, tea.Cmd) {
 	case !changed:
 		return m, nil
 	}
-	return m, actionCmd("settings", m.startDaemon, func() error { return m.client.SetSettings(next) })
+	return m, actionCmd("settings", m.start, func() error { return m.client.SetSettings(next) })
 }

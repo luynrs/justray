@@ -37,12 +37,12 @@ type Model struct {
 	dialog     *settings.Settings
 	filter     textinput.Model
 
-	live           bool
-	updates        chan pushed
-	watchCtx       context.Context
-	stopWatch      context.CancelFunc
-	connectionBusy bool
-	startDaemon    func(context.Context) error
+	live    bool
+	updates chan pushed
+	watch   context.Context
+	stop    context.CancelFunc
+	busy    bool
+	start   func(context.Context) error
 
 	err   string
 	errAt time.Time
@@ -51,8 +51,8 @@ type Model struct {
 	quitting bool
 }
 
-func New(c *ipc.Client, startDaemon func(context.Context) error) Model {
-	watchCtx, stopWatch := context.WithCancel(context.Background())
+func New(c *ipc.Client, start func(context.Context) error) Model {
+	watch, stop := context.WithCancel(context.Background())
 	editor := textinput.New()
 	editor.Prompt = "Add:  "
 	editor.Placeholder = "subscription URL, or a vless://, vmess://, trojan://, ss://, etc. link"
@@ -61,22 +61,22 @@ func New(c *ipc.Client, startDaemon func(context.Context) error) Model {
 	filter.Prompt = ""
 	filter.CharLimit = 128
 	m := Model{
-		client:      c,
-		collapsed:   map[string]bool{},
-		spin:        spinner.New(),
-		editor:      editor,
-		filter:      filter,
-		updates:     make(chan pushed),
-		watchCtx:    watchCtx,
-		stopWatch:   stopWatch,
-		startDaemon: startDaemon,
+		client:    c,
+		collapsed: map[string]bool{},
+		spin:      spinner.New(),
+		editor:    editor,
+		filter:    filter,
+		updates:   make(chan pushed),
+		watch:     watch,
+		stop:      stop,
+		start:     start,
 	}
 	m.syncTTY()
 	return m
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(watch(m.watchCtx, m.client, m.updates), next(m.watchCtx, m.updates), tickCmd(), m.spin.Tick)
+	return tea.Batch(watch(m.watch, m.client, m.updates), next(m.watch, m.updates), tickCmd(), m.spin.Tick)
 }
 
 func (m *Model) syncTTY() {
@@ -148,7 +148,7 @@ func Run(c *ipc.Client, start func(context.Context) error) error {
 	}
 
 	m := New(c, start)
-	defer m.stopWatch()
+	defer m.stop()
 	_, err := tea.NewProgram(m).Run()
 	return err
 }

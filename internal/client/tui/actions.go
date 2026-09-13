@@ -24,17 +24,17 @@ func (m Model) activate() (tea.Model, tea.Cmd) {
 		}
 		return m, actionCmd("collapse", nil, func() error { return m.client.SetCollapsed(id, target) })
 	}
-	if m.connectionBusy {
+	if m.busy {
 		return m, nil
 	}
 
-	m.connectionBusy = true
+	m.busy = true
 	act := m.client.Disconnect
 	if !m.connected() || m.snapshot.Status.NodeRef != r.Node.Ref() {
 		ref := r.Node.Ref()
 		act = func() error { return m.client.Connect(ref) }
 	}
-	return m, actionCmd("connection", m.startDaemon, act)
+	return m, actionCmd("connection", m.start, act)
 }
 
 func (m Model) collapse() (tea.Model, tea.Cmd) {
@@ -93,16 +93,16 @@ func (m Model) probe() (tea.Model, tea.Cmd) {
 		if r.Node.Probing {
 			return m, nil
 		}
-		return m, actionCmd("probe", m.startDaemon, func() error { return m.client.Probe(r.Node.Sub, r.Node.ID) })
+		return m, actionCmd("probe", m.start, func() error { return m.client.Probe(r.Node.Sub, r.Node.ID) })
 	}
 	if r.Sub.ID == tree.Default {
 		return m, nil
 	}
-	return m, actionCmd("probe", m.startDaemon, func() error { return m.client.Probe(r.Sub.ID, "") })
+	return m, actionCmd("probe", m.start, func() error { return m.client.Probe(r.Sub.ID, "") })
 }
 
 func (m Model) probeAll() (tea.Model, tea.Cmd) {
-	return m, actionCmd("probe", m.startDaemon, func() error { return m.client.Probe("", "") })
+	return m, actionCmd("probe", m.start, func() error { return m.client.Probe("", "") })
 }
 
 func (m Model) refresh() (tea.Model, tea.Cmd) {
@@ -114,11 +114,11 @@ func (m Model) refresh() (tea.Model, tea.Cmd) {
 	if id == tree.Default {
 		return m, nil
 	}
-	return m, actionCmd("refresh", m.startDaemon, func() error { return m.client.Refresh(id) })
+	return m, actionCmd("refresh", m.start, func() error { return m.client.Refresh(id) })
 }
 
 func (m Model) refreshAll() (tea.Model, tea.Cmd) {
-	return m, actionCmd("refresh", m.startDaemon, m.client.RefreshAll)
+	return m, actionCmd("refresh", m.start, m.client.RefreshAll)
 }
 
 func (m Model) moveSub(dir int) (tea.Model, tea.Cmd) {
@@ -132,13 +132,17 @@ func (m Model) moveSub(dir int) (tea.Model, tea.Cmd) {
 	if i < 0 || j < 0 || j >= len(m.snapshot.Subscriptions) {
 		return m, nil
 	}
-	return m, actionCmd("mutation", m.startDaemon, func() error { return m.client.MoveSub(id, dir) })
+	return m, actionCmd("mutation", m.start, func() error { return m.client.MoveSub(id, dir) })
 }
 
 func (m Model) setTun(enable bool) (tea.Model, tea.Cmd) {
-	if m.connectionBusy {
+	if m.busy {
 		return m, nil
 	}
-	m.connectionBusy = true
-	return m, actionCmd("connection", m.startDaemon, func() error { return m.client.SetTun(enable) })
+	op := "mode"
+	if m.connected() {
+		m.busy = true
+		op = "connection"
+	}
+	return m, actionCmd(op, m.start, func() error { return m.client.SetTun(enable) })
 }

@@ -18,7 +18,7 @@ import (
 func TestSettingsWaitForSnapshot(t *testing.T) {
 	original, _ := (domain.Settings{}).Normalize()
 	m := New(nil, nil)
-	defer m.stopWatch()
+	defer m.stop()
 	m.snapshot.Settings = original
 	m.dialog = settings.New(original, topLines)
 	for range 2 {
@@ -46,7 +46,7 @@ func TestSettingsWaitForSnapshot(t *testing.T) {
 
 func TestSnapshotAfterReconnect(t *testing.T) {
 	m := New(nil, nil)
-	defer m.stopWatch()
+	defer m.stop()
 	first := ipc.Snapshot{
 		Nodes:         []ipc.Node{{ID: "old"}},
 		Subscriptions: []ipc.Sub{{ID: "old-sub"}},
@@ -71,7 +71,7 @@ func TestSnapshotAfterReconnect(t *testing.T) {
 
 func TestQuitFromSettings(t *testing.T) {
 	m := New(nil, nil)
-	defer m.stopWatch()
+	defer m.stop()
 	settingsValue, _ := (domain.Settings{}).Normalize()
 	m.dialog = settings.New(settingsValue, topLines)
 	updated, cmd := m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
@@ -105,7 +105,7 @@ func TestSnapshotPreservesSelection(t *testing.T) {
 		reordered.Subscriptions = []ipc.Sub{{ID: "b"}, {ID: "a"}}
 		updated, _ := m.Update(pushed{live: true, snapshot: reordered})
 		row, ok := updated.(Model).at()
-		m.stopWatch()
+		m.stop()
 		if !ok || row.Kind != selected.Kind || row.Sub.ID != selected.Sub.ID || row.Node.Ref() != selected.Node.Ref() {
 			t.Fatalf("cursor %d lost its selection: before=%+v after=%+v", cursor, selected, row)
 		}
@@ -114,7 +114,7 @@ func TestSnapshotPreservesSelection(t *testing.T) {
 
 func TestAutofocus(t *testing.T) {
 	m := New(nil, nil)
-	defer m.stopWatch()
+	defer m.stop()
 
 	snap := ipc.Snapshot{
 		Subscriptions: []ipc.Sub{{ID: "sub1", Name: "Sub 1"}},
@@ -137,7 +137,7 @@ func TestAutofocus(t *testing.T) {
 
 func TestCollapsedSnapshot(t *testing.T) {
 	m := New(nil, nil)
-	defer m.stopWatch()
+	defer m.stop()
 
 	snap := ipc.Snapshot{
 		Subscriptions: []ipc.Sub{{ID: "sub1", Name: "Sub 1"}},

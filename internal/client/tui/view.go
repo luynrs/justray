@@ -69,9 +69,7 @@ func (m Model) titleLine() string {
 
 	var right string
 	if m.dialog == nil {
-		activeProxy := m.live && !m.snapshot.Status.Tun
-		activeTun := m.live && m.snapshot.Status.Tun
-		right = style.Segment(modeProxy, activeProxy) + style.Segment(modeTun, activeTun)
+		right = style.Segment(modeProxy, !m.snapshot.Status.Tun) + style.Segment(modeTun, m.snapshot.Status.Tun)
 	}
 	return m.clip(style.Flush(left, right, m.w))
 }
@@ -139,7 +137,7 @@ func (m Model) footer() string {
 	if m.connected() {
 		icon = style.Dot(true)
 	}
-	if m.connectionBusy {
+	if m.busy {
 		icon = m.spin.View()
 	}
 
@@ -147,11 +145,11 @@ func (m Model) footer() string {
 	switch {
 	case m.connected():
 		iconStyle := style.Alive
-		if m.connectionBusy {
+		if m.busy {
 			iconStyle = style.Pending
 		}
 		status = iconStyle.Render(icon) + " " + style.Sanitize(m.snapshot.Status.NodeName, m.emoji()) + " " + style.Dim.Render(style.Sep()) + " " + style.Uptime(m.snapshot.Status.Uptime())
-	case m.connectionBusy:
+	case m.busy:
 		status = style.Pending.Render(m.spin.View()) + " " + style.Dim.Render("connecting")
 	default:
 		status = style.Dim.Render(icon) + " " + style.Dim.Render("disconnected")
