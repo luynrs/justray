@@ -1,6 +1,6 @@
 <img src=".github/assets/contributing.png" width="480" alt="contributing">
 
-Keep changes small, test them, and don't add AI slop :)
+Hello! Keep changes small, test them, and don't add AI slop :)
 
 ### Workflow
 

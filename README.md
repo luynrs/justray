@@ -79,14 +79,14 @@ Package manager and script installations also provide `jray` as a short alias fo
 > [!NOTE]
 > WinGet provides only `justray` and `justrayd`; the `jray` alias must be added manually
 
-- `jray`: open the TUI
+- `jray`: open Terminal UI
 
 #### Connection Control (CLI)
 
 - `jray up <node> [--tun | --proxy]`: start the daemon and connect
 - `jray down`: disconnect
 - `jray stop`: stop the daemon
-- `jray probe [sub | id]`: probe node latencies
+- `jray probe [sub | id | name]`: probe node latencies
 - `jray status [--json]`: show connection status
 - `jray logs [daemon | engine | tui] [-f]`: view logs
 
