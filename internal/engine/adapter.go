@@ -14,7 +14,6 @@ import (
 	"github.com/sagernet/sing/service"
 
 	"github.com/luynrs/justray/internal/domain"
-	"github.com/luynrs/justray/internal/engine/resolvers"
 	"github.com/luynrs/justray/internal/platform/link"
 	"github.com/luynrs/justray/internal/platform/wintun"
 )
@@ -146,7 +145,7 @@ func (e *Box) tunAdd() error {
 	if _, err := wintun.Ensure(); err != nil {
 		return err
 	}
-	inb := TunInbound(e.settings, resolvers.Get())
+	inb := TunInbound(e.settings)
 	ctx := e.runtimeCtx()
 	logger := e.inst.LogFactory().NewLogger("inbound/tun[tun-in]")
 

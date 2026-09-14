@@ -68,7 +68,7 @@ func Build(ctx context.Context, n domain.Node, s domain.Settings, logPath string
 	}
 	attach(opts, ep, obs)
 	if tun {
-		opts.Inbounds = append(opts.Inbounds, TunInbound(s, resolverIPs))
+		opts.Inbounds = append(opts.Inbounds, TunInbound(s))
 	}
 	return opts, nil
 }

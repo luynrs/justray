@@ -19,13 +19,17 @@ var (
 	toProxy  = option.RuleAction{Action: C.RuleActionTypeRoute, RouteOptions: option.RouteActionOptions{Outbound: Tag}}
 )
 
-var refuseV6 = option.Rule{Type: C.RuleTypeLogical, LogicalOptions: option.LogicalRule{
-	RawLogicalRule: option.RawLogicalRule{Mode: C.LogicalTypeAnd, Rules: []option.Rule{
+var refuseV6 = func() option.Rule {
+	var r option.Rule
+	r.Type = C.RuleTypeLogical
+	r.LogicalOptions.Mode = C.LogicalTypeAnd
+	r.LogicalOptions.Rules = []option.Rule{
 		{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{RawDefaultRule: option.RawDefaultRule{IPVersion: 6}}},
 		{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{RawDefaultRule: option.RawDefaultRule{IPIsPrivate: true, Invert: true}}},
-	}},
-	RuleAction: reject,
-}}
+	}
+	r.LogicalOptions.RuleAction = reject
+	return r
+}()
 
 func match(list []string, action option.RuleAction, inbound []string) []option.Rule {
 	cidrs, domains, keywords, names, paths := domain.SplitRules(list)
@@ -86,16 +90,19 @@ func rules(s domain.Settings, direct []string) []option.Rule {
 			RuleAction:     toDirect,
 		}})
 	}
-	out = append(out, option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{
-		RawDefaultRule: option.RawDefaultRule{IPCIDR: direct},
-		RuleAction:     toDirect,
-	}})
+
+	if len(direct) > 0 {
+		out = append(out, option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{
+			RawDefaultRule: option.RawDefaultRule{IPCIDR: direct},
+			RuleAction:     toDirect,
+		}})
+	}
 
 	out = append(out, match(s.Direct, toDirect, []string{"tun-in"})...)
 	return append(out, match(s.Proxy, toProxy, []string{"tun-in"})...)
 }
 
-func TunInbound(s domain.Settings, resolverIPs []netip.Prefix) option.Inbound {
+func TunInbound(s domain.Settings) option.Inbound {
 	var address, routes []netip.Prefix
 	if s.IPv4() {
 		address = append(address, netip.MustParsePrefix("172.19.0.1/30"))
@@ -117,7 +124,7 @@ func TunInbound(s domain.Settings, resolverIPs []netip.Prefix) option.Inbound {
 		Address:       address,
 		AutoRoute:     true,
 		StrictRoute:   s.TunStrict == "on",
-		RouteAddress:  append(routes, resolverIPs...),
+		RouteAddress:  routes,
 	}
 	return option.Inbound{Type: C.TypeTun, Tag: "tun-in", Options: tunOpts}
 }

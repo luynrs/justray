@@ -8,6 +8,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/luynrs/justray/internal/domain"
 )
 
 func Get() []netip.Prefix {
@@ -40,7 +42,7 @@ func dnsServers() []net.IP {
 		}
 
 		for a := (*windows.IpAdapterAddresses)(unsafe.Pointer(&buf[0])); a != nil; a = a.Next {
-			if a.OperStatus != windows.IfOperStatusUp {
+			if a.OperStatus != windows.IfOperStatusUp || windows.UTF16PtrToString(a.FriendlyName) == domain.TunInterface {
 				continue
 			}
 			for d := a.FirstDnsServerAddress; d != nil; d = d.Next {
