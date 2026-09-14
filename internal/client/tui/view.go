@@ -45,7 +45,8 @@ func (m Model) content() string {
 		body := m.titleLine() + "\n\n" + m.dialog.View(m.w, max(m.h-topLines-footerLines, 1))
 		status := ""
 		if e := m.dialog.Err(); e != "" {
-			status = style.Err.Render(style.Sanitize(style.FirstLine(e), true))
+			errLine, _, _ := strings.Cut(e, "\n")
+			status = style.Err.Render(style.Sanitize(errLine, true))
 		}
 		return style.Fit(body, m.h-footerLines) + "\n\n" + m.clip(status) + "\n" + m.clip(m.hints(m.w))
 	case m.h < topLines+footerLines+1:
@@ -155,7 +156,8 @@ func (m Model) footer() string {
 		status = style.Dim.Render(icon) + " " + style.Dim.Render("disconnected")
 	}
 	if m.err != "" {
-		status += "   " + style.Err.Render(style.Sanitize(style.FirstLine(m.err), true))
+		errLine, _, _ := strings.Cut(m.err, "\n")
+		status += "   " + style.Err.Render(style.Sanitize(errLine, true))
 	}
 
 	hints := m.hints(m.w)

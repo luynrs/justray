@@ -3,6 +3,8 @@ package ipc
 import (
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 )
 
 func Dir() (string, error) {
@@ -34,4 +36,16 @@ func ClearLog(path string) error {
 		return err
 	}
 	return nil
+}
+
+func Chown(path string) error {
+	if runtime.GOOS != "darwin" || os.Geteuid() != 0 {
+		return nil
+	}
+	uid, uidErr := strconv.Atoi(os.Getenv("JUSTRAY_UID"))
+	gid, gidErr := strconv.Atoi(os.Getenv("JUSTRAY_GID"))
+	if uidErr != nil || gidErr != nil || uid == 0 {
+		return nil
+	}
+	return os.Chown(path, uid, gid)
 }

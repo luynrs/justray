@@ -151,7 +151,7 @@ func (a *app) start(ctx context.Context) error {
 	if err := spawn(dir); err != nil {
 		return err
 	}
-	return wait(ctx, a.daemon().WithContext(ctx), 10*time.Second)
+	return wait(ctx, a.daemon(), 10*time.Second)
 }
 
 func (a *app) connectDaemon(ctx context.Context) error {
@@ -163,7 +163,7 @@ func (a *app) connectDaemon(ctx context.Context) error {
 		return fmt.Errorf("create config dir: %w", err)
 	}
 
-	a.client = ipc.NewClient(ipc.Socket(dir)).WithContext(ctx)
+	a.client = ipc.NewClient(ipc.Socket(dir), ctx)
 	if a.client.Ping() != nil {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -199,7 +199,6 @@ func spawn(dir string) error {
 	}
 	defer func() { _ = devNull.Close() }()
 
-	// a panic writes straight to stderr, past the logger — keep it in the log
 	errLog, err := os.OpenFile(ipc.DaemonLog(dir), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
@@ -277,13 +276,6 @@ func (a *app) daemon() *ipc.Client {
 
 var errNotFound = errors.New("not found")
 
-type notFoundError struct {
-	noun, key string
-}
-
-func (e notFoundError) Error() string { return fmt.Sprintf("no %s matches %q", e.noun, e.key) }
-func (e notFoundError) Is(target error) bool { return target == errNotFound }
-
 func match[T any](key, noun string, items []T, idName func(T) (id, name string)) (T, error) {
 	key = strings.ToLower(key)
 	var hits []T
@@ -304,7 +296,7 @@ func match[T any](key, noun string, items []T, idName func(T) (id, name string))
 		return hits[0], nil
 	case 0:
 		var zero T
-		return zero, notFoundError{noun: noun, key: key}
+		return zero, fmt.Errorf("%w: no %s matches %q", errNotFound, noun, key)
 	default:
 		var zero T
 		return zero, fmt.Errorf("%q matches %d %ss: %s", key, len(hits), noun, strings.Join(names, ", "))

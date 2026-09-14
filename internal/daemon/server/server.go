@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/luynrs/justray/internal/daemon/core"
+	"github.com/luynrs/justray/internal/ipc"
 	"github.com/luynrs/justray/internal/platform/lock"
-	"github.com/luynrs/justray/internal/platform/owner"
 )
 
 type Server struct {
@@ -64,7 +64,7 @@ func Listen(socket string) (net.Listener, func(), error) {
 		unlock()
 		return nil, nil, err
 	}
-	if err := owner.File(socket); err != nil {
+	if err := ipc.Chown(socket); err != nil {
 		_ = ln.Close()
 		unlock()
 		return nil, nil, err

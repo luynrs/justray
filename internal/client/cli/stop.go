@@ -26,7 +26,7 @@ func (a *app) stop(cmd *cobra.Command, args []string) error {
 	}
 	socket := ipc.Socket(dir)
 	ctx := cmd.Context()
-	c := ipc.NewClient(socket).WithContext(ctx)
+	c := ipc.NewClient(socket, ctx)
 	if c.Ping() != nil {
 		if err := ctx.Err(); err != nil {
 			return err

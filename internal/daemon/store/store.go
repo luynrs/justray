@@ -10,7 +10,6 @@ import (
 
 	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/ipc"
-	"github.com/luynrs/justray/internal/platform/owner"
 )
 
 type Subscription struct {
@@ -142,7 +141,7 @@ func write(path string, data []byte) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := owner.File(tmp.Name()); err != nil {
+	if err := ipc.Chown(tmp.Name()); err != nil {
 		return err
 	}
 	if err := os.Rename(tmp.Name(), path); err != nil {

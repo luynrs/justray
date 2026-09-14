@@ -21,10 +21,12 @@ type Client struct {
 // IdleTimeout bounds how long either side waits on a quiet connection
 const IdleTimeout = 60 * time.Second
 
-func NewClient(socket string) *Client { return &Client{socket: socket} }
-
-func (c *Client) WithContext(ctx context.Context) *Client {
-	return &Client{socket: c.socket, ctx: ctx}
+func NewClient(socket string, ctx ...context.Context) *Client {
+	c := &Client{socket: socket}
+	if len(ctx) > 0 {
+		c.ctx = ctx[0]
+	}
+	return c
 }
 
 var ErrNoDaemon = errors.New("daemon is not running")

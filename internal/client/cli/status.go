@@ -18,7 +18,7 @@ func init() {
 }
 
 func (a *app) status(cmd *cobra.Command, args []string) error {
-	snapshot, err := a.daemon().WithContext(cmd.Context()).Snapshot()
+	snapshot, err := a.daemon().Snapshot()
 	if err != nil {
 		return err
 	}
