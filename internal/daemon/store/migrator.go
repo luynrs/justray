@@ -3,6 +3,7 @@
 package store
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 
@@ -12,36 +13,36 @@ import (
 )
 
 type legacyFile struct {
-	Subscriptions []Subscription `yaml:"subscriptions"`
-	Active        string         `yaml:"active"`
-	ActiveSub     string         `yaml:"active_subscription"`
-	Last          string         `yaml:"last"`
-	LastSub       string         `yaml:"last_subscription"`
-	Tun           bool           `yaml:"tun"`
+	Subscriptions []Subscription `json:"subscriptions"`
+	Active        string         `json:"active"`
+	ActiveSub     string         `json:"active_subscription"`
+	Last          string         `json:"last"`
+	LastSub       string         `json:"last_subscription"`
+	Tun           bool           `json:"tun"`
 	Settings      struct {
 		General struct {
-			RefreshEvery *int   `yaml:"refresh_hours"`
-			Port         int    `yaml:"port"`
-			LogLevel     string `yaml:"log_level"`
-			ProbeURL     string `yaml:"probe_url"`
-			Emoji        string `yaml:"emoji"`
-		} `yaml:"general"`
+			RefreshEvery *int   `json:"refresh_hours"`
+			Port         int    `json:"port"`
+			LogLevel     string `json:"log_level"`
+			ProbeURL     string `json:"probe_url"`
+			Emoji        string `json:"emoji"`
+		} `json:"general"`
 		Network struct {
-			DNSHijack string `yaml:"dns_hijack"`
-			DNS       string `yaml:"dns"`
-			IPVersion string `yaml:"ip_version"`
-			TunStack  string `yaml:"stack"`
-			TunMTU    int    `yaml:"mtu"`
-			TunStrict string `yaml:"strict_route"`
-		} `yaml:"network"`
+			DNSHijack string `json:"dns_hijack"`
+			DNS       string `json:"dns"`
+			IPVersion string `json:"ip_version"`
+			TunStack  string `json:"stack"`
+			TunMTU    int    `json:"mtu"`
+			TunStrict string `json:"strict_route"`
+		} `json:"network"`
 		Routing struct {
-			Mode        string   `yaml:"mode"`
-			BypassLocal string   `yaml:"bypass_local"`
-			BlockQUIC   string   `yaml:"block_quic"`
-			Except      []string `yaml:"except"`
-			Blocked     []string `yaml:"blocked"`
-		} `yaml:"routing"`
-	} `yaml:"settings"`
+			Mode        string   `json:"mode"`
+			BypassLocal string   `json:"bypass_local"`
+			BlockQUIC   string   `json:"block_quic"`
+			Except      []string `json:"except"`
+			Blocked     []string `json:"blocked"`
+		} `json:"routing"`
+	} `json:"settings"`
 }
 
 func (d Disk) migrateLegacy() (bool, error) {
@@ -54,8 +55,17 @@ func (d Disk) migrateLegacy() (bool, error) {
 		return false, err
 	}
 
+	var raw any
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return false, err
+	}
+	jsonData, err := json.Marshal(raw)
+	if err != nil {
+		return false, err
+	}
+
 	var f legacyFile
-	if err := yaml.Unmarshal(data, &f); err != nil {
+	if err := json.Unmarshal(jsonData, &f); err != nil {
 		return false, err
 	}
 

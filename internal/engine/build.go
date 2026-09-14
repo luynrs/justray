@@ -16,7 +16,6 @@ import (
 
 	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/engine/outbound"
-	"github.com/luynrs/justray/internal/engine/resolvers"
 )
 
 const (
@@ -34,12 +33,6 @@ func Build(ctx context.Context, n domain.Node, s domain.Settings, logPath string
 	ep, obs, err := Proxy(ctx, n, s)
 	if err != nil {
 		return nil, err
-	}
-
-	resolverIPs := resolvers.Get()
-	resolverCIDRs := make([]string, 0, len(resolverIPs))
-	for _, p := range resolverIPs {
-		resolverCIDRs = append(resolverCIDRs, p.String())
 	}
 
 	opts := &option.Options{
@@ -63,7 +56,7 @@ func Build(ctx context.Context, n domain.Node, s domain.Settings, logPath string
 		Route: &option.RouteOptions{
 			Final:               final(s),
 			AutoDetectInterface: true,
-			Rules:               rules(s, resolverCIDRs),
+			Rules:               rules(s),
 		},
 	}
 	attach(opts, ep, obs)

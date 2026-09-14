@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/netip"
 	"net/url"
-	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -69,9 +68,12 @@ type Routing struct {
 	Block       []string `json:"block,omitempty"`        // rejected
 }
 
-func (s Settings) IPv4() bool            { return s.IPVersion != "ipv6" }
-func (s Settings) IPv6() bool            { return s.IPVersion != "ipv4" }
-func (s Settings) Equal(o Settings) bool { return reflect.DeepEqual(s, o) }
+func (s Settings) Equal(o Settings) bool {
+	return s.General == o.General && s.Connection == o.Connection &&
+		s.Mode == o.Mode && s.BypassLocal == o.BypassLocal && s.TunStrict == o.TunStrict &&
+		s.BlockQUIC == o.BlockQUIC &&
+		slices.Equal(s.Direct, o.Direct) && slices.Equal(s.Proxy, o.Proxy) && slices.Equal(s.Block, o.Block)
+}
 
 // Normalize fills defaults and validates
 func (s Settings) Normalize() (Settings, error) {

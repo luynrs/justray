@@ -19,18 +19,6 @@ var (
 	toProxy  = option.RuleAction{Action: C.RuleActionTypeRoute, RouteOptions: option.RouteActionOptions{Outbound: Tag}}
 )
 
-var refuseV6 = func() option.Rule {
-	var r option.Rule
-	r.Type = C.RuleTypeLogical
-	r.LogicalOptions.Mode = C.LogicalTypeAnd
-	r.LogicalOptions.Rules = []option.Rule{
-		{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{RawDefaultRule: option.RawDefaultRule{IPVersion: 6}}},
-		{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{RawDefaultRule: option.RawDefaultRule{IPIsPrivate: true, Invert: true}}},
-	}
-	r.LogicalOptions.RuleAction = reject
-	return r
-}()
-
 func match(list []string, action option.RuleAction, inbound []string) []option.Rule {
 	cidrs, domains, keywords, names, paths := domain.SplitRules(list)
 
@@ -51,7 +39,7 @@ func match(list []string, action option.RuleAction, inbound []string) []option.R
 	return out
 }
 
-func rules(s domain.Settings, direct []string) []option.Rule {
+func rules(s domain.Settings) []option.Rule {
 	out := []option.Rule{{
 		Type: C.RuleTypeDefault,
 		DefaultOptions: option.DefaultRule{
@@ -67,7 +55,19 @@ func rules(s domain.Settings, direct []string) []option.Rule {
 		}})
 	}
 	if s.IPVersion == "auto" && final(s) == Tag {
-		out = append(out, refuseV6)
+		out = append(out, option.Rule{
+			Type: C.RuleTypeLogical,
+			LogicalOptions: option.LogicalRule{
+				RawLogicalRule: option.RawLogicalRule{
+					Mode: C.LogicalTypeAnd,
+					Rules: []option.Rule{
+						{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{RawDefaultRule: option.RawDefaultRule{IPVersion: 6}}},
+						{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{RawDefaultRule: option.RawDefaultRule{IPIsPrivate: true, Invert: true}}},
+					},
+				},
+				RuleAction: reject,
+			},
+		})
 	}
 
 	out = append(out,
@@ -91,24 +91,17 @@ func rules(s domain.Settings, direct []string) []option.Rule {
 		}})
 	}
 
-	if len(direct) > 0 {
-		out = append(out, option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{
-			RawDefaultRule: option.RawDefaultRule{IPCIDR: direct},
-			RuleAction:     toDirect,
-		}})
-	}
-
 	out = append(out, match(s.Direct, toDirect, []string{"tun-in"})...)
 	return append(out, match(s.Proxy, toProxy, []string{"tun-in"})...)
 }
 
 func TunInbound(s domain.Settings) option.Inbound {
 	var address, routes []netip.Prefix
-	if s.IPv4() {
+	if s.IPVersion != "ipv6" {
 		address = append(address, netip.MustParsePrefix("172.19.0.1/30"))
 		routes = append(routes, netip.MustParsePrefix("0.0.0.0/0"))
 	}
-	if s.IPv6() {
+	if s.IPVersion != "ipv4" {
 		address = append(address, netip.MustParsePrefix("fdfe:dcba:9876::1/126"))
 		routes = append(routes, netip.MustParsePrefix("::/0"))
 	}

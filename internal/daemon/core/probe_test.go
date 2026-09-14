@@ -15,7 +15,7 @@ import (
 	"github.com/luynrs/justray/internal/engine"
 )
 
-func probeCore(t testing.TB, n int, probe engine.ProbeFunc) *Core {
+func probeCore(t testing.TB, n int, probe func(context.Context, []domain.Node, domain.Settings, string, func(string, engine.Result)) error) *Core {
 	t.Helper()
 	nodes := make([]domain.Node, n)
 	for i := range nodes {

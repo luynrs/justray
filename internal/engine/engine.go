@@ -31,7 +31,3 @@ type Result struct {
 	Alive bool
 	MS    int
 }
-
-type NewFunc func(context.Context, string) Engine
-
-type ProbeFunc func(context.Context, []domain.Node, domain.Settings, string, func(string, Result)) error

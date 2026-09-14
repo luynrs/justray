@@ -14,12 +14,12 @@ import (
 )
 
 type Subscription struct {
-	ID        string         `json:"id" yaml:"id"`
-	Name      string         `json:"name" yaml:"name"`
-	URL       string         `json:"url" yaml:"url"`
-	Nodes     []domain.Node  `json:"nodes" yaml:"nodes"`
-	UpdatedAt time.Time      `json:"updated_at" yaml:"updated_at"`
-	Traffic   domain.Traffic `json:"traffic,omitempty" yaml:"traffic,omitempty"`
+	ID        string         `json:"id"`
+	Name      string         `json:"name"`
+	URL       string         `json:"url"`
+	Nodes     []domain.Node  `json:"nodes"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	Traffic   domain.Traffic `json:"traffic,omitempty"`
 }
 
 type PersistentState struct {

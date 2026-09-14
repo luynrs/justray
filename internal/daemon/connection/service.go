@@ -16,8 +16,8 @@ import (
 // Core serializes engine operations. Readers only access the published status.
 type Service struct {
 	ctx       context.Context
-	newEngine engine.NewFunc
-	probeAll  engine.ProbeFunc
+	newEngine func(context.Context, string) engine.Engine
+	probeAll  func(context.Context, []domain.Node, domain.Settings, string, func(string, engine.Result)) error
 	log       *log.Logger
 	dir       string
 
@@ -26,7 +26,7 @@ type Service struct {
 	restart chan struct{}
 }
 
-func New(ctx context.Context, dir string, newEngine engine.NewFunc, probe engine.ProbeFunc, logger *log.Logger) *Service {
+func New(ctx context.Context, dir string, newEngine func(context.Context, string) engine.Engine, probe func(context.Context, []domain.Node, domain.Settings, string, func(string, engine.Result)) error, logger *log.Logger) *Service {
 	return &Service{
 		ctx:       ctx,
 		newEngine: newEngine,
