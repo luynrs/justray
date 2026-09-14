@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"mime"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -16,7 +17,7 @@ import (
 	"github.com/luynrs/justray/internal/parser"
 )
 
-func (s *Service) fetch(ctx context.Context, rawURL string) ([]domain.Node, string, domain.Traffic, error) {
+func (s *Service) fetch(ctx context.Context, rawURL string, settings domain.Settings) ([]domain.Node, string, domain.Traffic, error) {
 	var none domain.Traffic
 	if s.device.Get("X-Hwid") == "" {
 		return nil, "", none, fmt.Errorf("device id unavailable")
@@ -31,8 +32,15 @@ func (s *Service) fetch(ctx context.Context, rawURL string) ([]domain.Node, stri
 		req.Header.Set("X-Hwid", hash(s.device.Get("X-Hwid")+u.Hostname()))
 	}
 
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.DialContext = (&net.Dialer{
+		Timeout:  10 * time.Second,
+		Resolver: settings.Resolver(),
+	}).DialContext
+
 	client := http.Client{
-		Timeout: 20 * time.Second,
+		Transport: tr,
+		Timeout:   20 * time.Second,
 		CheckRedirect: func(r *http.Request, via []*http.Request) error {
 			if r.URL.Scheme != "https" && r.URL.Scheme != "http" {
 				return fmt.Errorf("subscription redirect must use http or https")

@@ -49,7 +49,7 @@ func (s *Service) RefreshAll(ctx context.Context, subs []store.Subscription, ref
 	return updated, nil
 }
 
-func (s *Service) Refresh(ctx context.Context, sub store.Subscription) (store.Subscription, error) {
+func (s *Service) Refresh(ctx context.Context, sub store.Subscription, settings domain.Settings) (store.Subscription, error) {
 	if err := check(sub.URL); err != nil {
 		return sub, err
 	}
@@ -67,7 +67,7 @@ func (s *Service) Refresh(ctx context.Context, sub store.Subscription) (store.Su
 		return sub, nil
 	}
 
-	nodes, name, traffic, err := s.fetch(ctx, sub.URL)
+	nodes, name, traffic, err := s.fetch(ctx, sub.URL, settings)
 	if err != nil {
 		return sub, err
 	}

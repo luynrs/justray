@@ -8,6 +8,7 @@ import (
 	"net/url"
 
 	"github.com/luynrs/justray/internal/daemon/store"
+	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/parser"
 )
 
@@ -24,8 +25,8 @@ func New(ctx context.Context, logger *log.Logger) *Service {
 	return &Service{device: device, log: logger}
 }
 
-func (s *Service) PrepareAdd(ctx context.Context, rawURL string) (store.Subscription, error) {
-	sub, err := s.Refresh(ctx, store.Subscription{ID: store.NewID(), URL: rawURL})
+func (s *Service) PrepareAdd(ctx context.Context, rawURL string, settings domain.Settings) (store.Subscription, error) {
+	sub, err := s.Refresh(ctx, store.Subscription{ID: store.NewID(), URL: rawURL}, settings)
 	if err != nil {
 		return store.Subscription{}, err
 	}
