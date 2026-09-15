@@ -1,15 +1,12 @@
 package domain
 
 import (
-	"context"
 	"fmt"
-	"net"
 	"net/netip"
 	"net/url"
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 )
 
 const (
@@ -76,52 +73,6 @@ func (s Settings) Equal(o Settings) bool {
 		s.Mode == o.Mode && s.BypassLocal == o.BypassLocal && s.TunStrict == o.TunStrict &&
 		s.BlockQUIC == o.BlockQUIC &&
 		slices.Equal(s.Direct, o.Direct) && slices.Equal(s.Proxy, o.Proxy) && slices.Equal(s.Block, o.Block)
-}
-
-func (s Settings) Resolver() *net.Resolver {
-	dns := s.DNS
-	if u, err := url.Parse(dns); err == nil && u.Hostname() != "" {
-		dns = u.Hostname()
-	}
-	if _, err := netip.ParseAddr(dns); err != nil {
-		dns = DefaultDNS
-	}
-	target := net.JoinHostPort(dns, "53")
-	return &net.Resolver{
-		PreferGo: true,
-		Dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			d := net.Dialer{Timeout: 1500 * time.Millisecond}
-			return d.DialContext(ctx, "udp", target)
-		},
-	}
-}
-
-func (s Settings) Resolve(ctx context.Context, host string) (string, error) {
-	if _, err := netip.ParseAddr(host); err == nil {
-		return host, nil
-	}
-	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
-	defer cancel()
-
-	network := "ip"
-	switch s.IPVersion {
-	case "ipv4":
-		network = "ip4"
-	case "ipv6":
-		network = "ip6"
-	}
-
-	ips, err := s.Resolver().LookupNetIP(ctx, network, host)
-	if err != nil || len(ips) == 0 {
-		ips, err = net.DefaultResolver.LookupNetIP(ctx, network, host)
-	}
-	switch {
-	case err != nil:
-		return "", err
-	case len(ips) == 0:
-		return "", fmt.Errorf("no addresses for %s", host)
-	}
-	return ips[0].Unmap().String(), nil
 }
 
 // Normalize fills defaults and validates

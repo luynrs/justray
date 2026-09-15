@@ -50,7 +50,7 @@ func rules(s domain.Settings) []option.Rule {
 
 	if s.DNSHijack == "on" {
 		out = append(out, option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{
-			RawDefaultRule: option.RawDefaultRule{Port: []uint16{53}},
+			RawDefaultRule: option.RawDefaultRule{Inbound: []string{"tun-in"}, Port: []uint16{53}},
 			RuleAction:     option.RuleAction{Action: C.RuleActionTypeHijackDNS},
 		}})
 	}

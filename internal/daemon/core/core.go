@@ -188,7 +188,7 @@ func (c *Core) Probe(ctx context.Context, sub, id string) error {
 }
 
 func (c *Core) AddSubscription(ctx context.Context, rawURL string) (ipc.Sub, error) {
-	sub, err := c.subs.PrepareAdd(ctx, rawURL, c.current().Settings)
+	sub, err := c.subs.PrepareAdd(ctx, rawURL)
 	if err != nil {
 		return ipc.Sub{}, err
 	}
@@ -366,7 +366,7 @@ func (c *Core) refresh(ctx context.Context, sub store.Subscription) (store.Subsc
 	c.jobsMu.Unlock()
 	c.publish()
 
-	call.sub, call.err = c.subs.Refresh(ctx, sub, c.current().Settings)
+	call.sub, call.err = c.subs.Refresh(ctx, sub)
 	c.jobsMu.Lock()
 	delete(c.refreshes, sub.ID)
 	close(call.done)
