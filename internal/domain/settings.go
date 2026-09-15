@@ -34,38 +34,38 @@ var (
 )
 
 type Settings struct {
-	General    `json:"general,omitempty"`
-	Connection `json:"connection,omitempty"`
-	Routing    `json:"routing,omitempty"`
+	General    `json:"general"`
+	Connection `json:"connection"`
+	Routing    `json:"routing"`
 }
 
 type General struct {
-	Autostart    string `json:"autostart,omitempty"`     // on/off, kept by the OS
-	RefreshEvery int    `json:"refresh_hours"`           // 0 = never
-	Emoji        string `json:"emoji,omitempty"`
-	ForceTTY     string `json:"force_tty,omitempty"` // on/off
-	LogLevel     string `json:"log_level,omitempty"`
-	ProbeURL     string `json:"probe_url,omitempty"`
+	Autostart    string `json:"autostart"`     // on/off, kept by the OS
+	RefreshEvery int    `json:"refresh_hours"` // 0 = never
+	Emoji        string `json:"emoji"`
+	ForceTTY     string `json:"force_tty"` // on/off
+	LogLevel     string `json:"log_level"`
+	ProbeURL     string `json:"probe_url"`
 }
 
 type Connection struct {
-	Port      int    `json:"port,omitempty"`
-	AllowLAN  string `json:"allow_lan,omitempty"` // on/off
-	IPVersion string `json:"ip_version,omitempty"`
-	TunStack  string `json:"stack,omitempty"`
-	TunMTU    int    `json:"mtu,omitempty"`
-	DNS       string `json:"dns,omitempty"`
-	DNSHijack string `json:"dns_hijack,omitempty"` // on/off, empty = on
+	Port      int    `json:"port"`
+	AllowLAN  string `json:"allow_lan"` // on/off
+	IPVersion string `json:"ip_version"`
+	TunStack  string `json:"stack"`
+	TunMTU    int    `json:"mtu"`
+	DNS       string `json:"dns"`
+	DNSHijack string `json:"dns_hijack"` // on/off, empty = on
 }
 
 type Routing struct {
-	Mode        string   `json:"mode,omitempty"`         // proxy all/direct all, empty = proxy all
-	BypassLocal string   `json:"bypass_local,omitempty"` // on/off, empty = on
-	TunStrict   string   `json:"strict_route,omitempty"` // on/off, empty = on
-	BlockQUIC   string   `json:"block_quic,omitempty"`   // on/off, empty = off
-	Direct      []string `json:"direct,omitempty"`       // forced direct
-	Proxy       []string `json:"proxy,omitempty"`        // forced through proxy
-	Block       []string `json:"block,omitempty"`        // rejected
+	Mode        string   `json:"mode"`         // proxy all/direct all, empty = proxy all
+	BypassLocal string   `json:"bypass_local"` // on/off, empty = on
+	TunStrict   string   `json:"strict_route"` // on/off, empty = on
+	BlockQUIC   string   `json:"block_quic"`   // on/off, empty = off
+	Direct      []string `json:"direct"`       // forced direct
+	Proxy       []string `json:"proxy"`        // forced proxy
+	Block       []string `json:"block"`        // reject
 }
 
 func (s Settings) Equal(o Settings) bool {
