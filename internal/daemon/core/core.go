@@ -145,7 +145,7 @@ func (c *Core) Probe(ctx context.Context, sub, id string) error {
 	done, flushed := make(chan struct{}), make(chan struct{})
 	go func() {
 		defer close(flushed)
-		ticker := time.NewTicker(50 * time.Millisecond)
+		ticker := time.NewTicker(100 * time.Millisecond)
 		defer ticker.Stop()
 		for {
 			select {
@@ -212,7 +212,7 @@ func (c *Core) RemoveSubscription(id string) error {
 	next := c.current()
 	var removed []store.Subscription
 	next.Subscriptions = slices.DeleteFunc(next.Subscriptions, func(s store.Subscription) bool {
-		if id == "default" && parser.IsLink(s.URL) || s.ID == id {
+		if matchSub(s, id) {
 			removed = append(removed, s)
 			return true
 		}
@@ -603,18 +603,22 @@ func (c *Core) nodes(subscriptions []store.Subscription) []ipc.Node {
 	return out
 }
 
+func matchSub(s store.Subscription, id string) bool {
+	return id == "" || s.ID == id || (id == "default" && parser.IsLink(s.URL))
+}
+
 func probeTargets(subscriptions []store.Subscription, subID, nodeID string) ([]domain.NodeRef, []domain.Node, error) {
 	var refs []domain.NodeRef
 	var nodes []domain.Node
-	for _, subscription := range subscriptions {
-		if subID != "" && subscription.ID != subID {
+	for _, sub := range subscriptions {
+		if !matchSub(sub, subID) {
 			continue
 		}
-		for _, node := range subscription.Nodes {
+		for _, node := range sub.Nodes {
 			if nodeID != "" && node.ID != nodeID {
 				continue
 			}
-			refs = append(refs, domain.NodeRef{SubscriptionID: subscription.ID, NodeID: node.ID})
+			refs = append(refs, domain.NodeRef{SubscriptionID: sub.ID, NodeID: node.ID})
 			nodes = append(nodes, node)
 		}
 	}

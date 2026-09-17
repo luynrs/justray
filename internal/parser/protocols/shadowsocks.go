@@ -52,7 +52,7 @@ func ParseShadowsocks(uri string) (domain.Node, error) {
 			}
 		}
 		if strings.Contains(full, "?") && !hasQuery {
-			full, query, hasQuery = strings.Cut(full, "?")
+			full, query, _ = strings.Cut(full, "?")
 			plugin = parsePluginQuery(query)
 			if err := checkPlugin(plugin); err != nil {
 				return domain.Node{}, fmt.Errorf("ss: %w", err)
@@ -91,18 +91,6 @@ func ParseShadowsocks(uri string) (domain.Node, error) {
 	return n, nil
 }
 
-// SIP002 credentials are b64
-func splitCreds(blob string) (method, password string) {
-	if strings.Contains(blob, ":") {
-		method, password, _ = strings.Cut(blob, ":")
-		return method, password
-	}
-	if decoded, err := Unbase64(blob); err == nil {
-		blob = string(decoded)
-	}
-	method, password, _ = strings.Cut(blob, ":")
-	return method, password
-}
 
 func parsePluginQuery(query string) string {
 	qv, err := url.ParseQuery(query)

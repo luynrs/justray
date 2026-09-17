@@ -5,10 +5,14 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
 	sbox "github.com/sagernet/sing-box"
+	"github.com/sagernet/sing-box/option"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 
@@ -22,18 +26,20 @@ func Probe(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath 
 	if len(nodes) == 0 {
 		return nil
 	}
-	opts := ProbeConfig(ctx, nodes, s, logPath)
-	inst, err := sbox.New(sbox.Options{Options: *opts, Context: Context(ctx)})
-	if err != nil {
-		return fmt.Errorf("build probe engine: %w", err)
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
-	if err := inst.Start(); err != nil {
-		_ = inst.Close()
-		return fmt.Errorf("start probe engine: %w", err)
+	opts := ProbeConfig(ctx, nodes, s, logPath)
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	inst, err := startProbeEngine(ctx, opts)
+	if err != nil {
+		return err
 	}
 	defer func() { _ = inst.Close() }()
 
-	sem := make(chan struct{}, probeWorkers(len(nodes)))
+	sem := make(chan struct{}, min(len(nodes), maxProbeWorkers))
 	var wg sync.WaitGroup
 	for i, n := range nodes {
 		tag := ProbeTag(i)
@@ -91,4 +97,62 @@ func delay(ctx context.Context, dialer N.Dialer, url string) (int, error) {
 		return ms, fmt.Errorf("http %d", resp.StatusCode)
 	}
 	return ms, nil
+}
+
+func startProbeEngine(ctx context.Context, opts *option.Options) (*sbox.Box, error) {
+	inst, err := sbox.New(sbox.Options{Options: *opts, Context: Context(ctx)})
+	if err == nil {
+		if inst.Start() == nil {
+			return inst, nil
+		}
+		_ = inst.Close()
+	}
+
+	byTag := make(map[string]option.Outbound, len(opts.Outbounds))
+	for _, ob := range opts.Outbounds {
+		byTag[ob.Tag] = ob
+	}
+	opts.Outbounds = slices.DeleteFunc(opts.Outbounds, func(ob option.Outbound) bool {
+		if strings.HasSuffix(ob.Tag, "-stls") {
+			return false
+		}
+		obs := []option.Outbound{ob}
+		if helper, ok := byTag[ob.Tag+"-stls"]; ok {
+			obs = append(obs, helper)
+		}
+		return !canStart(ctx, option.Options{Route: &option.RouteOptions{AutoDetectInterface: true}, Outbounds: obs})
+	})
+	kept := make(map[string]bool, len(opts.Outbounds))
+	for _, ob := range opts.Outbounds {
+		kept[ob.Tag] = true
+	}
+	opts.Outbounds = slices.DeleteFunc(opts.Outbounds, func(ob option.Outbound) bool {
+		if base, ok := strings.CutSuffix(ob.Tag, "-stls"); ok {
+			return !kept[base]
+		}
+		return false
+	})
+	opts.Endpoints = slices.DeleteFunc(opts.Endpoints, func(ep option.Endpoint) bool {
+		return !canStart(ctx, option.Options{Route: &option.RouteOptions{AutoDetectInterface: true}, Endpoints: []option.Endpoint{ep}})
+	})
+
+	inst, err = sbox.New(sbox.Options{Options: *opts, Context: Context(ctx)})
+	if err != nil {
+		return nil, fmt.Errorf("build probe engine: %w", err)
+	}
+	if err := inst.Start(); err != nil {
+		_ = inst.Close()
+		return nil, fmt.Errorf("start probe engine: %w", err)
+	}
+	return inst, nil
+}
+
+func canStart(ctx context.Context, testOpts option.Options) bool {
+	testOpts.Log = &option.LogOptions{Output: os.DevNull}
+	inst, err := sbox.New(sbox.Options{Options: testOpts, Context: Context(ctx)})
+	if err != nil {
+		return false
+	}
+	defer func() { _ = inst.Close() }()
+	return inst.Start() == nil
 }

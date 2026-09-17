@@ -113,7 +113,7 @@ func (m Model) keys() [][2]string {
 		return [][2]string{{style.Enter(), "Add"}, {"esc", "Cancel"}}
 	}
 	return [][2]string{
-		{style.Move(), "Move"}, {style.Fold(), "Fold"}, {style.Enter(), "Toggle"}, {"t", "Ping"}, {"r", "Refresh"},
+		{style.Move(), "Move"}, {style.Fold(), "Fold"}, {style.Enter(), "Toggle"}, {"t/T", "Ping"}, {"r/R", "Refresh"},
 		{"m", "Mode"}, {"/", "Filter"}, {"a", "Add"}, {"d", "Delete"}, {"o", "Settings"}, {"q", "Quit"},
 	}
 }

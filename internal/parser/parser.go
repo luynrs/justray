@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/luynrs/justray/internal/domain"
@@ -29,6 +30,8 @@ var parsers = map[string]func(string) (domain.Node, error){
 	"shadowtls":  protocols.ParseShadowTLS,
 	"shadow-tls": protocols.ParseShadowTLS,
 	"stls":       protocols.ParseShadowTLS,
+	"http":       protocols.ParseHTTP,
+	"https":      protocols.ParseHTTP,
 }
 
 func parserFor(uri string) func(string) (domain.Node, error) {
@@ -36,10 +39,25 @@ func parserFor(uri string) func(string) (domain.Node, error) {
 	if !ok {
 		return nil
 	}
+	scheme = strings.ToLower(scheme)
+	if (scheme == "http" || scheme == "https") && !isHTTPLink(uri) {
+		return nil
+	}
 	return parsers[scheme]
 }
 
 func IsLink(s string) bool { return parserFor(s) != nil }
+
+func isHTTPLink(s string) bool {
+	u, err := url.Parse(strings.TrimSpace(s))
+	if err != nil || u.Host == "" {
+		return false
+	}
+	if u.Path != "" && u.Path != "/" {
+		return false
+	}
+	return u.User != nil || (u.Port() != "" && u.Fragment != "")
+}
 
 func ParseURI(uri string) (domain.Node, error) {
 	parse := parserFor(uri)
@@ -66,6 +84,9 @@ func ParseSubscription(raw []byte) ([]domain.Node, error) {
 
 func parseSub(body []byte) ([]domain.Node, error) {
 	body = bytes.TrimPrefix(bytes.TrimSpace(body), []byte("\xef\xbb\xbf"))
+	if nodes, err := protocols.ParseSingBox(body); err == nil {
+		return nodes, nil
+	}
 	if nodes, err := protocols.ParseXray(body); err == nil {
 		return nodes, nil
 	}

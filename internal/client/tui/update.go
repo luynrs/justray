@@ -183,11 +183,11 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.activate()
 	case "t":
 		return m.probe()
-	case "T":
+	case "T", "shift+t":
 		return m.probeAll()
 	case "r":
 		return m.refresh()
-	case "R":
+	case "R", "shift+r":
 		return m.refreshAll()
 	case "m":
 		return m.setTun(!m.snapshot.Status.Tun)

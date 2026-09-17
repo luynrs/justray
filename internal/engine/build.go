@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/netip"
 	"net/url"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,8 +18,9 @@ import (
 )
 
 const (
-	Tag           = "proxy"
-	maxProbeNodes = 512
+	Tag             = "proxy"
+	maxProbeNodes   = 512
+	maxProbeWorkers = 32
 )
 
 var dnsStrategy = map[string]option.DomainStrategy{
@@ -76,48 +76,45 @@ func Proxy(ctx context.Context, n domain.Node, s domain.Settings) (*option.Endpo
 
 func ProbeTag(i int) string { return "p" + strconv.Itoa(i) }
 
-func probeWorkers(n int) int { return min(n, max(runtime.NumCPU()*2, 4)) }
+func isIP(s string) bool {
+	_, err := netip.ParseAddr(s)
+	return err == nil
+}
 
 func ProbeConfig(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath string) *option.Options {
 	opts := &option.Options{
 		Log:   &option.LogOptions{Level: s.LogLevel, Output: logPath},
 		Route: &option.RouteOptions{AutoDetectInterface: true},
 	}
-	uniqueHosts := map[string]string{}
-	for _, n := range nodes {
-		if _, err := netip.ParseAddr(n.Server); err != nil && n.Server != "" {
-			uniqueHosts[n.Server] = ""
-		}
-	}
-	hosts := make([]string, 0, len(uniqueHosts))
-	for host := range uniqueHosts {
-		hosts = append(hosts, host)
-	}
-	var mu sync.Mutex
-	sem := make(chan struct{}, probeWorkers(len(hosts)))
+	var resolvedHosts sync.Map
+	sem := make(chan struct{}, maxProbeWorkers)
 	var wg sync.WaitGroup
-	for _, host := range hosts {
+loop:
+	for _, n := range nodes {
+		host := n.Server
+		if host == "" || isIP(host) {
+			continue
+		}
+		if _, loaded := resolvedHosts.LoadOrStore(host, ""); loaded {
+			continue
+		}
 		select {
 		case sem <- struct{}{}:
 		case <-ctx.Done():
-			wg.Wait()
-			return opts
+			break loop
 		}
 		wg.Go(func() {
 			defer func() { <-sem }()
-			dummy := domain.Node{Server: host}
-			if r, err := resolved(ctx, dummy, s); err == nil {
-				mu.Lock()
-				uniqueHosts[host] = r.Server
-				mu.Unlock()
+			if r, err := resolved(ctx, domain.Node{Server: host}, s); err == nil {
+				resolvedHosts.Store(host, r.Server)
 			}
 		})
 	}
 	wg.Wait()
 
 	for i, n := range nodes {
-		if ip, ok := uniqueHosts[n.Server]; ok && ip != "" {
-			n = withServerIP(n, ip)
+		if ip, ok := resolvedHosts.Load(n.Server); ok && ip.(string) != "" {
+			n = withServerIP(n, ip.(string))
 		}
 		if ep, obs, err := outbound.New(n, ProbeTag(i)); err == nil {
 			attach(opts, ep, obs)
