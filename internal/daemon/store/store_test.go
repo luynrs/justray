@@ -23,10 +23,13 @@ func TestRoundtrip(t *testing.T) {
 				Server: "1.2.3.4", Port: 443, Auth: domain.Auth{UUID: "uuid"},
 			}},
 		}},
-		Active:    domain.NodeRef{SubscriptionID: "a", NodeID: "n1"},
-		Last:      domain.NodeRef{SubscriptionID: "old", NodeID: "n0"},
-		Tun:       true,
-		Settings:  domain.Settings{General: domain.General{RefreshEvery: 12}},
+		Active:   domain.NodeRef{SubscriptionID: "a", NodeID: "n1"},
+		Last:     domain.NodeRef{SubscriptionID: "old", NodeID: "n0"},
+		Tun:      true,
+		Settings: domain.Settings{
+			General: domain.General{RefreshEvery: 12},
+			Routing: domain.Routing{Direct: []string{}, Proxy: []string{}, Block: []string{}},
+		},
 		Collapsed: []string{"a"},
 	}
 	if err := d.Save(state); err != nil {

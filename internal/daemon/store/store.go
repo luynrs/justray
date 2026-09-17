@@ -115,6 +115,11 @@ func (d Disk) SaveState(state PersistentState) error {
 }
 
 func (d Disk) SaveConfig(settings domain.Settings) error {
+	for _, l := range []*[]string{&settings.Direct, &settings.Proxy, &settings.Block} {
+		if *l == nil {
+			*l = []string{}
+		}
+	}
 	cfgData, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
 		return err

@@ -4,46 +4,20 @@ package autostart
 
 import (
 	"bytes"
-	"encoding/binary"
-	"encoding/xml"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
+	"strings"
 	"syscall"
-	"unicode/utf16"
 
 	"golang.org/x/sys/windows"
 )
 
 const name = "justrayd"
 
-const task = "\ufeff" + `<?xml version="1.0" encoding="UTF-16"?>
-<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <Triggers><LogonTrigger><UserId>%[1]s</UserId></LogonTrigger></Triggers>
-  <Principals><Principal id="User"><UserId>%[1]s</UserId><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>
-  <Settings>
-    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
-    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
-    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
-    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
-    <RestartOnFailure><Interval>PT1M</Interval><Count>3</Count></RestartOnFailure>
-  </Settings>
-  <Actions Context="User"><Exec><Command>%[2]s</Command></Exec></Actions>
-</Task>
-`
-
-func schtasks() string {
-	root, err := windows.GetSystemDirectory()
-	if err != nil {
-		root = `C:\Windows\System32`
-	}
-	return filepath.Join(root, "schtasks.exe")
-}
-
 func cmd(args ...string) *exec.Cmd {
-	c := exec.Command(schtasks(), args...)
+	c := exec.Command("schtasks", args...)
 	c.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NO_WINDOW}
 	return c
 }
@@ -57,22 +31,18 @@ func Enable() error {
 	if err != nil {
 		return err
 	}
-	user, err := windows.GetCurrentProcessToken().GetTokenUser()
-	if err != nil {
-		return err
-	}
-	var command bytes.Buffer
-	_ = xml.EscapeText(&command, []byte(bin))
-	f, err := os.CreateTemp("", "justrayd-*.xml")
-	if err != nil {
-		return err
-	}
-	defer func() { _ = os.Remove(f.Name()) }()
-	err = binary.Write(f, binary.LittleEndian, utf16.Encode([]rune(fmt.Sprintf(task, user.User.Sid.String(), command.String()))))
-	if err := errors.Join(err, f.Close()); err != nil {
-		return err
-	}
-	if out, err := cmd("/Create", "/F", "/TN", name, "/XML", f.Name()).CombinedOutput(); err != nil {
+	ps := fmt.Sprintf(
+		`Register-ScheduledTask -TaskName '%s' `+
+			`-Action (New-ScheduledTaskAction -Execute '%s') `+
+			`-Trigger (New-ScheduledTaskTrigger -AtLogOn) `+
+			`-Principal (New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest) `+
+			`-Settings (New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit 0) `+
+			`-Force`,
+		name, strings.ReplaceAll(bin, "'", "''"),
+	)
+	c := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", ps)
+	c.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NO_WINDOW}
+	if out, err := c.CombinedOutput(); err != nil {
 		if msg := string(bytes.TrimSpace(out)); msg != "" {
 			return fmt.Errorf("enable autostart: %s", msg)
 		}
@@ -81,9 +51,7 @@ func Enable() error {
 	return nil
 }
 
-func Disable() error { return deleteTask(name) }
-
-func deleteTask(name string) error {
+func Disable() error {
 	out, err := cmd("/Delete", "/F", "/TN", name).CombinedOutput()
 	if err == nil {
 		return nil

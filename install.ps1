@@ -63,10 +63,16 @@ $arch = switch ($nativeArch) {
 	default { fail "unsupported arch: $nativeArch" }
 }
 
-$base = if ($version -eq "latest") {
+$tag = switch -Regex ($version) {
+	'^latest$' { 'latest' }
+	'^\d'      { "v$version" }
+	default    { $version }
+}
+
+$base = if ($tag -eq "latest") {
 	"$repo/releases/latest/download"
 } else {
-	"$repo/releases/download/$version"
+	"$repo/releases/download/$tag"
 }
 
 if ($PSVersionTable.PSVersion.Major -lt 6) {

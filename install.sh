@@ -49,10 +49,16 @@ case "$(uname -m)" in
 	*) fail "unsupported arch: $(uname -m)" ;;
 esac
 
-if [ "$version" = latest ]; then
+case "$version" in
+	latest) tag="latest" ;;
+	[0-9]*) tag="v$version" ;;
+	*) tag="$version" ;;
+esac
+
+if [ "$tag" = latest ]; then
 	base="$repo/releases/latest/download"
 else
-	base="$repo/releases/download/$version"
+	base="$repo/releases/download/$tag"
 fi
 
 if [ -n "${JUSTRAY_INSTALL_DIR:-}" ]; then
