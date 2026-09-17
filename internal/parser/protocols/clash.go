@@ -54,19 +54,9 @@ type clashProxy struct {
 	MTU          uint32   `yaml:"mtu"`
 	Reserved     reserved `yaml:"reserved"`
 
-	Plugin     string `yaml:"plugin"`
-	PluginOpts *struct {
-		Host     string `yaml:"host"`
-		SNI      string `yaml:"sni"`
-		Password string `yaml:"password"`
-		Version  int    `yaml:"version"`
-	} `yaml:"plugin-opts"`
-	ShadowTLSOpts *struct {
-		Host     string `yaml:"host"`
-		SNI      string `yaml:"sni"`
-		Password string `yaml:"password"`
-		Version  int    `yaml:"version"`
-	} `yaml:"shadow-tls-opts"`
+	Plugin        string              `yaml:"plugin"`
+	PluginOpts    *clashShadowTLSOpts `yaml:"plugin-opts"`
+	ShadowTLSOpts *clashShadowTLSOpts `yaml:"shadow-tls-opts"`
 
 	WSOpts *struct {
 		Path    string            `yaml:"path"`
@@ -127,15 +117,8 @@ func clashNode(p clashProxy) (domain.Node, error) {
 		Server: p.Server,
 		Port:   p.Port,
 	}
-	insecure := p.SkipCertVerify || p.SkipCertVerifySnake
-	clientFP := p.ClientFingerprint
-	if p.Fingerprint != "" {
-		if isCertFingerprint(p.Fingerprint) {
-			insecure = true
-		} else if clientFP == "" {
-			clientFP = p.Fingerprint
-		}
-	}
+	fp, insecure := cleanFingerprint(p.Fingerprint, p.SkipCertVerify || p.SkipCertVerifySnake)
+	clientFP := cmp.Or(p.ClientFingerprint, fp)
 	tls := &domain.TLS{
 		SNI:         cmp.Or(p.SNI, p.ServerName, p.ServerNameKebab, p.ServerNameSnake, p.Server),
 		ALPN:        p.ALPN,
@@ -347,22 +330,11 @@ func (r *reserved) UnmarshalYAML(n *yaml.Node) error {
 	return nil
 }
 
-func addresses(v4, v6 string) []string {
-	var out []string
-	for _, raw := range []string{v4, v6} {
-		for _, a := range splitComma(raw) {
-			switch {
-			case a == "":
-			case strings.Contains(a, "/"):
-				out = append(out, a)
-			case strings.Contains(a, ":"):
-				out = append(out, a+"/128")
-			default:
-				out = append(out, a+"/32")
-			}
-		}
-	}
-	return out
+type clashShadowTLSOpts struct {
+	Host     string `yaml:"host"`
+	SNI      string `yaml:"sni"`
+	Password string `yaml:"password"`
+	Version  int    `yaml:"version"`
 }
 
 func clashTransport(p clashProxy) domain.Transport {

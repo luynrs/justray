@@ -61,6 +61,61 @@ func hostPort(hp string) (string, int, error) {
 	return host, port, nil
 }
 
+func splitCreds(blob string) (method, password string) {
+	if strings.Contains(blob, ":") {
+		method, password, _ = strings.Cut(blob, ":")
+		return method, password
+	}
+	if decoded, err := Unbase64(blob); err == nil {
+		blob = string(decoded)
+	}
+	method, password, _ = strings.Cut(blob, ":")
+	return method, password
+}
+
+func userPassword(u *url.URL) string {
+	if u.User == nil {
+		return ""
+	}
+	if p, ok := u.User.Password(); ok {
+		return p
+	}
+	return u.User.Username()
+}
+
+func userPass(u *url.URL) (string, string) {
+	if u.User == nil {
+		return "", ""
+	}
+	p, _ := u.User.Password()
+	return u.User.Username(), p
+}
+
+func rawUser(u *url.URL) string {
+	if u.User == nil {
+		return ""
+	}
+	return strings.TrimPrefix(u.User.String(), ":")
+}
+
+func fixCIDRs(list []string) []string {
+	var out []string
+	for _, a := range list {
+		if a == "" {
+			continue
+		}
+		if !strings.Contains(a, "/") {
+			if strings.Contains(a, ":") {
+				a += "/128"
+			} else {
+				a += "/32"
+			}
+		}
+		out = append(out, a)
+	}
+	return out
+}
+
 func transport(q url.Values) domain.Transport {
 	net := strings.ToLower(cmp.Or(q.Get("type"), q.Get("net"), q.Get("network"), "tcp"))
 	if net == "splithttp" {
@@ -109,15 +164,21 @@ func insecureFlag(q url.Values) bool {
 		truthy(q.Get("skip-cert-verify")) || truthy(q.Get("skip_cert_verify")) || truthy(q.Get("skipCertVerify"))
 }
 
+func addresses(v4, v6 string) []string {
+	return fixCIDRs(append(splitComma(v4), splitComma(v6)...))
+}
+
+func cleanFingerprint(fp string, insecure bool) (string, bool) {
+	if isCertFingerprint(fp) {
+		return "", true
+	}
+	return fp, insecure
+}
+
 // TLS block shared by vless/trojan/anytls links
 func tlsFrom(q url.Values, host string) *domain.TLS {
 	clientFP := cmp.Or(q.Get("client-fingerprint"), q.Get("clientFingerprint"))
-	certFP := cmp.Or(q.Get("pinSHA256"), q.Get("pinsha256"))
-	fp := cmp.Or(q.Get("fp"), q.Get("fingerprint"))
-	if isCertFingerprint(fp) {
-		certFP = fp
-		fp = ""
-	}
+	fp, insecure := cleanFingerprint(cmp.Or(q.Get("fp"), q.Get("fingerprint")), insecureFlag(q) || cmp.Or(q.Get("pinSHA256"), q.Get("pinsha256")) != "")
 	if clientFP == "" {
 		clientFP = fp
 	}
@@ -125,7 +186,7 @@ func tlsFrom(q url.Values, host string) *domain.TLS {
 		SNI:         cmp.Or(q.Get("sni"), q.Get("peer"), q.Get("server_name"), q.Get("serverName"), host),
 		ALPN:        splitComma(q.Get("alpn")),
 		Fingerprint: clientFP,
-		Insecure:    insecureFlag(q) || certFP != "",
+		Insecure:    insecure,
 	}
 }
 
@@ -145,6 +206,27 @@ func isCertFingerprint(s string) bool {
 func checkPlugin(name string) error {
 	if base, _, _ := strings.Cut(name, ";"); base != "" && base != "shadow-tls" {
 		return fmt.Errorf("unsupported plugin %q", base)
+	}
+	return nil
+}
+
+type stringOrSlice []string
+
+func (s *stringOrSlice) UnmarshalJSON(b []byte) error {
+	if len(b) > 0 && b[0] == '[' {
+		var list []string
+		if err := json.Unmarshal(b, &list); err != nil {
+			return err
+		}
+		*s = list
+		return nil
+	}
+	var str string
+	if err := json.Unmarshal(b, &str); err != nil {
+		return err
+	}
+	if str != "" {
+		*s = []string{str}
 	}
 	return nil
 }

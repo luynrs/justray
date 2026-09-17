@@ -1,7 +1,5 @@
 package protocols
 
-// Hysteria v2
-
 import (
 	"cmp"
 	"fmt"
@@ -15,23 +13,10 @@ func ParseHysteria2(uri string) (domain.Node, error) {
 		return domain.Node{}, err
 	}
 	q := u.Query()
-	auth := ""
-	if u.User != nil {
-		if pw, ok := u.User.Password(); ok {
-			if u.User.Username() != "" {
-				auth = u.User.Username() + ":" + pw
-			} else {
-				auth = pw
-			}
-		} else {
-			auth = u.User.Username()
-		}
-	}
-	auth = cmp.Or(auth, q.Get("auth"), q.Get("password"))
+	auth := cmp.Or(rawUser(u), q.Get("auth"), q.Get("password"))
 	if auth == "" {
 		return domain.Node{}, fmt.Errorf("hysteria2: missing auth")
 	}
-
 	obfsPw := cmp.Or(q.Get("obfs-password"), q.Get("obfs_password"), q.Get("obfs-param"), q.Get("obfsparam"))
 	obfs := q.Get("obfs")
 	if obfs == "" && obfsPw != "" {

@@ -29,10 +29,7 @@ func ParseWireGuard(uri string) (domain.Node, error) {
 		return domain.Node{}, fmt.Errorf("wireguard: missing private/public key")
 	}
 
-	address := splitComma(queryAny(u, q, "address", "addresses"))
-	if len(address) == 0 {
-		address = addresses(queryAny(u, q, "ip"), queryAny(u, q, "ipv6"))
-	}
+	address := addresses(queryAny(u, q, "address", "addresses", "ip"), queryAny(u, q, "ipv6"))
 	if len(address) == 0 {
 		return domain.Node{}, fmt.Errorf("wireguard: missing address")
 	}

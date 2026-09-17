@@ -85,12 +85,7 @@ func ParseVMess(uri string) (domain.Node, error) {
 	}
 	tlsStr := strings.ToLower(string(vm.TLS))
 	if tlsStr == "tls" || tlsStr == "reality" || tlsStr == "xtls" || truthy(tlsStr) {
-		fp := vm.FP
-		insecure := truthy(string(vm.Insecure)) || truthy(string(vm.AllowInsecure))
-		if isCertFingerprint(fp) {
-			insecure = true
-			fp = ""
-		}
+		fp, insecure := cleanFingerprint(vm.FP, truthy(string(vm.Insecure)) || truthy(string(vm.AllowInsecure)))
 		n.TLS = &domain.TLS{
 			SNI:         cmp.Or(vm.SNI, host0, vm.Add),
 			ALPN:        splitComma(string(vm.ALPN)),

@@ -11,22 +11,15 @@ func ParseSOCKS(uri string) (domain.Node, error) {
 	if err != nil {
 		return domain.Node{}, err
 	}
-
-	var user, password string
-	if u.User != nil {
-		user = u.User.Username()
-		if p, ok := u.User.Password(); ok {
-			password = p
-		} else {
-			user, password = splitCreds(user)
-		}
+	user, pw := userPass(u)
+	if pw == "" && user != "" {
+		user, pw = splitCreds(user)
 	}
-	n := domain.Node{
+	return domain.Node{
 		Name:     cmp.Or(u.Fragment, host),
 		Protocol: domain.SOCKS,
 		Server:   host,
 		Port:     port,
-		Auth:     domain.Auth{Username: user, Password: password},
-	}
-	return n, nil
+		Auth:     domain.Auth{Username: user, Password: pw},
+	}, nil
 }
