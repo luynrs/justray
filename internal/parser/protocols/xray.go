@@ -33,8 +33,10 @@ type xrayVnext struct {
 }
 
 type xrayUser struct {
-	ID   string `json:"id"`
-	Flow string `json:"flow"`
+	ID       string `json:"id"`
+	Flow     string `json:"flow"`
+	AlterID  int    `json:"alterId"`
+	Security string `json:"security"`
 }
 
 type xrayStreamSettings struct {
@@ -94,7 +96,8 @@ func ParseXray(raw []byte) ([]domain.Node, error) {
 	for _, doc := range docs {
 		proxies := make([]xrayOutbound, 0, len(doc.Outbounds))
 		for _, ob := range doc.Outbounds {
-			if strings.EqualFold(ob.Protocol, "vless") {
+			p := strings.ToLower(ob.Protocol)
+			if p == "vless" || p == "vmess" {
 				proxies = append(proxies, ob)
 			}
 		}
@@ -105,7 +108,13 @@ func ParseXray(raw []byte) ([]domain.Node, error) {
 			}
 			for _, next := range ob.Settings.Vnext {
 				for _, user := range next.Users {
-					node, err := parseXrayVLess(ob.StreamSettings, next, user, name)
+					var node domain.Node
+					var err error
+					if strings.EqualFold(ob.Protocol, "vmess") {
+						node, err = parseXrayVMess(ob.StreamSettings, next, user, name)
+					} else {
+						node, err = parseXrayVLess(ob.StreamSettings, next, user, name)
+					}
 					if err == nil {
 						node.ID = NodeID(node)
 						nodes = append(nodes, node)
@@ -115,7 +124,7 @@ func ParseXray(raw []byte) ([]domain.Node, error) {
 		}
 	}
 	if len(nodes) == 0 {
-		return nil, errors.New("no vless outbounds in xray config")
+		return nil, errors.New("no supported outbounds in xray config")
 	}
 	return nodes, nil
 }
@@ -132,6 +141,21 @@ func parseXrayVLess(stream xrayStreamSettings, next xrayVnext, user xrayUser, na
 		Name: name, Protocol: domain.VLess, Server: next.Address, Port: next.Port,
 		Auth: domain.Auth{UUID: user.ID, Flow: user.Flow}, Transport: transport,
 		TLS: xrayTLS(stream), Reality: xrayReality(stream),
+	}, nil
+}
+
+func parseXrayVMess(stream xrayStreamSettings, next xrayVnext, user xrayUser, name string) (domain.Node, error) {
+	if next.Address == "" || !domain.ValidPort(next.Port) || user.ID == "" {
+		return domain.Node{}, errors.New("vmess: missing server, port, or uuid")
+	}
+	transport, err := xrayTransport(stream)
+	if err != nil {
+		return domain.Node{}, err
+	}
+	return domain.Node{
+		Name: name, Protocol: domain.VMess, Server: next.Address, Port: next.Port,
+		Auth: domain.Auth{UUID: user.ID, AlterID: user.AlterID, Method: cmp.Or(user.Security, "auto")},
+		Transport: transport, TLS: xrayTLS(stream),
 	}, nil
 }
 
@@ -162,7 +186,13 @@ func xrayTLS(s xrayStreamSettings) *domain.TLS {
 	case "reality":
 		return &domain.TLS{SNI: s.RealitySettings.ServerName, Fingerprint: s.RealitySettings.Fingerprint}
 	case "tls":
-		return &domain.TLS{SNI: s.TLSSettings.ServerName, Insecure: s.TLSSettings.AllowInsecure, ALPN: s.TLSSettings.ALPN, Fingerprint: s.TLSSettings.Fingerprint}
+		insecure := s.TLSSettings.AllowInsecure
+		fp := s.TLSSettings.Fingerprint
+		if isCertFingerprint(fp) {
+			insecure = true
+			fp = ""
+		}
+		return &domain.TLS{SNI: s.TLSSettings.ServerName, Insecure: insecure, ALPN: s.TLSSettings.ALPN, Fingerprint: fp}
 	}
 	return nil
 }

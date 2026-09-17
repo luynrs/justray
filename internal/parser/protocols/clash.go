@@ -21,44 +21,60 @@ type clashProxy struct {
 	AlterID           int      `yaml:"alterId"`
 	Network           string   `yaml:"network"`
 	TLS               bool     `yaml:"tls"`
-	SkipCertVerify    bool     `yaml:"skip-cert-verify"`
-	ServerName        string   `yaml:"servername"`
-	SNI               string   `yaml:"sni"`
-	Flow              string   `yaml:"flow"`
-	ClientFingerprint string   `yaml:"client-fingerprint"`
-	ALPN              []string `yaml:"alpn"`
-	Obfs              string   `yaml:"obfs"`
-	ObfsPassword      string   `yaml:"obfs-password"`
-	Username          string   `yaml:"username"`
-	AuthStr           string   `yaml:"auth-str"`
-	AuthStrOld        string   `yaml:"auth_str"`
-	Up                mbps     `yaml:"up"`
-	Down              mbps     `yaml:"down"`
-	Congestion        string   `yaml:"congestion-controller"`
-	UDPRelayMode      string   `yaml:"udp-relay-mode"`
-	PacketEncoding    string   `yaml:"packet-encoding"`
+	SkipCertVerify      bool     `yaml:"skip-cert-verify"`
+	SkipCertVerifySnake bool     `yaml:"skip_cert_verify"`
+	ServerName          string   `yaml:"servername"`
+	ServerNameKebab     string   `yaml:"server-name"`
+	ServerNameSnake     string   `yaml:"server_name"`
+	SNI                 string   `yaml:"sni"`
+	Flow                string   `yaml:"flow"`
+	ClientFingerprint   string   `yaml:"client-fingerprint"`
+	Fingerprint         string   `yaml:"fingerprint"`
+	ALPN                []string `yaml:"alpn"`
+	Obfs                string   `yaml:"obfs"`
+	ObfsPassword        string   `yaml:"obfs-password"`
+	ObfsParam           string   `yaml:"obfs-param"`
+	Username            string   `yaml:"username"`
+	AuthStr             string   `yaml:"auth-str"`
+	AuthStrOld          string   `yaml:"auth_str"`
+	Version             int      `yaml:"version"`
+	Up                  mbps     `yaml:"up"`
+	Down                mbps     `yaml:"down"`
+	Congestion          string   `yaml:"congestion-controller"`
+	UDPRelayMode        string   `yaml:"udp-relay-mode"`
+	PacketEncoding      string   `yaml:"packet-encoding"`
 
 	PrivateKey   string   `yaml:"private-key"`
 	PublicKey    string   `yaml:"public-key"`
 	PreSharedKey string   `yaml:"pre-shared-key"`
 	IP           string   `yaml:"ip"`
 	IPv6         string   `yaml:"ipv6"`
+	Address      string   `yaml:"address"`
+	Addresses    []string `yaml:"addresses"`
 	MTU          uint32   `yaml:"mtu"`
 	Reserved     reserved `yaml:"reserved"`
 
 	Plugin     string `yaml:"plugin"`
 	PluginOpts *struct {
 		Host     string `yaml:"host"`
+		SNI      string `yaml:"sni"`
 		Password string `yaml:"password"`
 		Version  int    `yaml:"version"`
 	} `yaml:"plugin-opts"`
+	ShadowTLSOpts *struct {
+		Host     string `yaml:"host"`
+		SNI      string `yaml:"sni"`
+		Password string `yaml:"password"`
+		Version  int    `yaml:"version"`
+	} `yaml:"shadow-tls-opts"`
 
 	WSOpts *struct {
 		Path    string            `yaml:"path"`
 		Headers map[string]string `yaml:"headers"`
 	} `yaml:"ws-opts"`
 	GRPCOpts *struct {
-		ServiceName string `yaml:"grpc-service-name"`
+		ServiceName      string `yaml:"grpc-service-name"`
+		ServiceNameKebab string `yaml:"service-name"`
 	} `yaml:"grpc-opts"`
 	XHTTPOpts *struct {
 		Path    string            `yaml:"path"`
@@ -67,8 +83,13 @@ type clashProxy struct {
 		Mode    string            `yaml:"mode"`
 	} `yaml:"xhttp-opts"`
 	RealityOpts *struct {
-		PublicKey string `yaml:"public-key"`
-		ShortID   string `yaml:"short-id"`
+		PublicKey      string `yaml:"public-key"`
+		PublicKeyCamel string `yaml:"publicKey"`
+		PublicKeySnake string `yaml:"public_key"`
+		ShortID        string `yaml:"short-id"`
+		ShortIDCamel   string `yaml:"shortId"`
+		ShortIDSnake   string `yaml:"short_id"`
+		Fingerprint    string `yaml:"fingerprint"`
 	} `yaml:"reality-opts"`
 }
 
@@ -106,11 +127,20 @@ func clashNode(p clashProxy) (domain.Node, error) {
 		Server: p.Server,
 		Port:   p.Port,
 	}
+	insecure := p.SkipCertVerify || p.SkipCertVerifySnake
+	clientFP := p.ClientFingerprint
+	if p.Fingerprint != "" {
+		if isCertFingerprint(p.Fingerprint) {
+			insecure = true
+		} else if clientFP == "" {
+			clientFP = p.Fingerprint
+		}
+	}
 	tls := &domain.TLS{
-		SNI:         cmp.Or(p.SNI, p.ServerName, p.Server),
+		SNI:         cmp.Or(p.SNI, p.ServerName, p.ServerNameKebab, p.ServerNameSnake, p.Server),
 		ALPN:        p.ALPN,
-		Fingerprint: p.ClientFingerprint,
-		Insecure:    p.SkipCertVerify,
+		Fingerprint: clientFP,
+		Insecure:    insecure,
 	}
 
 	switch strings.ToLower(p.Type) {
@@ -126,7 +156,13 @@ func clashNode(p clashProxy) (domain.Node, error) {
 			n.TLS = tls
 		}
 		if p.RealityOpts != nil {
-			n.Reality = &domain.Reality{PublicKey: p.RealityOpts.PublicKey, ShortID: p.RealityOpts.ShortID}
+			if clientFP == "" && p.RealityOpts.Fingerprint != "" {
+				tls.Fingerprint = p.RealityOpts.Fingerprint
+			}
+			n.Reality = &domain.Reality{
+				PublicKey: cmp.Or(p.RealityOpts.PublicKey, p.RealityOpts.PublicKeyCamel, p.RealityOpts.PublicKeySnake),
+				ShortID:   cmp.Or(p.RealityOpts.ShortID, p.RealityOpts.ShortIDCamel, p.RealityOpts.ShortIDSnake),
+			}
 		}
 
 	case "vmess":
@@ -159,12 +195,29 @@ func clashNode(p clashProxy) (domain.Node, error) {
 		if err := checkPlugin(p.Plugin); err != nil {
 			return domain.Node{}, fmt.Errorf("clash: %w", err)
 		}
-		if p.Plugin == "shadow-tls" && p.PluginOpts != nil {
+		stlsOpts := p.PluginOpts
+		if stlsOpts == nil {
+			stlsOpts = p.ShadowTLSOpts
+		}
+		if (p.Plugin == "shadow-tls" || p.ShadowTLSOpts != nil) && stlsOpts != nil {
 			n.ShadowTLS = &domain.ShadowTLS{
-				Version:  cmp.Or(p.PluginOpts.Version, 3),
-				Password: p.PluginOpts.Password,
-				SNI:      cmp.Or(p.PluginOpts.Host, p.Server),
+				Version:  cmp.Or(stlsOpts.Version, 3),
+				Password: stlsOpts.Password,
+				SNI:      cmp.Or(stlsOpts.Host, stlsOpts.SNI, p.Server),
 			}
+		}
+
+	case "shadow-tls", "shadowtls", "stls":
+		pw := cmp.Or(p.Password, p.AuthStr)
+		if pw == "" {
+			return domain.Node{}, fmt.Errorf("clash: shadow-tls missing password")
+		}
+		n.Protocol = domain.Shadow
+		n.TLS = tls
+		n.ShadowTLS = &domain.ShadowTLS{
+			Version:  cmp.Or(p.Version, 3),
+			Password: pw,
+			SNI:      cmp.Or(p.SNI, p.ServerName, p.ServerNameKebab, p.ServerNameSnake, p.Server),
 		}
 
 	case "hysteria2", "hy2":
@@ -174,9 +227,13 @@ func clashNode(p clashProxy) (domain.Node, error) {
 		n.Protocol = domain.HY2
 		n.Auth = domain.Auth{Password: p.Password}
 		n.TLS = tls
-		n.Obfs, n.ObfsPassword = p.Obfs, p.ObfsPassword
+		n.Obfs = p.Obfs
+		n.ObfsPassword = cmp.Or(p.ObfsPassword, p.ObfsParam)
+		if n.Obfs == "" && n.ObfsPassword != "" {
+			n.Obfs = "salamander"
+		}
 
-	case "hysteria":
+	case "hysteria", "hy", "hy1":
 		auth := cmp.Or(p.AuthStr, p.AuthStrOld, p.Password)
 		if auth == "" {
 			return domain.Node{}, fmt.Errorf("clash: hysteria missing auth")
@@ -184,10 +241,10 @@ func clashNode(p clashProxy) (domain.Node, error) {
 		n.Protocol = domain.HY1
 		n.Auth = domain.Auth{Password: auth}
 		n.TLS = tls
-		n.ObfsPassword = p.Obfs
+		n.ObfsPassword = cmp.Or(p.ObfsPassword, p.Obfs)
 		n.UpMbps, n.DownMbps = cmp.Or(int(p.Up), 100), cmp.Or(int(p.Down), 100)
 
-	case "tuic":
+	case "tuic", "tuic5", "tuic-v5", "tuicv5":
 		if p.UUID == "" && p.Password == "" {
 			return domain.Node{}, fmt.Errorf("clash: tuic missing uuid/password")
 		}
@@ -222,16 +279,25 @@ func clashNode(p clashProxy) (domain.Node, error) {
 			n.TLS = tls
 		}
 
-	case "wireguard":
+	case "wireguard", "wg":
 		if p.PrivateKey == "" || p.PublicKey == "" {
 			return domain.Node{}, fmt.Errorf("clash: wireguard missing keys")
+		}
+		addr := addresses(cmp.Or(p.IP, p.Address), p.IPv6)
+		if len(addr) == 0 {
+			for _, a := range p.Addresses {
+				addr = append(addr, addresses(a, "")...)
+			}
+		}
+		if len(addr) == 0 {
+			return domain.Node{}, fmt.Errorf("clash: wireguard missing address")
 		}
 		n.Protocol = domain.WG
 		n.WireGuard = &domain.WireGuard{
 			PrivateKey:    p.PrivateKey,
 			PeerPublicKey: p.PublicKey,
 			PreSharedKey:  p.PreSharedKey,
-			Address:       addresses(p.IP, p.IPv6),
+			Address:       addr,
 			Reserved:      p.Reserved,
 			MTU:           p.MTU,
 		}
@@ -283,15 +349,17 @@ func (r *reserved) UnmarshalYAML(n *yaml.Node) error {
 
 func addresses(v4, v6 string) []string {
 	var out []string
-	for _, a := range []string{v4, v6} {
-		switch {
-		case a == "":
-		case strings.Contains(a, "/"):
-			out = append(out, a)
-		case strings.Contains(a, ":"):
-			out = append(out, a+"/128")
-		default:
-			out = append(out, a+"/32")
+	for _, raw := range []string{v4, v6} {
+		for _, a := range splitComma(raw) {
+			switch {
+			case a == "":
+			case strings.Contains(a, "/"):
+				out = append(out, a)
+			case strings.Contains(a, ":"):
+				out = append(out, a+"/128")
+			default:
+				out = append(out, a+"/32")
+			}
 		}
 	}
 	return out
@@ -311,7 +379,7 @@ func clashTransport(p clashProxy) domain.Transport {
 		}
 	case "grpc":
 		if p.GRPCOpts != nil {
-			t.ServiceName = p.GRPCOpts.ServiceName
+			t.ServiceName = cmp.Or(p.GRPCOpts.ServiceName, p.GRPCOpts.ServiceNameKebab)
 		}
 	case "xhttp", "splithttp":
 		t.Network = "xhttp"

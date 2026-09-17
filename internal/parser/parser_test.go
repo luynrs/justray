@@ -141,14 +141,11 @@ func TestParseSubscriptionURIWithClashMarker(t *testing.T) {
 }
 
 func TestParseSubscriptionXray(t *testing.T) {
-	jsonPayload := `[{"remarks":"Germany VLESS","outbounds":[{"tag":"proxy","protocol":"vless","settings":{"vnext":[{"address":"1.2.3.4","port":443,"users":[{"id":"11111111-1111-1111-1111-111111111111","flow":"xtls-rprx-vision"}]}]},"streamSettings":{"network":"tcp","security":"reality","realitySettings":{"serverName":"example.com","publicKey":"pubkey","shortId":"shortid"}}},{"tag":"direct","protocol":"freedom"}]}]`
+	jsonPayload := `[{"remarks":"Germany VLESS","outbounds":[{"tag":"proxy","protocol":"vless","settings":{"vnext":[{"address":"1.2.3.4","port":443,"users":[{"id":"11111111-1111-1111-1111-111111111111","flow":"xtls-rprx-vision"}]}]},"streamSettings":{"network":"tcp","security":"reality","realitySettings":{"serverName":"example.com","publicKey":"pubkey","shortId":"shortid"}}},{"protocol":"vmess","settings":{"vnext":[{"address":"1.2.3.4","port":443,"users":[{"id":"22222222-2222-2222-2222-222222222222"}]}]}},{"tag":"direct","protocol":"freedom"}]}]`
 
 	nodes, err := ParseSubscription([]byte(jsonPayload))
-	if err != nil {
-		t.Fatalf("ParseSubscription Xray: %v", err)
-	}
-	if len(nodes) != 1 {
-		t.Fatalf("got %d nodes, want 1", len(nodes))
+	if err != nil || len(nodes) != 2 || nodes[1].Protocol != domain.VMess {
+		t.Fatalf("ParseSubscription Xray: err=%v, nodes=%+v", err, nodes)
 	}
 	n := nodes[0]
 	if n.Name != "Germany VLESS" || n.Protocol != domain.VLess || n.Server != "1.2.3.4" || n.Port != 443 {
@@ -268,6 +265,18 @@ func TestParseTUICCongestion(t *testing.T) {
 func TestParseSubscriptionAllGarbage(t *testing.T) {
 	if _, err := ParseSubscription([]byte("nothing here parses as anything\nnor does this")); err == nil {
 		t.Fatal("want error, got none")
+	}
+}
+
+func TestParseClashFingerprints(t *testing.T) {
+	yaml := "proxies:\n" +
+		"  - {name: cert, type: trojan, server: example.com, port: 443, password: p, fingerprint: " + strings.Repeat("a", 64) + "}\n" +
+		"  - {name: utls, type: trojan, server: example.com, port: 443, password: p, client-fingerprint: firefox, fingerprint: " + strings.Repeat("a", 64) + "}\n" +
+		"  - {name: stls, type: shadow-tls, server: example.com, port: 443, password: p, server_name: cloud.example}\n" +
+		"  - {name: wg, type: wg, server: example.com, port: 51820, private-key: priv, public-key: pub, address: 10.0.0.2/32}\n"
+	nodes, err := ParseSubscription([]byte(yaml))
+	if err != nil || len(nodes) != 4 || !nodes[0].TLS.Insecure || nodes[1].TLS.Fingerprint != "firefox" || nodes[2].Protocol != domain.Shadow || nodes[3].Protocol != domain.WG {
+		t.Fatalf("unexpected nodes: %v, err=%v", nodes, err)
 	}
 }
 
