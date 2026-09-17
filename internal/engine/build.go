@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"sync"
 
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
@@ -50,7 +49,7 @@ func Build(ctx context.Context, n domain.Node, s domain.Settings, logPath string
 		},
 		DNS: &option.DNSOptions{RawDNSOptions: option.RawDNSOptions{
 			DNSClientOptions: option.DNSClientOptions{Strategy: dnsStrategy[s.IPVersion]},
-			Servers:          dnsServers(s),
+			Servers:          dnsServers(s, detour(s)),
 			Final:            "remote",
 		}},
 		Route: &option.RouteOptions{
@@ -76,46 +75,20 @@ func Proxy(ctx context.Context, n domain.Node, s domain.Settings) (*option.Endpo
 
 func ProbeTag(i int) string { return "p" + strconv.Itoa(i) }
 
-func isIP(s string) bool {
-	_, err := netip.ParseAddr(s)
-	return err == nil
-}
-
 func ProbeConfig(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath string) *option.Options {
 	opts := &option.Options{
 		Log:   &option.LogOptions{Level: s.LogLevel, Output: logPath},
 		Route: &option.RouteOptions{AutoDetectInterface: true},
+		Outbounds: []option.Outbound{
+			{Type: C.TypeDirect, Tag: "direct", Options: &option.DirectOutboundOptions{}},
+		},
+		DNS: &option.DNSOptions{RawDNSOptions: option.RawDNSOptions{
+			DNSClientOptions: option.DNSClientOptions{Strategy: dnsStrategy[s.IPVersion]},
+			Servers:          dnsServers(s, ""),
+			Final:            "remote",
+		}},
 	}
-	var resolvedHosts sync.Map
-	sem := make(chan struct{}, maxProbeWorkers)
-	var wg sync.WaitGroup
-loop:
-	for _, n := range nodes {
-		host := n.Server
-		if host == "" || isIP(host) {
-			continue
-		}
-		if _, loaded := resolvedHosts.LoadOrStore(host, ""); loaded {
-			continue
-		}
-		select {
-		case sem <- struct{}{}:
-		case <-ctx.Done():
-			break loop
-		}
-		wg.Go(func() {
-			defer func() { <-sem }()
-			if r, err := resolved(ctx, domain.Node{Server: host}, s); err == nil {
-				resolvedHosts.Store(host, r.Server)
-			}
-		})
-	}
-	wg.Wait()
-
 	for i, n := range nodes {
-		if ip, ok := resolvedHosts.Load(n.Server); ok && ip.(string) != "" {
-			n = withServerIP(n, ip.(string))
-		}
 		if ep, obs, err := outbound.New(n, ProbeTag(i)); err == nil {
 			attach(opts, ep, obs)
 		}
@@ -130,11 +103,14 @@ func attach(opts *option.Options, ep *option.Endpoint, obs []option.Outbound) {
 	opts.Outbounds = append(opts.Outbounds, obs...)
 }
 
-func dnsServers(s domain.Settings) []option.DNSServerOptions {
-	detour := ""
+func detour(s domain.Settings) string {
 	if final(s) == Tag {
-		detour = Tag
+		return Tag
 	}
+	return ""
+}
+
+func dnsServers(s domain.Settings, detour string) []option.DNSServerOptions {
 	remote := option.RemoteDNSServerOptions{
 		RawLocalDNSServerOptions: option.RawLocalDNSServerOptions{
 			DialerOptions: option.DialerOptions{Detour: detour},

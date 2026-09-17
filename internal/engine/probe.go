@@ -83,7 +83,7 @@ func delay(ctx context.Context, dialer N.Dialer, url string) (int, error) {
 	defer client.CloseIdleConnections()
 
 	start := time.Now()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
 	if err != nil {
 		return 0, err
 	}
@@ -113,7 +113,7 @@ func startProbeEngine(ctx context.Context, opts *option.Options) (*sbox.Box, err
 		byTag[ob.Tag] = ob
 	}
 	opts.Outbounds = slices.DeleteFunc(opts.Outbounds, func(ob option.Outbound) bool {
-		if strings.HasSuffix(ob.Tag, "-stls") {
+		if strings.HasSuffix(ob.Tag, "-stls") || ob.Tag == "direct" {
 			return false
 		}
 		obs := []option.Outbound{ob}
