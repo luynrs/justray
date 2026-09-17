@@ -48,6 +48,8 @@ func TestParseURI(t *testing.T) {
 		"shadowtls":   {"shadowtls://:secret@example.com:443?version=3&sni=cloud.example#node", domain.Shadow, "example.com", 443},
 		"stls alias":  {"shadow-tls://secret@example.com:443#node", domain.Shadow, "example.com", 443},
 		"stls":        {"stls://secret@example.com:443#node", domain.Shadow, "example.com", 443},
+		"http":        {"http://user:pass@example.com:80#node", domain.HTTP, "example.com", 80},
+		"https":       {"https://user:pass@example.com:443#node", domain.HTTP, "example.com", 443},
 		"vmess":       {vmessURI(t), domain.VMess, "example.com", 443},
 	}
 	for name, c := range cases {
@@ -262,6 +264,34 @@ func TestParseTUICCongestion(t *testing.T) {
 	}
 }
 
+func TestParseHysteriaAuth(t *testing.T) {
+	for _, uri := range []string{
+		"hysteria://example.com:443?auth=secret_token&upmbps=50&downmbps=200",
+		"hysteria://example.com:443?auth_str=secret_token&upmbps=50&downmbps=200",
+		"hysteria://secret_token@example.com:443?upmbps=50&downmbps=200",
+		"hysteria://:secret_token@example.com:443",
+	} {
+		n, err := ParseURI(uri)
+		if err != nil {
+			t.Fatalf("ParseURI(%q): %v", uri, err)
+		}
+		if n.Auth.Password != "secret_token" {
+			t.Errorf("ParseURI(%q): got auth %q, want %q", uri, n.Auth.Password, "secret_token")
+		}
+	}
+}
+
+func TestParseSOCKSAuth(t *testing.T) {
+	n, err := ParseURI("socks5://user:pass@example.com:1080")
+	if err != nil || n.Auth.Username != "user" || n.Auth.Password != "pass" {
+		t.Fatalf("plain user:pass failed: %+v, err=%v", n.Auth, err)
+	}
+	n, err = ParseURI("socks5://" + base64.StdEncoding.EncodeToString([]byte("user:pass")) + "@example.com:1080")
+	if err != nil || n.Auth.Username != "user" || n.Auth.Password != "pass" {
+		t.Fatalf("base64 user:pass failed: %+v, err=%v", n.Auth, err)
+	}
+}
+
 func TestParseSubscriptionAllGarbage(t *testing.T) {
 	if _, err := ParseSubscription([]byte("nothing here parses as anything\nnor does this")); err == nil {
 		t.Fatal("want error, got none")
@@ -280,6 +310,100 @@ func TestParseClashFingerprints(t *testing.T) {
 	}
 }
 
+func TestParseClashProtocols(t *testing.T) {
+	yaml := `proxies:
+  - name: vl
+    type: vless
+    server: 1.1.1.1
+    port: 443
+    uuid: 11111111-1111-1111-1111-111111111111
+    reality-opts:
+      public-key: pub
+      short-id: "1234"
+  - name: vm
+    type: vmess
+    server: 1.1.1.1
+    port: 443
+    uuid: 11111111-1111-1111-1111-111111111111
+    alterId: 0
+    cipher: auto
+    tls: true
+  - name: ss
+    type: ss
+    server: 1.1.1.1
+    port: 8388
+    cipher: aes-128-gcm
+    password: pass
+    plugin: shadow-tls
+    plugin-opts:
+      host: cloud.example
+      password: sec
+      version: 3
+  - name: hy2
+    type: hysteria2
+    server: 1.1.1.1
+    port: 443
+    password: pass
+    obfs: salamander
+    obfs-password: obfs
+  - name: hy1
+    type: hysteria
+    server: 1.1.1.1
+    port: 443
+    auth-str: pass
+    up: "100 Mbps"
+    down: "200 Mbps"
+  - name: tc
+    type: tuic
+    server: 1.1.1.1
+    port: 443
+    uuid: 11111111-1111-1111-1111-111111111111
+    password: pass
+  - name: at
+    type: anytls
+    server: 1.1.1.1
+    port: 443
+    password: pass
+  - name: hp
+    type: http
+    server: 1.1.1.1
+    port: 8080
+    username: u
+    password: p
+`
+	nodes, err := ParseSubscription([]byte(yaml))
+	if err != nil {
+		t.Fatalf("ParseSubscription Clash: %v", err)
+	}
+	if len(nodes) != 8 {
+		t.Fatalf("got %d nodes, want 8", len(nodes))
+	}
+	if nodes[0].Protocol != domain.VLess || nodes[0].Reality == nil || nodes[0].Reality.PublicKey != "pub" {
+		t.Fatalf("unexpected vless: %+v", nodes[0])
+	}
+	if nodes[1].Protocol != domain.VMess || nodes[1].TLS == nil {
+		t.Fatalf("unexpected vmess: %+v", nodes[1])
+	}
+	if nodes[2].Protocol != domain.SS || nodes[2].ShadowTLS == nil || nodes[2].ShadowTLS.SNI != "cloud.example" {
+		t.Fatalf("unexpected ss: %+v", nodes[2])
+	}
+	if nodes[3].Protocol != domain.HY2 || nodes[3].Obfs != "salamander" {
+		t.Fatalf("unexpected hy2: %+v", nodes[3])
+	}
+	if nodes[4].Protocol != domain.HY1 || nodes[4].UpMbps != 100 || nodes[4].DownMbps != 200 {
+		t.Fatalf("unexpected hy1: %+v", nodes[4])
+	}
+	if nodes[5].Protocol != domain.TUIC || nodes[5].Auth.UUID == "" {
+		t.Fatalf("unexpected tuic: %+v", nodes[5])
+	}
+	if nodes[6].Protocol != domain.AnyTLS {
+		t.Fatalf("unexpected anytls: %+v", nodes[6])
+	}
+	if nodes[7].Protocol != domain.HTTP || nodes[7].Auth.Username != "u" {
+		t.Fatalf("unexpected http: %+v", nodes[7])
+	}
+}
+
 func TestParseVMessOptions(t *testing.T) {
 	for _, raw := range []string{
 		`{"add":"example.com","port":"443","id":"11111111-1111-1111-1111-111111111111","tls":"1","allowInsecure":"true","fp":"` + strings.Repeat("a", 64) + `"}`,
@@ -292,11 +416,91 @@ func TestParseVMessOptions(t *testing.T) {
 	}
 }
 
+func TestIsLinkHTTP(t *testing.T) {
+	for _, l := range []string{
+		"http://user:pass@example.com:8080#node",
+		"https://user:pass@example.com:8443#node",
+		"http://example.com:8080#node",
+		"https://example.com:8443#node",
+	} {
+		if !IsLink(l) {
+			t.Errorf("IsLink(%q) = false, want true", l)
+		}
+	}
+	for _, s := range []string{
+		"https://example.com/sub/token",
+		"https://example.com:8443/sub?token=abc#MySub",
+		"https://example.com",
+	} {
+		if IsLink(s) {
+			t.Errorf("IsLink(%q) = true, want false", s)
+		}
+	}
+}
+
+func TestParseHTTPProxy(t *testing.T) {
+	n, err := ParseURI("http://user:pass@example.com:8080#proxy1")
+	if err != nil || n.Protocol != domain.HTTP || n.Auth.Username != "user" || n.Auth.Password != "pass" || n.Port != 8080 || n.TLS != nil {
+		t.Fatalf("unexpected http node: err=%v, node=%+v", err, n)
+	}
+	n2, err := ParseURI("https://example.com:8443#proxy2")
+	if err != nil || n2.Protocol != domain.HTTP || n2.Port != 8443 || n2.TLS == nil || n2.TLS.SNI != "example.com" {
+		t.Fatalf("unexpected https node: err=%v, node=%+v", err, n2)
+	}
+	n3, err := ParseURI("http://user:pass@example.com#proxy3")
+	if err != nil || n3.Protocol != domain.HTTP || n3.Port != 80 {
+		t.Fatalf("unexpected default http port: err=%v, node=%+v", err, n3)
+	}
+	n4, err := ParseURI("https://user:pass@example.com#proxy4")
+	if err != nil || n4.Protocol != domain.HTTP || n4.Port != 443 || n4.TLS == nil {
+		t.Fatalf("unexpected default https port: err=%v, node=%+v", err, n4)
+	}
+}
+
+func TestParseXrayTrojanSS(t *testing.T) {
+	raw := `{"remarks":"test","outbounds":[
+		{"tag":"tr","protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"pass"}]},"streamSettings":{"security":"tls"}},
+		{"tag":"ss","protocol":"shadowsocks","settings":{"servers":[{"address":"example.com","port":8388,"method":"aes-128-gcm","password":"pass"}]}}
+	]}`
+	nodes, err := ParseSubscription([]byte(raw))
+	if err != nil || len(nodes) != 2 || nodes[0].Protocol != domain.Trojan || nodes[1].Protocol != domain.SS {
+		t.Fatalf("unexpected nodes: %v, err=%v", nodes, err)
+	}
+}
+
+func TestParseSingBox(t *testing.T) {
+	raw := `{"outbounds":[
+		{"type":"selector","tag":"select","outbounds":["vless-out"]},
+		{"type":"vless","tag":"vl","server":"example.com","server_port":443,"uuid":"11111111-1111-1111-1111-111111111111","tls":{"enabled":true,"server_name":"example.com","reality":{"enabled":true,"public_key":"pub","short_id":"1234"}},"transport":{"type":"ws","path":"/ws"}},
+		{"type":"shadowtls","tag":"stls","server":"example.com","server_port":443,"password":"p","version":3},
+		{"type":"shadowsocks","tag":"ss","server":"example.com","server_port":8388,"method":"aes-128-gcm","password":"p","detour":"stls"},
+		{"type":"hysteria2","tag":"hy2","server":"example.com","server_port":443,"password":"p","obfs":{"type":"salamander","password":"obfs"}},
+		{"type":"wireguard","tag":"wg","server":"example.com","server_port":51820,"private_key":"priv","local_address":["10.0.0.2/32"],"peers":[{"public_key":"pub","reserved":[1,2,3]}]}
+	]}`
+	nodes, err := ParseSubscription([]byte(raw))
+	if err != nil || len(nodes) != 4 {
+		t.Fatalf("unexpected nodes len %d, err=%v", len(nodes), err)
+	}
+	if nodes[0].Protocol != domain.VLess || nodes[0].Reality == nil || nodes[0].Transport.Network != "ws" {
+		t.Fatalf("unexpected vless: %+v", nodes[0])
+	}
+	if nodes[1].Protocol != domain.SS || nodes[1].ShadowTLS == nil || nodes[1].ShadowTLS.Version != 3 {
+		t.Fatalf("unexpected ss+stls: %+v", nodes[1])
+	}
+	if nodes[2].Protocol != domain.HY2 || nodes[2].Obfs != "salamander" || nodes[2].ObfsPassword != "obfs" {
+		t.Fatalf("unexpected hy2: %+v", nodes[2])
+	}
+	if nodes[3].Protocol != domain.WG || nodes[3].WireGuard.PeerPublicKey != "pub" || len(nodes[3].WireGuard.Reserved) != 3 || nodes[3].WireGuard.Reserved[0] != 1 {
+		t.Fatalf("unexpected wg: %+v", nodes[3])
+	}
+}
+
 func FuzzParseSubscription(f *testing.F) {
 	f.Add([]byte("trojan://secret@example.com:443#one\nvless://11111111-1111-1111-1111-111111111111@example.org:8443?security=tls#two"))
 	f.Add([]byte(base64.StdEncoding.EncodeToString([]byte("ss://YWVzLTI1Ni1nY206cGFzcw==@example.com:8388#one"))))
 	f.Add([]byte("proxies:\n  - {name: x, type: trojan, server: example.com, port: 443, password: secret}"))
 	f.Add([]byte(`[{"remarks":"test","outbounds":[{"tag":"proxy","protocol":"vless","settings":{"vnext":[{"address":"1.1.1.1","port":443,"users":[{"id":"uuid"}]}]}}]}]`))
+	f.Add([]byte(`{"outbounds":[{"type":"vless","server":"1.1.1.1","server_port":443,"uuid":"11111111-1111-1111-1111-111111111111"}]}`))
 	f.Add([]byte(""))
 	f.Add([]byte("\x00\x01\xff not utf8 \xfe"))
 
