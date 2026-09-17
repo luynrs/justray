@@ -207,6 +207,48 @@ func TestProbe(t *testing.T) {
 	}
 }
 
+func TestProbeDefaultGroup(t *testing.T) {
+	disk := store.Disk{Dir: t.TempDir()}
+	if err := disk.Save(store.PersistentState{
+		Subscriptions: []store.Subscription{
+			{ID: "d1", URL: "vless://node1@example.com:443", Nodes: []domain.Node{{ID: "n1"}}},
+			{ID: "sub", URL: "https://example.com/sub", Nodes: []domain.Node{{ID: "n2"}}},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	logger := log.New(io.Discard, "", 0)
+	var probed []string
+	probe := func(_ context.Context, nodes []domain.Node, _ domain.Settings, _ string, onResult func(string, engine.Result)) error {
+		for _, n := range nodes {
+			probed = append(probed, n.ID)
+			onResult(n.ID, engine.Result{Alive: true, MS: 10})
+		}
+		return nil
+	}
+	app, err := New(disk, connection.New(context.Background(), "", nil, probe, logger), subscription.New(context.Background(), logger))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Probe default group (only direct links)
+	if err := app.Probe(context.Background(), "default", ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(probed) != 1 || probed[0] != "n1" {
+		t.Fatalf("expected [n1], got %v", probed)
+	}
+
+	// Probe all nodes
+	probed = nil
+	if err := app.Probe(context.Background(), "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(probed) != 2 {
+		t.Fatalf("expected 2 nodes probed, got %v", probed)
+	}
+}
+
 func TestSetTun(t *testing.T) {
 	disk := store.Disk{Dir: t.TempDir()}
 	logger := log.New(io.Discard, "", 0)

@@ -95,9 +95,6 @@ func (m Model) probe() (tea.Model, tea.Cmd) {
 		}
 		return m, actionCmd("probe", m.start, func() error { return m.client.Probe(r.Node.Sub, r.Node.ID) })
 	}
-	if r.Sub.ID == tree.Default {
-		return m, nil
-	}
 	return m, actionCmd("probe", m.start, func() error { return m.client.Probe(r.Sub.ID, "") })
 }
 
