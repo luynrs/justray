@@ -38,6 +38,8 @@ func TestParseURI(t *testing.T) {
 		"hysteria2":   {"hysteria2://user:pass@example.com:443#node", domain.HY2, "example.com", 443},
 		"hy2 alias":   {"hy2://user:pass@example.com:443#node", domain.HY2, "example.com", 443},
 		"tuic":        {"tuic://11111111-1111-1111-1111-111111111111:pass@example.com:443#node", domain.TUIC, "example.com", 443},
+		"tuic5":       {"tuic5://11111111-1111-1111-1111-111111111111:pass@example.com:443#node", domain.TUIC, "example.com", 443},
+		"tuicv5":      {"tuicv5://11111111-1111-1111-1111-111111111111:pass@example.com:443#node", domain.TUIC, "example.com", 443},
 		"anytls":      {"anytls://secret@example.com:443#node", domain.AnyTLS, "example.com", 443},
 		"socks5":      {"socks5://user:pass@example.com:1080#node", domain.SOCKS, "example.com", 1080},
 		"socks alias": {"socks://user:pass@example.com:1080#node", domain.SOCKS, "example.com", 1080},
@@ -45,6 +47,7 @@ func TestParseURI(t *testing.T) {
 		"wg alias":    {"wg://priv@example.com:51820?publickey=pub&address=10.0.0.2%2F32#node", domain.WG, "example.com", 51820},
 		"shadowtls":   {"shadowtls://:secret@example.com:443?version=3&sni=cloud.example#node", domain.Shadow, "example.com", 443},
 		"stls alias":  {"shadow-tls://secret@example.com:443#node", domain.Shadow, "example.com", 443},
+		"stls":        {"stls://secret@example.com:443#node", domain.Shadow, "example.com", 443},
 		"vmess":       {vmessURI(t), domain.VMess, "example.com", 443},
 	}
 	for name, c := range cases {
@@ -70,13 +73,14 @@ func TestParseURI(t *testing.T) {
 }
 
 func TestParseShadowsocksShadowTLS(t *testing.T) {
-	uri := "ss://YWVzLTI1Ni1nY206cGFzcw==@example.com:8388?plugin=shadow-tls%3Bhost%3Dcloud.example%3Bpassword%3Dsecret%3Bversion%3D2#node"
-	n, err := ParseURI(uri)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n.ShadowTLS == nil || n.ShadowTLS.Version != 2 || n.ShadowTLS.SNI != "cloud.example" {
-		t.Fatalf("got %#v, want ShadowTLS v2", n.ShadowTLS)
+	for _, uri := range []string{
+		"ss://YWVzLTI1Ni1nY206cGFzcw==@example.com:8388?plugin=shadow-tls%3Bhost%3Dcloud.example%3Bpassword%3Dsecret%3Bversion%3D2#node",
+		"ss://" + base64.StdEncoding.EncodeToString([]byte("aes-128-gcm:pass@example.com:8388?plugin=shadow-tls;sni=cloud.example;password=secret;version=2")),
+	} {
+		n, err := ParseURI(uri)
+		if err != nil || n.ShadowTLS == nil || n.ShadowTLS.Version != 2 || n.ShadowTLS.SNI != "cloud.example" {
+			t.Fatalf("got %#v, err %v", n.ShadowTLS, err)
+		}
 	}
 }
 
@@ -226,9 +230,9 @@ func xhttpURI(extra string) string {
 }
 
 func TestParseHysteria2Obfs(t *testing.T) {
-	n, err := ParseURI("hy2://secret@example.com:443?obfs-param=xyz")
-	if err != nil || n.Obfs != "salamander" || n.ObfsPassword != "xyz" {
-		t.Fatalf("unexpected hy2: err=%v, obfs=%q, pw=%q", err, n.Obfs, n.ObfsPassword)
+	n, err := ParseURI("hy2://example.com:443?password=secret&obfs-param=xyz&pinSHA256=" + strings.Repeat("a", 64))
+	if err != nil || n.Auth.Password != "secret" || n.Obfs != "salamander" || n.ObfsPassword != "xyz" || !n.TLS.Insecure {
+		t.Fatalf("unexpected hy2: err=%v, node=%+v", err, n)
 	}
 }
 
@@ -241,12 +245,16 @@ func TestParseWireGuardReserved(t *testing.T) {
 	if err != nil || !slices.Equal(n.WireGuard.Reserved, []byte{251, 0, 0}) {
 		t.Fatalf("unexpected base64 reserved: err=%v, reserved=%v", err, n.WireGuard.Reserved)
 	}
+	n, err = ParseURI("wireguard://example.com:51820?private_key=priv&public_key=pub&preshared_key=psk&address=10.0.0.2/32")
+	if err != nil || n.WireGuard.PeerPublicKey != "pub" || n.WireGuard.PreSharedKey != "psk" {
+		t.Fatalf("unexpected wg keys: err=%v, wg=%+v", err, n.WireGuard)
+	}
 }
 
 func TestParseVLessImplicitReality(t *testing.T) {
-	n, err := ParseURI("vless://11111111-1111-1111-1111-111111111111@example.com:443?pbk=publickey&sid=1234&sni=example.com")
-	if err != nil || n.Reality == nil || n.Reality.PublicKey != "publickey" || n.Reality.ShortID != "1234" || n.TLS == nil {
-		t.Fatalf("unexpected implicit reality: err=%v, reality=%+v, tls=%+v", err, n.Reality, n.TLS)
+	n, err := ParseURI("vless://11111111-1111-1111-1111-111111111111@example.com:443?publicKey=publickey&shortId=1234&sni=example.com&packet-encoding=packetaddr&skip-cert-verify=1&service_name=svc&type=grpc")
+	if err != nil || n.Reality == nil || n.Reality.PublicKey != "publickey" || n.Reality.ShortID != "1234" || n.PacketEncoding != "packetaddr" || !n.TLS.Insecure || n.Transport.ServiceName != "svc" {
+		t.Fatalf("unexpected implicit reality: err=%v, node=%+v", err, n)
 	}
 }
 
@@ -260,6 +268,18 @@ func TestParseTUICCongestion(t *testing.T) {
 func TestParseSubscriptionAllGarbage(t *testing.T) {
 	if _, err := ParseSubscription([]byte("nothing here parses as anything\nnor does this")); err == nil {
 		t.Fatal("want error, got none")
+	}
+}
+
+func TestParseVMessOptions(t *testing.T) {
+	for _, raw := range []string{
+		`{"add":"example.com","port":"443","id":"11111111-1111-1111-1111-111111111111","tls":"1","allowInsecure":"true","fp":"` + strings.Repeat("a", 64) + `"}`,
+		`{"add":"example.com","port":443,"id":"11111111-1111-1111-1111-111111111111","tls":true,"allowInsecure":true}`,
+	} {
+		n, err := ParseURI("vmess://" + base64.StdEncoding.EncodeToString([]byte(raw)))
+		if err != nil || n.TLS == nil || !n.TLS.Insecure {
+			t.Fatalf("unexpected vmess: err=%v, tls=%+v", err, n.TLS)
+		}
 	}
 }
 

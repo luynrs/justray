@@ -26,11 +26,13 @@ func ParseVLess(uri string) (domain.Node, error) {
 		Port:           port,
 		Auth:           domain.Auth{UUID: u.User.Username(), Flow: q.Get("flow")},
 		Transport:      transport(q),
-		PacketEncoding: cmp.Or(q.Get("packetEncoding"), q.Get("packet_encoding")),
+		PacketEncoding: cmp.Or(q.Get("packetEncoding"), q.Get("packet_encoding"), q.Get("packet-encoding")),
 	}
 
+	pbk := cmp.Or(q.Get("pbk"), q.Get("publicKey"), q.Get("public_key"), q.Get("pubkey"))
+	sid := cmp.Or(q.Get("sid"), q.Get("shortId"), q.Get("short_id"))
 	sec := strings.ToLower(q.Get("security"))
-	if sec == "" && q.Get("pbk") != "" {
+	if sec == "" && pbk != "" {
 		sec = "reality"
 	} else if sec == "" && (truthy(q.Get("tls")) || q.Get("sni") != "") {
 		sec = "tls"
@@ -38,7 +40,7 @@ func ParseVLess(uri string) (domain.Node, error) {
 
 	switch sec {
 	case "reality":
-		n.Reality = &domain.Reality{PublicKey: q.Get("pbk"), ShortID: q.Get("sid")}
+		n.Reality = &domain.Reality{PublicKey: pbk, ShortID: sid}
 		fallthrough
 	case "tls", "xtls":
 		n.TLS = tlsFrom(q, host)

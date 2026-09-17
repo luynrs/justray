@@ -26,8 +26,10 @@ type vmessLink struct {
 	TLS   flexString `json:"tls"`
 	SNI   string     `json:"sni"`
 	ALPN  flexString `json:"alpn"`
-	FP    string     `json:"fp"`
-	Extra string     `json:"extra"`
+	FP            string     `json:"fp"`
+	Insecure      flexString `json:"insecure"`
+	AllowInsecure flexString `json:"allowInsecure"`
+	Extra         string     `json:"extra"`
 }
 
 // vmess://<base64 json>
@@ -54,6 +56,9 @@ func ParseVMess(uri string) (domain.Node, error) {
 	if net == "splithttp" {
 		net = "xhttp"
 	}
+	if net == "h2" {
+		net = "http"
+	}
 	host0 := strings.TrimSpace(strings.SplitN(vm.Host, ",", 2)[0])
 	n := domain.Node{
 		Name:     cmp.Or(vm.PS, frag, vm.Add),
@@ -78,11 +83,19 @@ func ParseVMess(uri string) (domain.Node, error) {
 	if net == "xhttp" {
 		n.Transport.Extra = vm.Extra
 	}
-	if tls := strings.ToLower(string(vm.TLS)); tls == "tls" || tls == "reality" || tls == "xtls" {
+	tlsStr := strings.ToLower(string(vm.TLS))
+	if tlsStr == "tls" || tlsStr == "reality" || tlsStr == "xtls" || truthy(tlsStr) {
+		fp := vm.FP
+		insecure := truthy(string(vm.Insecure)) || truthy(string(vm.AllowInsecure))
+		if isCertFingerprint(fp) {
+			insecure = true
+			fp = ""
+		}
 		n.TLS = &domain.TLS{
 			SNI:         cmp.Or(vm.SNI, host0, vm.Add),
 			ALPN:        splitComma(string(vm.ALPN)),
-			Fingerprint: vm.FP,
+			Fingerprint: fp,
+			Insecure:    insecure,
 		}
 	}
 	return n, nil

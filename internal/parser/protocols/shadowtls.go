@@ -16,15 +16,17 @@ func ParseShadowTLS(uri string) (domain.Node, error) {
 	}
 	password := ""
 	if u.User != nil {
-		password = u.User.Username()
 		if p, ok := u.User.Password(); ok {
 			password = p
+		} else {
+			password = u.User.Username()
 		}
 	}
+	q := u.Query()
+	password = cmp.Or(password, q.Get("password"), q.Get("auth"))
 	if password == "" {
 		return domain.Node{}, fmt.Errorf("shadowtls: missing password")
 	}
-	q := u.Query()
 	return domain.Node{
 		Name:     cmp.Or(u.Fragment, host),
 		Protocol: domain.Shadow,
@@ -51,7 +53,7 @@ func parseShadowTLSPlugin(raw, host string) (*domain.ShadowTLS, error) {
 			continue
 		}
 		switch key {
-		case "host":
+		case "host", "sni":
 			stls.SNI = value
 		case "password":
 			stls.Password = value

@@ -22,22 +22,16 @@ func ParseWireGuard(uri string) (domain.Node, error) {
 		privateKey = u.User.Username()
 	}
 	if privateKey == "" {
-		privateKey = rawQuery(u, "privatekey")
+		privateKey = queryAny(u, q, "privatekey", "private_key", "private-key", "privkey")
 	}
-	if privateKey == "" {
-		privateKey = q.Get("privatekey")
-	}
-	peerKey := rawQuery(u, "publickey")
-	if peerKey == "" {
-		peerKey = q.Get("publickey")
-	}
+	peerKey := queryAny(u, q, "publickey", "public_key", "public-key", "peer_public_key", "pubkey", "pbk")
 	if privateKey == "" || peerKey == "" {
 		return domain.Node{}, fmt.Errorf("wireguard: missing private/public key")
 	}
 
-	address := splitComma(q.Get("address"))
+	address := splitComma(queryAny(u, q, "address", "addresses"))
 	if len(address) == 0 {
-		address = addresses(q.Get("ip"), q.Get("ipv6"))
+		address = addresses(queryAny(u, q, "ip"), queryAny(u, q, "ipv6"))
 	}
 	if len(address) == 0 {
 		return domain.Node{}, fmt.Errorf("wireguard: missing address")
@@ -51,12 +45,24 @@ func ParseWireGuard(uri string) (domain.Node, error) {
 		WireGuard: &domain.WireGuard{
 			PrivateKey:    privateKey,
 			PeerPublicKey: peerKey,
-			PreSharedKey:  rawQuery(u, "presharedkey"),
+			PreSharedKey:  queryAny(u, q, "presharedkey", "preshared_key", "pre-shared-key", "psk"),
 			Address:       address,
-			Reserved:      parseReserved(rawQuery(u, "reserved")),
+			Reserved:      parseReserved(queryAny(u, q, "reserved", "reserved_bytes", "reserved-bytes")),
 			MTU:           uint32(atoi(q.Get("mtu"))),
 		},
 	}, nil
+}
+
+func queryAny(u *url.URL, q url.Values, keys ...string) string {
+	for _, k := range keys {
+		if v := rawQuery(u, k); v != "" {
+			return v
+		}
+		if v := q.Get(k); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func parseReserved(s string) []uint8 {

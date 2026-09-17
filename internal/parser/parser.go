@@ -19,6 +19,8 @@ var parsers = map[string]func(string) (domain.Node, error){
 	"hysteria2":  protocols.ParseHysteria2,
 	"hy2":        protocols.ParseHysteria2,
 	"tuic":       protocols.ParseTUIC,
+	"tuic5":      protocols.ParseTUIC,
+	"tuicv5":     protocols.ParseTUIC,
 	"anytls":     protocols.ParseAnyTLS,
 	"socks5":     protocols.ParseSOCKS,
 	"socks":      protocols.ParseSOCKS,
@@ -26,6 +28,7 @@ var parsers = map[string]func(string) (domain.Node, error){
 	"wg":         protocols.ParseWireGuard,
 	"shadowtls":  protocols.ParseShadowTLS,
 	"shadow-tls": protocols.ParseShadowTLS,
+	"stls":       protocols.ParseShadowTLS,
 }
 
 func parserFor(uri string) func(string) (domain.Node, error) {

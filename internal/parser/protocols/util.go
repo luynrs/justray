@@ -15,6 +15,11 @@ import (
 )
 
 func Unbase64(s string) ([]byte, error) {
+	if strings.Contains(s, "%") {
+		if unescaped, err := url.QueryUnescape(s); err == nil {
+			s = unescaped
+		}
+	}
 	s = strings.TrimPrefix(strings.Join(strings.Fields(s), ""), "\ufeff")
 	s = strings.TrimRight(s, "=")
 	if b, err := base64.RawURLEncoding.DecodeString(s); err == nil {
@@ -57,15 +62,19 @@ func hostPort(hp string) (string, int, error) {
 }
 
 func transport(q url.Values) domain.Transport {
-	net := strings.ToLower(cmp.Or(q.Get("type"), "tcp"))
+	net := strings.ToLower(cmp.Or(q.Get("type"), q.Get("net"), q.Get("network"), "tcp"))
 	if net == "splithttp" {
 		net = "xhttp"
+	}
+	svc := cmp.Or(q.Get("serviceName"), q.Get("service_name"))
+	if net == "grpc" && svc == "" {
+		svc = strings.TrimPrefix(q.Get("path"), "/")
 	}
 	t := domain.Transport{
 		Network:     net,
 		Path:        q.Get("path"),
 		Host:        cmp.Or(q.Get("host"), q.Get("sni")),
-		ServiceName: q.Get("serviceName"),
+		ServiceName: svc,
 		Mode:        cmp.Or(q.Get("mode"), q.Get("headerType")),
 	}
 	if net == "xhttp" {
@@ -96,17 +105,41 @@ func truthy(s string) bool {
 }
 
 func insecureFlag(q url.Values) bool {
-	return truthy(q.Get("allowInsecure")) || truthy(q.Get("insecure")) || truthy(q.Get("allow_insecure"))
+	return truthy(q.Get("allowInsecure")) || truthy(q.Get("insecure")) || truthy(q.Get("allow_insecure")) ||
+		truthy(q.Get("skip-cert-verify")) || truthy(q.Get("skip_cert_verify")) || truthy(q.Get("skipCertVerify"))
 }
 
 // TLS block shared by vless/trojan/anytls links
 func tlsFrom(q url.Values, host string) *domain.TLS {
-	return &domain.TLS{
-		SNI:         cmp.Or(q.Get("sni"), q.Get("peer"), host),
-		ALPN:        splitComma(q.Get("alpn")),
-		Fingerprint: q.Get("fp"),
-		Insecure:    insecureFlag(q),
+	clientFP := cmp.Or(q.Get("client-fingerprint"), q.Get("clientFingerprint"))
+	certFP := cmp.Or(q.Get("pinSHA256"), q.Get("pinsha256"))
+	fp := cmp.Or(q.Get("fp"), q.Get("fingerprint"))
+	if isCertFingerprint(fp) {
+		certFP = fp
+		fp = ""
 	}
+	if clientFP == "" {
+		clientFP = fp
+	}
+	return &domain.TLS{
+		SNI:         cmp.Or(q.Get("sni"), q.Get("peer"), q.Get("server_name"), q.Get("serverName"), host),
+		ALPN:        splitComma(q.Get("alpn")),
+		Fingerprint: clientFP,
+		Insecure:    insecureFlag(q) || certFP != "",
+	}
+}
+
+func isCertFingerprint(s string) bool {
+	clean := strings.ReplaceAll(s, ":", "")
+	if len(clean) != 64 && len(clean) != 40 {
+		return false
+	}
+	for _, r := range clean {
+		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')) {
+			return false
+		}
+	}
+	return true
 }
 
 func checkPlugin(name string) error {
@@ -139,10 +172,15 @@ func (f *flexString) UnmarshalJSON(b []byte) error {
 		*f = flexString(s)
 		return nil
 	}
+	var bVal bool
+	if err := json.Unmarshal(b, &bVal); err == nil {
+		*f = flexString(strconv.FormatBool(bVal))
+		return nil
+	}
 	var arr []string
 	if err := json.Unmarshal(b, &arr); err == nil {
 		*f = flexString(strings.Join(arr, ","))
 		return nil
 	}
-	return fmt.Errorf("expected string or string array")
+	return nil
 }

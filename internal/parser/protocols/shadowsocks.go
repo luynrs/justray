@@ -21,8 +21,7 @@ func ParseShadowsocks(uri string) (domain.Node, error) {
 	rest, query, hasQuery := strings.Cut(rest, "?")
 	var plugin string
 	if hasQuery {
-		qv, _ := url.ParseQuery(query)
-		plugin = qv.Get("plugin")
+		plugin = parsePluginQuery(query)
 		if err := checkPlugin(plugin); err != nil {
 			return domain.Node{}, fmt.Errorf("ss: %w", err)
 		}
@@ -42,6 +41,23 @@ func ParseShadowsocks(uri string) (domain.Node, error) {
 			return domain.Node{}, errors.New("invalid ss base64")
 		}
 		full := string(decoded)
+		if f, rem, ok := strings.Cut(full, "#"); ok {
+			full = f
+			if remark == "" {
+				if unescaped, err := url.PathUnescape(rem); err == nil {
+					remark = unescaped
+				} else {
+					remark = rem
+				}
+			}
+		}
+		if strings.Contains(full, "?") && !hasQuery {
+			full, query, hasQuery = strings.Cut(full, "?")
+			plugin = parsePluginQuery(query)
+			if err := checkPlugin(plugin); err != nil {
+				return domain.Node{}, fmt.Errorf("ss: %w", err)
+			}
+		}
 		at := strings.LastIndexByte(full, '@')
 		if at < 0 {
 			return domain.Node{}, fmt.Errorf("ss: missing host")
@@ -86,4 +102,20 @@ func splitCreds(blob string) (method, password string) {
 	}
 	method, password, _ = strings.Cut(blob, ":")
 	return method, password
+}
+
+func parsePluginQuery(query string) string {
+	qv, err := url.ParseQuery(query)
+	if err == nil && qv.Get("plugin") != "" {
+		return qv.Get("plugin")
+	}
+	for pair := range strings.SplitSeq(query, "&") {
+		if k, v, ok := strings.Cut(pair, "="); ok && k == "plugin" {
+			if unescaped, err := url.QueryUnescape(v); err == nil {
+				return unescaped
+			}
+			return v
+		}
+	}
+	return ""
 }

@@ -14,18 +14,24 @@ func ParseHysteria2(uri string) (domain.Node, error) {
 	if err != nil {
 		return domain.Node{}, err
 	}
+	q := u.Query()
 	auth := ""
 	if u.User != nil {
-		auth = u.User.Username()
 		if pw, ok := u.User.Password(); ok {
-			auth += ":" + pw
+			if u.User.Username() != "" {
+				auth = u.User.Username() + ":" + pw
+			} else {
+				auth = pw
+			}
+		} else {
+			auth = u.User.Username()
 		}
 	}
+	auth = cmp.Or(auth, q.Get("auth"), q.Get("password"))
 	if auth == "" {
 		return domain.Node{}, fmt.Errorf("hysteria2: missing auth")
 	}
 
-	q := u.Query()
 	obfsPw := cmp.Or(q.Get("obfs-password"), q.Get("obfs_password"), q.Get("obfs-param"), q.Get("obfsparam"))
 	obfs := q.Get("obfs")
 	if obfs == "" && obfsPw != "" {
