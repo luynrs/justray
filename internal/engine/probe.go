@@ -153,6 +153,6 @@ func canStart(ctx context.Context, testOpts option.Options) bool {
 	if err != nil {
 		return false
 	}
-	defer inst.Close()
+	defer func() { _ = inst.Close() }()
 	return inst.Start() == nil
 }

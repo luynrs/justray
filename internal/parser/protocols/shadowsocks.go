@@ -52,7 +52,7 @@ func ParseShadowsocks(uri string) (domain.Node, error) {
 			}
 		}
 		if strings.Contains(full, "?") && !hasQuery {
-			full, query, hasQuery = strings.Cut(full, "?")
+			full, query, _ = strings.Cut(full, "?")
 			plugin = parsePluginQuery(query)
 			if err := checkPlugin(plugin); err != nil {
 				return domain.Node{}, fmt.Errorf("ss: %w", err)
