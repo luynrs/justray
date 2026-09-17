@@ -70,7 +70,7 @@ homebrew_casks:
     homepage: https://github.com/luynrs/justray
     description: A modern VPN client that lives in your terminal
     license: GPL-3.0-only
-    skip_upload: "{{ .IsSnapshot }}"
+    skip_upload: auto
     hooks:
       post:
         install: |
@@ -95,7 +95,7 @@ winget:
     license_url: https://www.gnu.org/licenses/gpl-3.0.html
     tags: [cli, vpn, terminal]
     path: manifests/l/luynrs/justray/{{ .Version }}
-    skip_upload: "{{ .IsSnapshot }}"
+    skip_upload: auto
     repository:
       owner: luynrs
       name: winget-pkgs
@@ -110,7 +110,7 @@ aurs:
     private_key: "{{ .Env.AUR_KEY }}"
     git_url: ssh://aur@aur.archlinux.org/justray-bin.git
     url_template: https://github.com/luynrs/justray/releases/download/{{ .Tag }}/{{ .ArtifactName }}
-    skip_upload: "{{ .IsSnapshot }}"
+    skip_upload: auto
     provides: [justray]
     conflicts: [justray]
     package: |-
