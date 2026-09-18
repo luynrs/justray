@@ -118,7 +118,7 @@ func dnsServers(s domain.Settings, detour string) []option.DNSServerOptions {
 		DNSServerAddressOptions: option.DNSServerAddressOptions{Server: s.DNS},
 	}
 	if !strings.HasPrefix(s.DNS, "https://") {
-		return []option.DNSServerOptions{{Type: C.DNSTypeTCP, Tag: "remote", Options: &remote}}
+		return []option.DNSServerOptions{{Type: C.DNSTypeUDP, Tag: "remote", Options: &remote}}
 	}
 
 	u, _ := url.Parse(s.DNS) // Settings.Normalize validates the URL
