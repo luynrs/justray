@@ -199,7 +199,7 @@ func ParseRule(raw string) (string, error) {
 	if host, _, found := strings.Cut(strings.ReplaceAll(rule, `\`, "/"), "/"); found && isAddr(host) {
 		return "", fmt.Errorf("%q is not a network, a domain or a program", raw)
 	}
-	if strings.Contains(rule, ":") && !(len(rule) >= 3 && rule[1] == ':' && (rule[2] == '\\' || rule[2] == '/')) {
+	if strings.Contains(rule, ":") && (len(rule) < 3 || rule[1] != ':' || (rule[2] != '\\' && rule[2] != '/')) {
 		return "", fmt.Errorf("%q is not a network, a domain or a program", raw)
 	}
 	star, keyword := strings.HasPrefix(rule, "*"), strings.HasSuffix(rule, "*")
