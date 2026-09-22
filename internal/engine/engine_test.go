@@ -5,6 +5,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/sagernet/sing-box/option"
+
 	"github.com/luynrs/justray/internal/domain"
 )
 
@@ -116,5 +118,42 @@ func TestProbeCanceled(t *testing.T) {
 	err := Probe(ctx, []domain.Node{{ID: "n1", Server: "127.0.0.1", Port: 9991}}, s, "", func(string, Result) {})
 	if err != context.Canceled {
 		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+}
+
+func TestDNSServers(t *testing.T) {
+	tests := []struct {
+		dns        string
+		wantType   string
+		wantServer string
+		wantPort   uint16
+		hasLocal   bool
+	}{
+		{dns: "8.8.8.8", wantType: "udp", wantServer: "8.8.8.8", wantPort: 0, hasLocal: false},
+		{dns: "127.0.0.1:5353", wantType: "udp", wantServer: "127.0.0.1", wantPort: 5353, hasLocal: false},
+		{dns: "https://1.1.1.1/dns-query", wantType: "https", wantServer: "1.1.1.1", wantPort: 0, hasLocal: false},
+		{dns: "https://cloudflare-dns.com/dns-query", wantType: "https", wantServer: "cloudflare-dns.com", wantPort: 0, hasLocal: true},
+	}
+	for _, tc := range tests {
+		s := domain.Settings{Connection: domain.Connection{DNS: tc.dns}}
+		servers := dnsServers(s, "proxy")
+		if len(servers) == 0 || servers[0].Type != tc.wantType {
+			t.Fatalf("%s: expected type %s, got %+v", tc.dns, tc.wantType, servers)
+		}
+		switch tc.wantType {
+		case "udp":
+			opts := servers[0].Options.(*option.RemoteDNSServerOptions)
+			if opts.Server != tc.wantServer || opts.ServerPort != tc.wantPort {
+				t.Errorf("%s: got server %s:%d, want %s:%d", tc.dns, opts.Server, opts.ServerPort, tc.wantServer, tc.wantPort)
+			}
+		case "https":
+			opts := servers[0].Options.(*option.RemoteHTTPSDNSServerOptions)
+			if opts.Server != tc.wantServer || opts.ServerPort != tc.wantPort {
+				t.Errorf("%s: got server %s:%d, want %s:%d", tc.dns, opts.Server, opts.ServerPort, tc.wantServer, tc.wantPort)
+			}
+		}
+		if tc.hasLocal && (len(servers) < 2 || servers[1].Type != "local") {
+			t.Fatalf("%s: expected local bootstrap resolver, got %+v", tc.dns, servers)
+		}
 	}
 }

@@ -111,17 +111,25 @@ func detour(s domain.Settings) string {
 }
 
 func dnsServers(s domain.Settings, detour string) []option.DNSServerOptions {
+	dns := s.DNS
+	if dns == "" {
+		dns = domain.DefaultDNS
+	}
 	remote := option.RemoteDNSServerOptions{
 		RawLocalDNSServerOptions: option.RawLocalDNSServerOptions{
 			DialerOptions: option.DialerOptions{Detour: detour},
 		},
-		DNSServerAddressOptions: option.DNSServerAddressOptions{Server: s.DNS},
+		DNSServerAddressOptions: option.DNSServerAddressOptions{Server: dns},
 	}
-	if !strings.HasPrefix(s.DNS, "https://") {
+	if !strings.HasPrefix(dns, "https://") {
+		if ap, err := netip.ParseAddrPort(dns); err == nil {
+			remote.Server = ap.Addr().String()
+			remote.ServerPort = ap.Port()
+		}
 		return []option.DNSServerOptions{{Type: C.DNSTypeUDP, Tag: "remote", Options: &remote}}
 	}
 
-	u, _ := url.Parse(s.DNS) // Settings.Normalize validates the URL
+	u, _ := url.Parse(dns) // Settings.Normalize validates the URL
 	remote.Server = u.Hostname()
 	if u.Port() != "" {
 		port, _ := strconv.ParseUint(u.Port(), 10, 16)
@@ -142,9 +150,14 @@ func dnsServers(s domain.Settings, detour string) []option.DNSServerOptions {
 	}
 	if remote.DomainResolver != nil {
 		servers = append(servers, option.DNSServerOptions{
-			Type:    C.DNSTypeLocal,
-			Tag:     "local",
-			Options: &option.LocalDNSServerOptions{},
+			Type: C.DNSTypeLocal,
+			Tag:  "local",
+			Options: &option.LocalDNSServerOptions{
+				PreferGo: true,
+				RawLocalDNSServerOptions: option.RawLocalDNSServerOptions{
+					DialerOptions: option.DialerOptions{Detour: "direct"},
+				},
+			},
 		})
 	}
 	return servers
