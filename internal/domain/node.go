@@ -36,12 +36,12 @@ type Node struct {
 	Transport      Transport  `json:"transport,omitempty"`
 	TLS            *TLS       `json:"tls,omitempty"`
 	Reality        *Reality   `json:"reality,omitempty"`
-	Obfs           string     `json:"obfs,omitempty"`                       // hysteria2
-	ObfsPassword   string     `json:"obfs_password,omitempty"`     // hysteria2, hysteria xplus
-	UpMbps         int        `json:"up_mbps,omitempty"`                 // hysteria
-	DownMbps       int        `json:"down_mbps,omitempty"`             // hysteria
-	Congestion     string     `json:"congestion,omitempty"`           // tuic
-	UDPRelayMode   string     `json:"udp_relay_mode,omitempty"`   // tuic
+	Obfs           string     `json:"obfs,omitempty"`            // hysteria2
+	ObfsPassword   string     `json:"obfs_password,omitempty"`   // hysteria2, hysteria xplus
+	UpMbps         int        `json:"up_mbps,omitempty"`         // hysteria
+	DownMbps       int        `json:"down_mbps,omitempty"`       // hysteria
+	Congestion     string     `json:"congestion,omitempty"`      // tuic
+	UDPRelayMode   string     `json:"udp_relay_mode,omitempty"`  // tuic
 	PacketEncoding string     `json:"packet_encoding,omitempty"` // vless, vmess: xudp, packetaddr; empty = xudp
 	ShadowTLS      *ShadowTLS `json:"shadow_tls,omitempty"`
 	WireGuard      *WireGuard `json:"wireguard,omitempty"`
@@ -55,11 +55,11 @@ type NodeRef struct {
 func ValidPort(port int) bool { return port >= 1 && port <= 65535 }
 
 type Auth struct {
-	UUID     string `json:"uuid,omitempty"`         // vmess, vless, tuic
+	UUID     string `json:"uuid,omitempty"`     // vmess, vless, tuic
 	Password string `json:"password,omitempty"` // trojan, ss, hysteria, anytls, tuic
 	Username string `json:"username,omitempty"` // socks, http
-	Method   string `json:"method,omitempty"`     // ss cipher, vmess security
-	Flow     string `json:"flow,omitempty"`         // vless, e.g. xtls
+	Method   string `json:"method,omitempty"`   // ss cipher, vmess security
+	Flow     string `json:"flow,omitempty"`     // vless, e.g. xtls
 	AlterID  int    `json:"alter_id,omitempty"` // legacy vmess
 }
 
@@ -83,7 +83,7 @@ type Transport struct {
 	Path        string `json:"path,omitempty"`
 	Host        string `json:"host,omitempty"`
 	ServiceName string `json:"service_name,omitempty"` // grpc
-	Mode        string `json:"mode,omitempty"`                 // xhttp: auto, packet-up, stream-up, stream-one
+	Mode        string `json:"mode,omitempty"`         // xhttp: auto, packet-up, stream-up, stream-one
 	Extra       string `json:"extra,omitempty"`
 }
 

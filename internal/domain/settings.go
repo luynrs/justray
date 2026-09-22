@@ -176,6 +176,9 @@ func isDNS(v string) bool {
 	if isAddr(v) {
 		return true
 	}
+	if ap, err := netip.ParseAddrPort(v); err == nil {
+		return ap.Port() != 0
+	}
 	u, err := url.Parse(v)
 	if err != nil || u.Scheme != "https" || u.Hostname() == "" || strings.HasSuffix(u.Host, ":") || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return false
@@ -193,13 +196,20 @@ func ParseRule(raw string) (string, error) {
 	if p, err := parsePrefix(rule); err == nil {
 		return p.String(), nil
 	}
-	rule, star := strings.CutPrefix(rule, "*.")
-	rule, keyword := strings.CutSuffix(rule, ".*")
-	rule = strings.Trim(rule, ".")
+	if host, _, found := strings.Cut(strings.ReplaceAll(rule, `\`, "/"), "/"); found && isAddr(host) {
+		return "", fmt.Errorf("%q is not a network, a domain or a program", raw)
+	}
+	if strings.Contains(rule, ":") && !(len(rule) >= 3 && rule[1] == ':' && (rule[2] == '\\' || rule[2] == '/')) {
+		return "", fmt.Errorf("%q is not a network, a domain or a program", raw)
+	}
+	star, keyword := strings.HasPrefix(rule, "*"), strings.HasSuffix(rule, "*")
+	rule = strings.Trim(rule, "*.")
 	if rule == "" || strings.Contains(rule, "://") || strings.ContainsAny(rule, "\t\n\r@?#*") {
 		return "", fmt.Errorf("%q is not a network, a domain or a program", raw)
 	}
 	switch {
+	case star && keyword:
+		return "*" + rule + "*", nil
 	case keyword:
 		return rule + ".*", nil
 	case star:
@@ -210,13 +220,19 @@ func ParseRule(raw string) (string, error) {
 
 // SplitRules splits entries into cidrs, domains, keywords, names and paths
 func SplitRules(list []string) (cidrs, domains, keywords, names, paths []string) {
-	for _, rule := range list {
+	for _, raw := range list {
+		rule := strings.TrimSpace(raw)
+		if rule == "" {
+			continue
+		}
 		lower := strings.ToLower(rule)
 		switch {
 		case isPrefix(rule):
 			cidrs = append(cidrs, rule)
-		case strings.HasSuffix(lower, ".*"):
-			keywords = append(keywords, strings.TrimSuffix(lower, "*"))
+		case strings.HasSuffix(lower, "*"):
+			if kw := strings.Trim(lower, "*."); kw != "" {
+				keywords = append(keywords, kw)
+			}
 		case strings.HasPrefix(lower, "*."):
 			domains = append(domains, lower[1:])
 		case strings.ContainsAny(rule, `/\`):
