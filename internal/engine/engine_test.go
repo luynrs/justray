@@ -127,12 +127,12 @@ func TestDNSServers(t *testing.T) {
 		wantType   string
 		wantServer string
 		wantPort   uint16
-		hasLocal   bool
+		bootstrap  bool
 	}{
-		{dns: "8.8.8.8", wantType: "udp", wantServer: "8.8.8.8", wantPort: 0, hasLocal: false},
-		{dns: "127.0.0.1:5353", wantType: "udp", wantServer: "127.0.0.1", wantPort: 5353, hasLocal: false},
-		{dns: "https://1.1.1.1/dns-query", wantType: "https", wantServer: "1.1.1.1", wantPort: 0, hasLocal: false},
-		{dns: "https://cloudflare-dns.com/dns-query", wantType: "https", wantServer: "cloudflare-dns.com", wantPort: 0, hasLocal: true},
+		{dns: "8.8.8.8", wantType: "udp", wantServer: "8.8.8.8", wantPort: 0, bootstrap: false},
+		{dns: "127.0.0.1:5353", wantType: "udp", wantServer: "127.0.0.1", wantPort: 5353, bootstrap: false},
+		{dns: "https://1.1.1.1/dns-query", wantType: "https", wantServer: "1.1.1.1", wantPort: 0, bootstrap: false},
+		{dns: "https://cloudflare-dns.com/dns-query", wantType: "https", wantServer: "cloudflare-dns.com", wantPort: 0, bootstrap: true},
 	}
 	for _, tc := range tests {
 		s := domain.Settings{Connection: domain.Connection{DNS: tc.dns}}
@@ -152,8 +152,12 @@ func TestDNSServers(t *testing.T) {
 				t.Errorf("%s: got server %s:%d, want %s:%d", tc.dns, opts.Server, opts.ServerPort, tc.wantServer, tc.wantPort)
 			}
 		}
-		if tc.hasLocal && (len(servers) < 2 || servers[1].Type != "local") {
-			t.Fatalf("%s: expected local bootstrap resolver, got %+v", tc.dns, servers)
+		if tc.bootstrap {
+			if len(servers) < 2 || servers[1].Tag != "bootstrap" || servers[1].Type != "udp" {
+				t.Fatalf("%s: expected bootstrap resolver, got %+v", tc.dns, servers)
+			}
+		} else if len(servers) != 1 {
+			t.Fatalf("%s: expected 1 server, got %+v", tc.dns, servers)
 		}
 	}
 }
