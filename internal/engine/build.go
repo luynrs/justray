@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
@@ -90,7 +91,39 @@ func ProbeConfig(ctx context.Context, nodes []domain.Node, s domain.Settings, lo
 			Final: "local",
 		}},
 	}
+	var resolvedHosts sync.Map
+	sem := make(chan struct{}, maxProbeWorkers)
+	var wg sync.WaitGroup
+loop:
+	for _, n := range nodes {
+		host := n.Server
+		if host == "" {
+			continue
+		}
+		if _, err := netip.ParseAddr(host); err == nil {
+			continue
+		}
+		if _, loaded := resolvedHosts.LoadOrStore(host, ""); loaded {
+			continue
+		}
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			break loop
+		}
+		wg.Go(func() {
+			defer func() { <-sem }()
+			if r, err := resolved(ctx, domain.Node{Server: host}, s); err == nil {
+				resolvedHosts.Store(host, r.Server)
+			}
+		})
+	}
+	wg.Wait()
+
 	for i, n := range nodes {
+		if ip, ok := resolvedHosts.Load(n.Server); ok && ip.(string) != "" {
+			n = withServerIP(n, ip.(string))
+		}
 		if ep, obs, err := outbound.New(n, ProbeTag(i)); err == nil {
 			attach(opts, ep, obs)
 		}
