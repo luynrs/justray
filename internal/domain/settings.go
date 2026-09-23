@@ -199,7 +199,8 @@ func ParseRule(raw string) (string, error) {
 	if host, _, found := strings.Cut(strings.ReplaceAll(rule, `\`, "/"), "/"); found && isAddr(host) {
 		return "", fmt.Errorf("%q is not a network, a domain or a program", raw)
 	}
-	if strings.Contains(rule, ":") && (len(rule) < 3 || rule[1] != ':' || (rule[2] != '\\' && rule[2] != '/')) {
+	isDrive := len(rule) >= 3 && ((rule[0] >= 'a' && rule[0] <= 'z') || (rule[0] >= 'A' && rule[0] <= 'Z')) && rule[1] == ':' && (rule[2] == '\\' || rule[2] == '/')
+	if strings.Contains(rule, ":") && !isDrive {
 		return "", fmt.Errorf("%q is not a network, a domain or a program", raw)
 	}
 	star, keyword := strings.HasPrefix(rule, "*"), strings.HasSuffix(rule, "*")
@@ -229,14 +230,14 @@ func SplitRules(list []string) (cidrs, domains, keywords, names, paths []string)
 		switch {
 		case isPrefix(rule):
 			cidrs = append(cidrs, rule)
+		case strings.ContainsAny(rule, `/\`):
+			paths = append(paths, rule)
 		case strings.HasSuffix(lower, "*"):
 			if kw := strings.Trim(lower, "*."); kw != "" {
 				keywords = append(keywords, kw)
 			}
 		case strings.HasPrefix(lower, "*."):
 			domains = append(domains, lower[1:])
-		case strings.ContainsAny(rule, `/\`):
-			paths = append(paths, rule)
 		case strings.Contains(rule, " "), strings.HasSuffix(lower, ".exe"):
 			names = append(names, rule)
 		case strings.Contains(rule, "."):

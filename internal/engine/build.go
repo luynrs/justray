@@ -84,8 +84,10 @@ func ProbeConfig(ctx context.Context, nodes []domain.Node, s domain.Settings, lo
 		},
 		DNS: &option.DNSOptions{RawDNSOptions: option.RawDNSOptions{
 			DNSClientOptions: option.DNSClientOptions{Strategy: dnsStrategy[s.IPVersion]},
-			Servers:          dnsServers(s, ""),
-			Final:            "remote",
+			Servers: []option.DNSServerOptions{
+				{Type: C.DNSTypeLocal, Tag: "local", Options: &option.LocalDNSServerOptions{PreferGo: true}},
+			},
+			Final: "local",
 		}},
 	}
 	for i, n := range nodes {

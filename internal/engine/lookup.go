@@ -19,17 +19,12 @@ func resolved(ctx context.Context, n domain.Node, s domain.Settings) (domain.Nod
 	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
 
-	var ips []netip.Addr
-	if !strings.HasPrefix(s.DNS, "https://") {
-		cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		ips, _ = udpResolver(s.DNS).LookupNetIP(cctx, network(s), n.Server)
-		cancel()
+	ips, err := resolver(s.DNS).LookupNetIP(ctx, network(s), n.Server)
+	if (err != nil || len(ips) == 0) && s.DNS != "" && s.DNS != domain.DefaultDNS && !strings.HasPrefix(s.DNS, "https://") {
+		ips, err = net.DefaultResolver.LookupNetIP(ctx, network(s), n.Server)
 	}
-	if len(ips) == 0 {
-		var err error
-		if ips, err = net.DefaultResolver.LookupNetIP(ctx, network(s), n.Server); err != nil {
-			return n, err
-		}
+	if err != nil {
+		return n, err
 	}
 	if len(ips) == 0 {
 		return n, fmt.Errorf("no addresses for %s", n.Server)
@@ -37,9 +32,9 @@ func resolved(ctx context.Context, n domain.Node, s domain.Settings) (domain.Nod
 	return withServerIP(n, ips[0].Unmap().String()), nil
 }
 
-func udpResolver(dns string) *net.Resolver {
-	if dns == "" {
-		dns = domain.DefaultDNS
+func resolver(dns string) *net.Resolver {
+	if dns == "" || dns == domain.DefaultDNS || strings.HasPrefix(dns, "https://") {
+		return net.DefaultResolver
 	}
 	if _, _, err := net.SplitHostPort(dns); err != nil {
 		dns = net.JoinHostPort(dns, "53")
