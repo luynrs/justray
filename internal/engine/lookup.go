@@ -19,9 +19,14 @@ func resolved(ctx context.Context, n domain.Node, s domain.Settings) (domain.Nod
 	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
 
-	ips, err := resolver(s.DNS).LookupNetIP(ctx, network(s), n.Server)
-	if (err != nil || len(ips) == 0) && s.DNS != "" && s.DNS != domain.DefaultDNS && !strings.HasPrefix(s.DNS, "https://") {
+	r := resolver(s.DNS)
+	ips, err := r.LookupNetIP(ctx, network(s), n.Server)
+	if (err != nil || len(ips) == 0) && r != net.DefaultResolver {
 		ips, err = net.DefaultResolver.LookupNetIP(ctx, network(s), n.Server)
+	}
+	fallback := defaultDNS(s.IPVersion)
+	if (err != nil || len(ips) == 0) && s.DNS != fallback {
+		ips, err = dialResolver(fallback).LookupNetIP(ctx, network(s), n.Server)
 	}
 	if err != nil {
 		return n, err
@@ -36,6 +41,10 @@ func resolver(dns string) *net.Resolver {
 	if dns == "" || dns == domain.DefaultDNS || strings.HasPrefix(dns, "https://") {
 		return net.DefaultResolver
 	}
+	return dialResolver(dns)
+}
+
+func dialResolver(dns string) *net.Resolver {
 	if _, _, err := net.SplitHostPort(dns); err != nil {
 		dns = net.JoinHostPort(dns, "53")
 	}

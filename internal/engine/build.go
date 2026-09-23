@@ -78,11 +78,9 @@ func ProbeTag(i int) string { return "p" + strconv.Itoa(i) }
 
 func ProbeConfig(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath string) *option.Options {
 	opts := &option.Options{
-		Log:   &option.LogOptions{Level: s.LogLevel, Output: logPath},
-		Route: &option.RouteOptions{AutoDetectInterface: true},
-		Outbounds: []option.Outbound{
-			{Type: C.TypeDirect, Tag: "direct", Options: &option.DirectOutboundOptions{}},
-		},
+		Log:       &option.LogOptions{Level: s.LogLevel, Output: logPath},
+		Route:     &option.RouteOptions{AutoDetectInterface: true},
+		Outbounds: []option.Outbound{{Type: C.TypeDirect, Tag: "direct", Options: &option.DirectOutboundOptions{}}},
 		DNS: &option.DNSOptions{RawDNSOptions: option.RawDNSOptions{
 			DNSClientOptions: option.DNSClientOptions{Strategy: dnsStrategy[s.IPVersion]},
 			Servers: []option.DNSServerOptions{
@@ -96,14 +94,10 @@ func ProbeConfig(ctx context.Context, nodes []domain.Node, s domain.Settings, lo
 	var wg sync.WaitGroup
 loop:
 	for _, n := range nodes {
-		host := n.Server
-		if host == "" {
+		if _, err := netip.ParseAddr(n.Server); err == nil || n.Server == "" {
 			continue
 		}
-		if _, err := netip.ParseAddr(host); err == nil {
-			continue
-		}
-		if _, loaded := resolvedHosts.LoadOrStore(host, ""); loaded {
+		if _, loaded := resolvedHosts.LoadOrStore(n.Server, ""); loaded {
 			continue
 		}
 		select {
@@ -111,6 +105,7 @@ loop:
 		case <-ctx.Done():
 			break loop
 		}
+		host := n.Server
 		wg.Go(func() {
 			defer func() { <-sem }()
 			if r, err := resolved(ctx, domain.Node{Server: host}, s); err == nil {
@@ -139,10 +134,22 @@ func attach(opts *option.Options, ep *option.Endpoint, obs []option.Outbound) {
 }
 
 func detour(s domain.Settings) string {
-	if final(s) == Tag {
-		return Tag
+	if final(s) != Tag {
+		return ""
 	}
-	return ""
+	host := s.DNS
+	if u, err := url.Parse(s.DNS); err == nil && u.Hostname() != "" {
+		host = u.Hostname()
+	} else if ap, err := netip.ParseAddrPort(s.DNS); err == nil {
+		host = ap.Addr().String()
+	}
+	if host == "localhost" {
+		return ""
+	}
+	if addr, err := netip.ParseAddr(host); err == nil && (addr.IsLoopback() || addr.IsLinkLocalUnicast() || (s.BypassLocal == "on" && addr.IsPrivate())) {
+		return ""
+	}
+	return Tag
 }
 
 func dnsServers(s domain.Settings, detour string) []option.DNSServerOptions {
@@ -170,32 +177,46 @@ func dnsServers(s domain.Settings, detour string) []option.DNSServerOptions {
 		port, _ := strconv.ParseUint(u.Port(), 10, 16)
 		remote.ServerPort = uint16(port)
 	}
-	if _, err := netip.ParseAddr(remote.Server); err != nil {
-		remote.DomainResolver = &option.DomainResolveOptions{Server: "local"}
+	var tlsOpts *option.OutboundTLSOptions
+	if remote.Server == "localhost" {
+		remote.Server = "127.0.0.1"
+		if s.IPVersion == "ipv6" {
+			remote.Server = "::1"
+		}
+		tlsOpts = &option.OutboundTLSOptions{ServerName: "localhost"}
+	} else if _, err := netip.ParseAddr(remote.Server); err != nil {
+		remote.DomainResolver = &option.DomainResolveOptions{Server: "bootstrap"}
 	}
 	servers := []option.DNSServerOptions{
 		{
 			Type: C.DNSTypeHTTPS,
 			Tag:  "remote",
 			Options: &option.RemoteHTTPSDNSServerOptions{
-				RemoteTLSDNSServerOptions: option.RemoteTLSDNSServerOptions{RemoteDNSServerOptions: remote},
-				Path:                      u.EscapedPath(),
+				RemoteTLSDNSServerOptions: option.RemoteTLSDNSServerOptions{
+					RemoteDNSServerOptions:      remote,
+					OutboundTLSOptionsContainer: option.OutboundTLSOptionsContainer{TLS: tlsOpts},
+				},
+				Path: u.EscapedPath(),
 			},
 		},
 	}
 	if remote.DomainResolver != nil {
 		servers = append(servers, option.DNSServerOptions{
-			Type: C.DNSTypeLocal,
-			Tag:  "local",
-			Options: &option.LocalDNSServerOptions{
-				PreferGo: true,
-				RawLocalDNSServerOptions: option.RawLocalDNSServerOptions{
-					DialerOptions: option.DialerOptions{Detour: "direct"},
-				},
+			Type: C.DNSTypeUDP,
+			Tag:  "bootstrap",
+			Options: &option.RemoteDNSServerOptions{
+				DNSServerAddressOptions: option.DNSServerAddressOptions{Server: defaultDNS(s.IPVersion)},
 			},
 		})
 	}
 	return servers
+}
+
+func defaultDNS(ipVersion string) string {
+	if ipVersion == "ipv6" {
+		return "2001:4860:4860::8888"
+	}
+	return domain.DefaultDNS
 }
 
 func listenAddr(s domain.Settings) netip.Addr {
