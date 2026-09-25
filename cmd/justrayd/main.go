@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"os/signal"
 	"runtime/debug"
@@ -19,6 +18,7 @@ import (
 	"github.com/luynrs/justray/internal/daemon/subscription"
 	"github.com/luynrs/justray/internal/engine"
 	"github.com/luynrs/justray/internal/ipc"
+	logging "github.com/luynrs/justray/internal/logger"
 	"github.com/luynrs/justray/internal/platform/elevate"
 	"github.com/luynrs/justray/internal/version"
 )
@@ -32,29 +32,29 @@ func main() {
 		}
 	}
 
+	logger := logging.New(os.Stderr, "justrayd")
 	dir, err := ipc.Dir()
 	if err != nil {
-		die("resolve config dir:", err)
+		logger.Fatalf("find config dir failed (%v)", err)
 	}
 	if err := ipc.EnsureDir(dir); err != nil {
-		die("create config dir:", err)
+		logger.Fatalf("create config dir failed (%v)", err)
 	}
 	socket := ipc.Socket(dir)
 
-	logFile, err := os.OpenFile(ipc.DaemonLog(dir), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	logFile, err := logging.Open(ipc.DaemonLog(dir))
 	if err != nil {
-		die("open log file:", err)
+		logger.Fatalf("open log failed (%v)", err)
 	}
 	defer func() { _ = logFile.Close() }()
 
-	var out io.Writer = logFile
+	logger.SetOutput(logFile)
 	if !sameFile(os.Stderr, logFile) {
-		out = io.MultiWriter(logFile, os.Stderr)
+		logger.SetOutput(io.MultiWriter(logFile, os.Stderr))
 		if err := debug.SetCrashOutput(logFile, debug.CrashOptions{}); err != nil {
-			_, _ = fmt.Fprintln(logFile, "crash:", err)
+			logger.Printf("crash log setup failed (%v)", err)
 		}
 	}
-	logger := log.New(out, "justrayd: ", log.LstdFlags)
 
 	for {
 		ctx, cancel := context.WithCancel(context.Background())
@@ -63,14 +63,14 @@ func main() {
 		if err != nil {
 			cancel()
 			if strings.Contains(err.Error(), "already listening") {
-				logger.Printf("%v, exiting", err)
+				logger.Printf("shutdown (%v)", err)
 				return
 			}
-			logger.Fatal(err)
+			logger.Fatalf("listen failed (%v)", err)
 		}
-		logger.Printf("justrayd %s listening on %s", version.String(), socket)
+		logger.Printf("listening (%s, version %s)", socket, version.String())
 		if err := ipc.ClearLog(ipc.EngineLog(dir)); err != nil {
-			logger.Print(err)
+			logger.Printf("clear engine log failed (%v)", err)
 		}
 
 		st := store.Disk{Dir: dir}
@@ -81,7 +81,7 @@ func main() {
 			_ = ln.Close()
 			unlock()
 			cancel()
-			logger.Fatal(err)
+			logger.Fatalf("startup failed (%v)", err)
 		}
 		srv := server.New(ctx, logger, app)
 		app.Restore()
@@ -101,14 +101,14 @@ func main() {
 		var serveErr error
 		select {
 		case s := <-sig:
-			logger.Printf("shutting down (%s)", s)
+			logger.Printf("shutdown (%s)", s)
 		case <-app.RestartRequested():
 			restart = true
-			logger.Print("shutting down for elevated restart")
+			logger.Print("shutdown (elevation)")
 		case <-srv.ShutdownRequested():
-			logger.Print("shutting down by request")
+			logger.Print("shutdown (request)")
 		case serveErr = <-served:
-			logger.Printf("shutting down (%v)", serveErr)
+			logger.Printf("shutdown (%v)", serveErr)
 		}
 		signal.Stop(sig)
 		cancel()
@@ -124,18 +124,18 @@ func main() {
 		select {
 		case <-cleaned:
 		case <-time.After(5 * time.Second):
-			logger.Fatal("shutdown timed out")
+			logger.Fatal("shutdown (timed out)")
 		}
 		unlock()
 
 		if serveErr != nil {
-			logger.Fatal(serveErr)
+			logger.Fatalf("serve failed (%v)", serveErr)
 		}
 		if !restart {
 			return
 		}
 		if err := elevate.Restart(dir); err != nil {
-			logger.Printf("elevated restart failed: %v, continuing non-elevated", err)
+			logger.Printf("elevation failed (%v, continuing unprivileged)", err)
 			continue
 		}
 		return
@@ -149,9 +149,4 @@ func sameFile(a, b *os.File) bool {
 	}
 	bi, err := b.Stat()
 	return err == nil && os.SameFile(ai, bi)
-}
-
-func die(v ...any) {
-	fmt.Fprintln(os.Stderr, append([]any{"justrayd:"}, v...)...)
-	os.Exit(1)
 }

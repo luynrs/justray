@@ -51,14 +51,6 @@ func (d Disk) Load() (PersistentState, error) {
 	cfgData, cfgErr := os.ReadFile(ipc.Config(d.Dir))
 	stateData, stateErr := os.ReadFile(ipc.State(d.Dir))
 
-	if os.IsNotExist(cfgErr) && os.IsNotExist(stateErr) {
-		if migrated, err := d.migrateLegacy(); err != nil {
-			return state, err
-		} else if migrated {
-			return d.Load()
-		}
-	}
-
 	if cfgErr == nil {
 		if err := json.Unmarshal(cfgData, &state.Settings); err != nil {
 			return state, err

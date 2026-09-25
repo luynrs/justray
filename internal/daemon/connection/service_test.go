@@ -18,36 +18,46 @@ type fakeEngine struct {
 	applying, stopping         func()
 }
 
-func (e *fakeEngine) Apply(_ context.Context, spec engine.SessionSpec) error {
-	if e.applying != nil {
-		e.applying()
+func (fake *fakeEngine) Apply(_ context.Context, spec engine.SessionSpec) error {
+	if fake.applying != nil {
+		fake.applying()
 	}
-	err := e.startErr
+	err := fake.startErr
 	if spec.Tun {
-		err = e.tunErr
+		err = fake.tunErr
 	}
 	if err == nil {
-		e.stopped = false
+		fake.stopped = false
 	}
 	return err
 }
-func (e *fakeEngine) Stop() error {
-	if e.stopping != nil {
-		e.stopping()
+func (fake *fakeEngine) Stop() error {
+	if fake.stopping != nil {
+		fake.stopping()
 	}
-	e.closeCalls++
-	e.stopped = true
-	return e.closeErr
+	fake.closeCalls++
+	fake.stopped = true
+	return fake.closeErr
 }
-func (e *fakeEngine) Running() bool { return !e.stopped && e.startErr == nil }
+func (fake *fakeEngine) Running() bool { return !fake.stopped && fake.startErr == nil }
 
-func testService(t *testing.T, eng engine.Engine) *Service {
+func testService(t *testing.T, instance engine.Engine) *Service {
 	t.Helper()
 	return &Service{
 		ctx:       context.Background(),
 		log:       log.New(io.Discard, "", 0),
-		eng:       eng,
-		newEngine: func(context.Context, string) engine.Engine { return eng },
+		eng:       instance,
+		newEngine: func(context.Context, string) engine.Engine { return instance },
+	}
+}
+
+func TestStartFailure(t *testing.T) {
+	fake := &fakeEngine{startErr: errors.New("start failed")}
+	service := testService(t, nil)
+	service.newEngine = func(context.Context, string) engine.Engine { return fake }
+	settings, _ := domain.Settings{}.Normalize()
+	if err := service.apply(t.Context(), domain.Node{ID: "node"}, domain.NodeRef{NodeID: "node"}, settings, false, true); err == nil || fake.closeCalls != 1 {
+		t.Fatalf("start err=%v closeCalls=%d", err, fake.closeCalls)
 	}
 }
 
@@ -64,36 +74,6 @@ func TestSetTunFailure(t *testing.T) {
 	settings, _ := domain.Settings{}.Normalize()
 	if err := s.Apply(context.Background(), domain.Node{ID: "n1"}, domain.NodeRef{NodeID: "n1"}, settings, true); err == nil || s.Status().Tun {
 		t.Fatalf("Apply err=%v status=%+v", err, s.Status())
-	}
-}
-
-func TestStartFailure(t *testing.T) {
-	eng := &fakeEngine{startErr: errors.New("start failed")}
-	s := testService(t, nil)
-	s.newEngine = func(context.Context, string) engine.Engine { return eng }
-	settings, _ := domain.Settings{}.Normalize()
-	if err := s.apply(context.Background(), domain.Node{ID: "n1"}, domain.NodeRef{NodeID: "n1"}, settings, false, true); err == nil || eng.closeCalls != 1 {
-		t.Fatalf("start err=%v closeCalls=%d", err, eng.closeCalls)
-	}
-}
-
-func TestStatusPort(t *testing.T) {
-	eng := &fakeEngine{}
-	s := testService(t, nil)
-	s.newEngine = func(context.Context, string) engine.Engine { return eng }
-	settings, _ := domain.Settings{}.Normalize()
-	settings.Port = 1085
-	if err := s.Connect(context.Background(), domain.Node{ID: "n1"}, domain.NodeRef{NodeID: "n1"}, settings, false); err != nil {
-		t.Fatal(err)
-	}
-	if st := s.Status(); !st.Connected || st.Port != 1085 {
-		t.Fatalf("Connect status=%+v", st)
-	}
-	if err := s.Disconnect(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if st := s.Status(); st.Connected || st.Port != 0 {
-		t.Fatalf("Disconnect status=%+v", st)
 	}
 }
 

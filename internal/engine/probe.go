@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -63,6 +64,9 @@ func Probe(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath 
 			defer func() { <-sem }()
 
 			ms, err := delay(ctx, dialer, s.ProbeURL)
+			if err != nil {
+				ms = 0
+			}
 			onResult(n.ID, Result{Alive: err == nil, MS: ms})
 		})
 	}
@@ -71,8 +75,9 @@ func Probe(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath 
 }
 
 func delay(ctx context.Context, dialer N.Dialer, url string) (int, error) {
+	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
 	client := &http.Client{
-		Timeout: 4 * time.Second,
 		Transport: &http.Transport{
 			DisableKeepAlives: true,
 			DialContext: func(ctx context.Context, _, addr string) (net.Conn, error) {
@@ -88,6 +93,9 @@ func delay(ctx context.Context, dialer N.Dialer, url string) (int, error) {
 		return 0, err
 	}
 	resp, err := client.Do(req)
+	if errors.Is(err, net.ErrClosed) {
+		resp, err = client.Do(req)
+	}
 	ms := int(time.Since(start).Milliseconds())
 	if err != nil {
 		return ms, err
@@ -120,7 +128,7 @@ func startProbeEngine(ctx context.Context, opts *option.Options) (*sbox.Box, err
 		if helper, ok := byTag[ob.Tag+"-stls"]; ok {
 			obs = append(obs, helper)
 		}
-		return !canStart(ctx, option.Options{Route: &option.RouteOptions{AutoDetectInterface: true}, Outbounds: obs})
+		return !canStart(ctx, option.Options{Route: opts.Route, DNS: opts.DNS, Outbounds: obs})
 	})
 	kept := make(map[string]bool, len(opts.Outbounds))
 	for _, ob := range opts.Outbounds {
@@ -133,7 +141,7 @@ func startProbeEngine(ctx context.Context, opts *option.Options) (*sbox.Box, err
 		return false
 	})
 	opts.Endpoints = slices.DeleteFunc(opts.Endpoints, func(ep option.Endpoint) bool {
-		return !canStart(ctx, option.Options{Route: &option.RouteOptions{AutoDetectInterface: true}, Endpoints: []option.Endpoint{ep}})
+		return !canStart(ctx, option.Options{Route: opts.Route, DNS: opts.DNS, Endpoints: []option.Endpoint{ep}})
 	})
 
 	inst, err = sbox.New(sbox.Options{Options: *opts, Context: Context(ctx)})

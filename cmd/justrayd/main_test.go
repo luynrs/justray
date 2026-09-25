@@ -28,11 +28,11 @@ func TestLifecycle(t *testing.T) {
 		t.Setenv(key, home)
 	}
 	t.Setenv("JUSTRAY_TEST_DAEMON", "1")
-	dir, err := ipc.Dir()
+	directory, err := ipc.Dir()
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := ipc.NewClient(ipc.Socket(dir))
+	client := ipc.NewClient(ipc.Socket(directory))
 	start := func() (*exec.Cmd, <-chan struct{}) {
 		cmd := exec.Command(os.Args[0], "-test.run=^TestLifecycle$")
 		cmd.Stdout, cmd.Stderr = t.Output(), t.Output()
@@ -61,7 +61,7 @@ func TestLifecycle(t *testing.T) {
 	for _, crash := range []bool{false, true, false} {
 		cmd, done := start()
 		end := time.Now().Add(10 * time.Second)
-		for c.Ping() != nil {
+		for client.Ping() != nil {
 			select {
 			case <-done:
 				t.Fatal("daemon exited before ready")
@@ -72,18 +72,18 @@ func TestLifecycle(t *testing.T) {
 			}
 			time.Sleep(20 * time.Millisecond)
 		}
-		if err := os.WriteFile(ipc.EngineLog(dir), []byte("beep boop"), 0o600); err != nil {
+		if err := os.WriteFile(ipc.EngineLog(directory), []byte("beep boop"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		dup, dupDone := start()
-		wait(dup, dupDone, true)
-		if got, err := os.ReadFile(ipc.EngineLog(dir)); err != nil || string(got) != "beep boop" {
-			t.Fatalf("engine log changed: %q, %v", got, err)
+		duplicate, duplicateDone := start()
+		wait(duplicate, duplicateDone, true)
+		if contents, err := os.ReadFile(ipc.EngineLog(directory)); err != nil || string(contents) != "beep boop" {
+			t.Fatalf("engine log changed: %q, %v", contents, err)
 		}
 		if crash {
 			err = cmd.Process.Kill()
 		} else {
-			err = c.Shutdown()
+			err = client.Shutdown()
 		}
 		if err != nil {
 			t.Fatal(err)

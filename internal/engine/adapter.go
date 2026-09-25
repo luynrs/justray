@@ -14,12 +14,14 @@ import (
 	"github.com/sagernet/sing/service"
 
 	"github.com/luynrs/justray/internal/domain"
+	"github.com/luynrs/justray/internal/engine/outbound"
 	"github.com/luynrs/justray/internal/platform/link"
 	"github.com/luynrs/justray/internal/platform/wintun"
 )
 
 type Box struct {
 	lifetime context.Context
+	runtime  context.Context
 	settings domain.Settings
 	logPath  string
 
@@ -75,11 +77,13 @@ func (e *Box) start(ctx context.Context, spec SessionSpec) error {
 		return err
 	}
 
-	inst, err := startBox(e.lifetime, *opts)
+	runtimeCtx := Context(e.lifetime)
+	inst, err := startBox(runtimeCtx, *opts)
 	if err != nil {
 		return err
 	}
 	e.inst, e.node = inst, spec.Node
+	e.runtime = runtimeCtx
 	e.settings, e.tun = spec.Settings, spec.Tun
 	return nil
 }
@@ -118,12 +122,11 @@ func (e *Box) swap(ctx context.Context, n domain.Node) error {
 }
 
 func (e *Box) apply(ctx context.Context, n domain.Node) error {
-	ep, obs, err := Proxy(ctx, n, e.settings)
+	ep, obs, err := outbound.New(n, Tag)
 	if err != nil {
 		return err
 	}
 
-	runtimeCtx := e.runtimeCtx()
 	router := e.inst.Router()
 	logger := e.inst.LogFactory().NewLogger("outbound/" + Tag)
 
@@ -131,12 +134,24 @@ func (e *Box) apply(ctx context.Context, n domain.Node) error {
 	_ = e.inst.Outbound().Remove(Tag)
 	_ = e.inst.Outbound().Remove(Tag + "-stls")
 	if ep != nil {
-		return e.inst.Endpoint().Create(runtimeCtx, router, logger, ep.Tag, ep.Type, ep.Options)
-	}
-	for _, ob := range obs {
-		if err := e.inst.Outbound().Create(runtimeCtx, router, logger, ob.Tag, ob.Type, ob.Options); err != nil {
+		if err := e.inst.Endpoint().Create(e.runtime, router, logger, ep.Tag, ep.Type, ep.Options); err != nil {
 			return err
 		}
+	} else {
+		for _, ob := range obs {
+			if err := e.inst.Outbound().Create(e.runtime, router, logger, ob.Tag, ob.Type, ob.Options); err != nil {
+				return err
+			}
+		}
+	}
+	if detour(e.settings) != "" {
+		servers := dnsServers(e.settings, detour(e.settings), "remote")
+		for i := len(servers) - 1; i >= 0; i-- {
+			if err := service.FromContext[adapter.DNSTransportManager](e.runtime).Create(e.runtime, e.inst.LogFactory().NewLogger("dns/"+servers[i].Tag), servers[i].Tag, servers[i].Type, servers[i].Options); err != nil {
+				return err
+			}
+		}
+		service.FromContext[adapter.DNSRouter](e.runtime).ClearCache()
 	}
 	return nil
 }
@@ -146,13 +161,12 @@ func (e *Box) tunAdd() error {
 		return err
 	}
 	inb := TunInbound(e.settings)
-	ctx := e.runtimeCtx()
 	logger := e.inst.LogFactory().NewLogger("inbound/tun[tun-in]")
 
-	err := e.inst.Inbound().Create(ctx, e.inst.Router(), logger, "tun-in", C.TypeTun, inb.Options)
+	err := e.inst.Inbound().Create(e.runtime, e.inst.Router(), logger, "tun-in", C.TypeTun, inb.Options)
 	if errors.Is(err, syscall.EBUSY) {
 		link.Delete(domain.TunInterface)
-		err = e.inst.Inbound().Create(ctx, e.inst.Router(), logger, "tun-in", C.TypeTun, inb.Options)
+		err = e.inst.Inbound().Create(e.runtime, e.inst.Router(), logger, "tun-in", C.TypeTun, inb.Options)
 	}
 	if err == nil {
 		e.tun = true
@@ -177,6 +191,7 @@ func (e *Box) Stop() error {
 	tun := e.tun
 
 	e.inst = nil
+	e.runtime = nil
 	e.tun = false
 
 	err := inst.Close()
@@ -191,8 +206,4 @@ func (e *Box) Stop() error {
 
 func (e *Box) Running() bool {
 	return e.inst != nil
-}
-
-func (e *Box) runtimeCtx() context.Context {
-	return service.ContextWith[adapter.NetworkManager](Context(e.lifetime), e.inst.Network())
 }

@@ -3,7 +3,7 @@
 package elevate
 
 import (
-	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
@@ -24,11 +24,11 @@ func Restart(_ string) error {
 	}
 	if !sameHelper(self) {
 		script := `set source to system attribute "JUSTRAY_SOURCE"
-	do shell script "/usr/bin/install -o root -g wheel -m 0755 " & quoted form of source & " ` + helper + `" with administrator privileges`
+	do shell script "/usr/bin/install -d -o root -g wheel -m 0755 /Library/PrivilegedHelperTools && /usr/bin/install -o root -g wheel -m 0755 " & quoted form of source & " ` + helper + `" with administrator privileges`
 		cmd := exec.Command("osascript", "-e", script)
 		cmd.Env = append(os.Environ(), "JUSTRAY_SOURCE="+self)
-		if err := cmd.Run(); err != nil {
-			return errors.New("could not install helper")
+		if output, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("install helper failed (%w, %s)", err, strings.TrimSpace(string(output)))
 		}
 	}
 	home, err := os.UserHomeDir()
@@ -41,7 +41,10 @@ func Restart(_ string) error {
 	}
 	command += " >/dev/null 2>&1 &"
 	script := `do shell script "` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(command) + `" with administrator privileges`
-	return exec.Command("osascript", "-e", script).Run()
+	if output, err := exec.Command("osascript", "-e", script).CombinedOutput(); err != nil {
+		return fmt.Errorf("start helper failed (%w, %s)", err, strings.TrimSpace(string(output)))
+	}
+	return nil
 }
 
 func sameHelper(source string) bool {

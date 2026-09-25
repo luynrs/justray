@@ -1,7 +1,6 @@
 package server
 
 import (
-	"sync"
 	"time"
 )
 
@@ -32,25 +31,18 @@ func (s *Server) AutoRefresh() {
 				delete(tried, id)
 			}
 		}
-		var wg sync.WaitGroup
-		sem := make(chan struct{}, 4)
+		var ids []string
 		for id := range active {
 			if time.Since(tried[id]) < 15*time.Minute {
 				continue
 			}
 			tried[id] = time.Now()
-			wg.Go(func() {
-				select {
-				case sem <- struct{}{}:
-					defer func() { <-sem }()
-				case <-s.ctx.Done():
-					return
-				}
-				if err := s.core.RefreshSubscription(s.ctx, id); err != nil {
-					s.log.Print(err)
-				}
-			})
+			ids = append(ids, id)
 		}
-		wg.Wait()
+		if len(ids) > 0 {
+			if err := s.core.RefreshSubscriptions(s.ctx, ids...); err != nil {
+				s.log.Printf("auto-refresh failed (%v)", err)
+			}
+		}
 	}
 }

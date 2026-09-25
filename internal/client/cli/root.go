@@ -20,6 +20,7 @@ import (
 	"github.com/luynrs/justray/internal/client/tui"
 	"github.com/luynrs/justray/internal/client/tui/style"
 	"github.com/luynrs/justray/internal/ipc"
+	"github.com/luynrs/justray/internal/logger"
 	"github.com/luynrs/justray/internal/version"
 )
 
@@ -199,7 +200,7 @@ func spawn(dir string) error {
 	}
 	defer func() { _ = devNull.Close() }()
 
-	errLog, err := os.OpenFile(ipc.DaemonLog(dir), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	errLog, err := logger.Open(ipc.DaemonLog(dir))
 	if err != nil {
 		return err
 	}

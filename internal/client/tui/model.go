@@ -14,6 +14,7 @@ import (
 	"github.com/luynrs/justray/internal/client/tui/style"
 	"github.com/luynrs/justray/internal/client/tui/tree"
 	"github.com/luynrs/justray/internal/ipc"
+	"github.com/luynrs/justray/internal/logger"
 )
 
 const (
@@ -134,17 +135,19 @@ func (m Model) quit() (tea.Model, tea.Cmd) {
 }
 
 func Run(c *ipc.Client, start func(context.Context) error) error {
-	prev := log.Writer()
-	defer log.SetOutput(prev)
+	defer log.SetOutput(log.Writer())
+	defer log.SetPrefix(log.Prefix())
+	defer log.SetFlags(log.Flags())
+	tuiLog := logger.New(io.Discard, "tui")
+	log.SetOutput(tuiLog.Writer())
+	log.SetPrefix(tuiLog.Prefix())
+	log.SetFlags(tuiLog.Flags())
 
 	if dir, err := ipc.Dir(); err == nil {
-		if f, err := tea.LogToFile(ipc.TUILog(dir), "tui"); err == nil {
+		if f, err := logger.Open(ipc.TUILog(dir)); err == nil {
 			defer func() { _ = f.Close() }()
-		} else {
-			log.SetOutput(io.Discard)
+			log.SetOutput(f)
 		}
-	} else {
-		log.SetOutput(io.Discard)
 	}
 
 	m := New(c, start)

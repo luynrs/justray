@@ -15,7 +15,7 @@ import (
 	"github.com/luynrs/justray/internal/engine"
 )
 
-func probeCore(t testing.TB, n int, probe func(context.Context, []domain.Node, domain.Settings, string, func(string, engine.Result)) error) *Core {
+func probeCore(t *testing.T, n int, probe func(context.Context, []domain.Node, domain.Settings, string, func(string, engine.Result)) error) *Core {
 	t.Helper()
 	nodes := make([]domain.Node, n)
 	for i := range nodes {
@@ -33,16 +33,16 @@ func instantProbe(_ context.Context, nodes []domain.Node, _ domain.Settings, _ s
 	return nil
 }
 
-func TestProbeBatchesResults(t *testing.T) {
+func TestProbeBatch(t *testing.T) {
 	const n = 512
 	var app *Core
-	var publications int
+	var updates int
 	probe := func(_ context.Context, nodes []domain.Node, _ domain.Settings, _ string, onResult func(string, engine.Result)) error {
 		previous := app.snapshot.Load()
 		for _, node := range nodes {
 			onResult(node.ID, engine.Result{Alive: true, MS: 10})
 			if current := app.snapshot.Load(); current != previous {
-				publications++
+				updates++
 				previous = current
 			}
 		}
@@ -53,8 +53,8 @@ func TestProbeBatchesResults(t *testing.T) {
 		t.Fatal(err)
 	}
 	after := app.Snapshot()
-	if publications >= n/4 {
-		t.Fatalf("probe published %d intermediate snapshots for a burst of %d results", publications, n)
+	if updates >= n/4 {
+		t.Fatalf("probe published %d intermediate snapshots for a burst of %d results", updates, n)
 	}
 	for _, node := range after.Nodes {
 		if node.Probing || !node.Probed || !node.Alive || node.MS != 10 {
@@ -63,7 +63,7 @@ func TestProbeBatchesResults(t *testing.T) {
 	}
 }
 
-func TestProbeAlreadyCancelled(t *testing.T) {
+func TestProbeCanceled(t *testing.T) {
 	app := probeCore(t, 2, instantProbe)
 	before := app.snapshot.Load()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -76,7 +76,7 @@ func TestProbeAlreadyCancelled(t *testing.T) {
 	}
 }
 
-func TestProbePublishesBeforeCompletionAndFlushesOnCancel(t *testing.T) {
+func TestProbeProgress(t *testing.T) {
 	probe := func(ctx context.Context, nodes []domain.Node, _ domain.Settings, _ string, onResult func(string, engine.Result)) error {
 		onResult(nodes[0].ID, engine.Result{Alive: true, MS: 10})
 		<-ctx.Done()
@@ -109,20 +109,5 @@ func TestProbePublishesBeforeCompletionAndFlushesOnCancel(t *testing.T) {
 			<-done
 			t.Fatal("results were withheld until the slow probe completed")
 		}
-	}
-}
-
-func BenchmarkProbe(b *testing.B) {
-	for _, n := range []int{128, 512} {
-		b.Run(fmt.Sprint(n), func(b *testing.B) {
-			app := probeCore(b, n, instantProbe)
-			b.ReportAllocs()
-			b.ResetTimer()
-			for range b.N {
-				if err := app.Probe(context.Background(), "s", ""); err != nil {
-					b.Fatal(err)
-				}
-			}
-		})
 	}
 }
