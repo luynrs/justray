@@ -54,7 +54,7 @@ func (s *Service) Disconnect(ctx context.Context) error {
 		return err
 	}
 	if name != "" {
-		s.log.Printf("disconnected from %s", name)
+		s.log.Printf("disconnected (%s)", name)
 	}
 	return nil
 }
@@ -62,11 +62,11 @@ func (s *Service) Disconnect(ctx context.Context) error {
 func (s *Service) Restore(n domain.Node, ref domain.NodeRef, settings domain.Settings, tun bool) {
 	err := s.apply(s.ctx, n, ref, settings, tun, true)
 	if tun && elevate.Needed(err) {
-		s.log.Print("tun requires elevation")
+		s.log.Print("restore failed (tun requires elevation)")
 		return
 	}
 	if err != nil {
-		s.log.Print(err)
+		s.log.Printf("restore failed (%v)", err)
 	}
 }
 
@@ -85,7 +85,7 @@ func (s *Service) RestartRequested() <-chan struct{} { return s.restart }
 
 func (s *Service) Shutdown() {
 	if err := s.stop(); err != nil {
-		s.log.Print(err)
+		s.log.Printf("engine shutdown failed (%v)", err)
 	}
 }
 
@@ -116,7 +116,7 @@ func (s *Service) apply(ctx context.Context, n domain.Node, ref domain.NodeRef, 
 
 	if creating {
 		if err := ipc.ClearLog(ipc.EngineLog(s.dir)); err != nil {
-			s.log.Print(err)
+			s.log.Printf("clear engine log failed (%v)", err)
 		}
 		eng = s.newEngine(s.ctx, ipc.EngineLog(s.dir))
 		if eng == nil {
@@ -140,7 +140,7 @@ func (s *Service) apply(ctx context.Context, n domain.Node, ref domain.NodeRef, 
 	s.eng = eng
 	s.status.Store(&ipc.Status{Connected: true, NodeRef: ref, NodeName: n.Name, StartedAt: started, Tun: tun, Port: settings.Port})
 	if previous.NodeRef != ref || resetStarted {
-		s.log.Printf("connected to %s (%s %s:%d)", n.Name, n.Protocol, n.Server, n.Port)
+		s.log.Printf("connected (%s, %s %s:%d)", n.Name, n.Protocol, n.Server, n.Port)
 	}
 	return nil
 }

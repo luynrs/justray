@@ -67,10 +67,16 @@ func (s *Server) dispatch(ctx context.Context, req ipc.Req) (any, error) {
 		return nil, s.core.RemoveSubscription(a.ID)
 	case "MoveSub":
 		return nil, s.core.MoveSubscription(a.ID, a.Dir)
-	case "RefreshAll":
-		return nil, s.core.RefreshSubscriptions(ctx)
-	case "Refresh":
-		return nil, s.core.RefreshSubscription(ctx, a.ID)
+	case "RefreshAll", "Refresh":
+		var ids []string
+		if req.Method == "Refresh" {
+			ids = []string{a.ID}
+		}
+		err := s.core.RefreshSubscriptions(ctx, ids...)
+		if err != nil {
+			s.log.Printf("refresh failed (%v)", err)
+		}
+		return nil, err
 	case "Probe":
 		return nil, s.core.Probe(ctx, a.Sub, a.ID)
 	case "Connect":

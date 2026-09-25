@@ -269,12 +269,43 @@ func (c *Core) MoveSubscription(id string, dir int) error {
 	return nil
 }
 
-func (c *Core) RefreshSubscriptions(ctx context.Context) error {
-	subs := slices.DeleteFunc(c.current().Subscriptions, func(sub store.Subscription) bool { return parser.IsLink(sub.URL) })
-	if len(subs) == 0 {
-		return nil
+func (c *Core) RefreshSubscriptions(ctx context.Context, ids ...string) error {
+	if err := ctx.Err(); err != nil {
+		return err
 	}
-	updated, refreshErr := c.subs.RefreshAll(ctx, subs, c.refresh)
+	subs := c.current().Subscriptions
+	var refreshErr error
+	for _, id := range ids {
+		if !slices.ContainsFunc(subs, func(sub store.Subscription) bool { return sub.ID == id }) {
+			refreshErr = errors.Join(refreshErr, fmt.Errorf("subscription %q not found", id))
+		}
+	}
+	subs = slices.DeleteFunc(subs, func(sub store.Subscription) bool {
+		return parser.IsLink(sub.URL) || len(ids) > 0 && !slices.Contains(ids, sub.ID)
+	})
+	if len(subs) == 0 {
+		return refreshErr
+	}
+	errs := make([]error, len(subs))
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	for range min(8, len(subs)) {
+		wg.Go(func() {
+			for i := range jobs {
+				subs[i], errs[i] = c.refresh(ctx, subs[i])
+			}
+		})
+	}
+dispatch:
+	for i := range subs {
+		select {
+		case jobs <- i:
+		case <-ctx.Done():
+			break dispatch
+		}
+	}
+	close(jobs)
+	wg.Wait()
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
 	if err := ctx.Err(); err != nil {
@@ -282,48 +313,27 @@ func (c *Core) RefreshSubscriptions(ctx context.Context) error {
 	}
 	next := c.current()
 	var dropConn bool
-	for _, sub := range updated {
-		if i := slices.IndexFunc(next.Subscriptions, func(current store.Subscription) bool { return current.ID == sub.ID }); i >= 0 {
-			next.Subscriptions[i] = sub
+	updated := 0
+	for i, sub := range subs {
+		if errs[i] != nil {
+			refreshErr = errors.Join(refreshErr, fmt.Errorf("%s: %w", sub.ID, errs[i]))
+			continue
+		}
+		if index := slices.IndexFunc(next.Subscriptions, func(current store.Subscription) bool { return current.ID == sub.ID }); index >= 0 {
+			next.Subscriptions[index] = sub
+			updated++
 			if c.sanitizeRefs(&next, sub) {
 				dropConn = true
 			}
+		} else if len(ids) == 1 {
+			refreshErr = errors.Join(refreshErr, fmt.Errorf("subscription %q not found", sub.ID))
 		}
 	}
-	syncErr := c.syncAfterRefresh(ctx, next, dropConn)
-	return errors.Join(refreshErr, syncErr)
-}
-
-func (c *Core) RefreshSubscription(ctx context.Context, id string) error {
-	state := c.current()
-	i := slices.IndexFunc(state.Subscriptions, func(sub store.Subscription) bool { return sub.ID == id })
-	if i < 0 {
-		return fmt.Errorf("subscription %q not found", id)
+	if updated == 0 {
+		return refreshErr
 	}
-	if parser.IsLink(state.Subscriptions[i].URL) {
-		return nil
-	}
-	sub, err := c.refresh(ctx, state.Subscriptions[i])
-	if err != nil {
-		return err
-	}
-	c.opMu.Lock()
-	defer c.opMu.Unlock()
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	next := c.current()
-	i = slices.IndexFunc(next.Subscriptions, func(current store.Subscription) bool { return current.ID == id })
-	if i < 0 {
-		return fmt.Errorf("subscription %q not found", id)
-	}
-	next.Subscriptions[i] = sub
-	return c.syncAfterRefresh(ctx, next, c.sanitizeRefs(&next, sub))
-}
-
-func (c *Core) syncAfterRefresh(ctx context.Context, next store.PersistentState, dropConn bool) error {
 	if err := c.commit(next); err != nil {
-		return err
+		return errors.Join(refreshErr, err)
 	}
 	var runtimeErr error
 	if dropConn {
@@ -332,7 +342,7 @@ func (c *Core) syncAfterRefresh(ctx context.Context, next store.PersistentState,
 		runtimeErr = c.apply(ctx, next, c.conn.Status().Tun)
 	}
 	c.publish()
-	return runtimeErr
+	return errors.Join(refreshErr, runtimeErr)
 }
 
 func (c *Core) sanitizeRefs(state *store.PersistentState, updated store.Subscription) bool {

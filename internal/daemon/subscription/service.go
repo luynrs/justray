@@ -13,15 +13,14 @@ import (
 
 type Service struct {
 	device http.Header
-	log    *log.Logger
 }
 
 func New(ctx context.Context, logger *log.Logger) *Service {
 	device, err := deviceHeaders(ctx)
 	if err != nil && logger != nil {
-		logger.Print(err)
+		logger.Printf("device headers failed (%v)", err)
 	}
-	return &Service{device: device, log: logger}
+	return &Service{device: device}
 }
 
 func (s *Service) PrepareAdd(ctx context.Context, rawURL string) (store.Subscription, error) {

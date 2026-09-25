@@ -163,7 +163,7 @@ func TestRefreshSnapshot(t *testing.T) {
 	}
 	_, changed, cancel := app.Watch()
 	defer cancel()
-	if err := app.RefreshSubscription(context.Background(), "sub"); err != nil {
+	if err := app.RefreshSubscriptions(context.Background(), "sub"); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -279,11 +279,15 @@ func TestSetTun(t *testing.T) {
 type fakeEngine struct {
 	closeErr error
 	stopped  bool
+	applies  int
 }
 
-func (e *fakeEngine) Apply(context.Context, engine.SessionSpec) error { return nil }
-func (e *fakeEngine) Stop() error                                     { e.stopped = true; return e.closeErr }
-func (e *fakeEngine) Running() bool                                   { return !e.stopped }
+func (e *fakeEngine) Apply(context.Context, engine.SessionSpec) error {
+	e.applies++
+	return nil
+}
+func (e *fakeEngine) Stop() error   { e.stopped = true; return e.closeErr }
+func (e *fakeEngine) Running() bool { return !e.stopped }
 
 func testCore(t testing.TB, eng engine.Engine, state store.PersistentState) *Core {
 	t.Helper()

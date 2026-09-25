@@ -3,51 +3,12 @@ package subscription
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/luynrs/justray/internal/daemon/store"
 	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/parser"
 )
-
-func (s *Service) RefreshAll(ctx context.Context, subs []store.Subscription, refresh func(context.Context, store.Subscription) (store.Subscription, error)) ([]store.Subscription, error) {
-	errs := make([]error, len(subs))
-	jobs := make(chan int)
-	var wg sync.WaitGroup
-	for range min(8, len(subs)) {
-		wg.Go(func() {
-			for i := range jobs {
-				subs[i], errs[i] = refresh(ctx, subs[i])
-			}
-		})
-	}
-	for i := range subs {
-		select {
-		case jobs <- i:
-		case <-ctx.Done():
-			close(jobs)
-			wg.Wait()
-			return nil, ctx.Err()
-		}
-	}
-	close(jobs)
-	wg.Wait()
-
-	updated := make([]store.Subscription, 0, len(subs))
-	for i, err := range errs {
-		if err != nil {
-			s.log.Print(err)
-			continue
-		}
-		updated = append(updated, subs[i])
-	}
-
-	if failed := len(subs) - len(updated); failed > 0 {
-		return updated, fmt.Errorf("subscription refresh failed (%d/%d)", failed, len(subs))
-	}
-	return updated, nil
-}
 
 func (s *Service) Refresh(ctx context.Context, sub store.Subscription) (store.Subscription, error) {
 	if err := check(sub.URL); err != nil {
