@@ -11,16 +11,16 @@ import (
 )
 
 type clashProxy struct {
-	Name              string   `yaml:"name"`
-	Type              string   `yaml:"type"`
-	Server            string   `yaml:"server"`
-	Port              int      `yaml:"port"`
-	UUID              string   `yaml:"uuid"`
-	Password          string   `yaml:"password"`
-	Cipher            string   `yaml:"cipher"`
-	AlterID           int      `yaml:"alterId"`
-	Network           string   `yaml:"network"`
-	TLS               bool     `yaml:"tls"`
+	Name                string   `yaml:"name"`
+	Type                string   `yaml:"type"`
+	Server              string   `yaml:"server"`
+	Port                int      `yaml:"port"`
+	UUID                string   `yaml:"uuid"`
+	Password            string   `yaml:"password"`
+	Cipher              string   `yaml:"cipher"`
+	AlterID             int      `yaml:"alterId"`
+	Network             string   `yaml:"network"`
+	TLS                 bool     `yaml:"tls"`
 	SkipCertVerify      bool     `yaml:"skip-cert-verify"`
 	SkipCertVerifySnake bool     `yaml:"skip_cert_verify"`
 	ServerName          string   `yaml:"servername"`

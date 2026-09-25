@@ -117,7 +117,7 @@ func testHTTPProxy(t *testing.T) (*httptest.Server, *atomic.Int32) {
 			t.Error(err)
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		if _, err := stream.WriteString("HTTP/1.1 200 Connection Established\r\n\r\n"); err != nil {
 			t.Error(err)
 			return

@@ -60,4 +60,3 @@ func Branch(last bool) string {
 	}
 	return "├─"
 }
-

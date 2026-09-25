@@ -13,19 +13,19 @@ import (
 
 // v2rayn schema
 type vmessLink struct {
-	PS    string     `json:"ps"`
-	Add   string     `json:"add"`
-	Port  flexInt    `json:"port"`
-	ID    string     `json:"id"`
-	AID   flexInt    `json:"aid"`
-	SCY   string     `json:"scy"`
-	Net   string     `json:"net"`
-	Type  string     `json:"type"`
-	Host  string     `json:"host"`
-	Path  string     `json:"path"`
-	TLS   flexString `json:"tls"`
-	SNI   string     `json:"sni"`
-	ALPN  flexString `json:"alpn"`
+	PS            string     `json:"ps"`
+	Add           string     `json:"add"`
+	Port          flexInt    `json:"port"`
+	ID            string     `json:"id"`
+	AID           flexInt    `json:"aid"`
+	SCY           string     `json:"scy"`
+	Net           string     `json:"net"`
+	Type          string     `json:"type"`
+	Host          string     `json:"host"`
+	Path          string     `json:"path"`
+	TLS           flexString `json:"tls"`
+	SNI           string     `json:"sni"`
+	ALPN          flexString `json:"alpn"`
 	FP            string     `json:"fp"`
 	Insecure      flexString `json:"insecure"`
 	AllowInsecure flexString `json:"allowInsecure"`

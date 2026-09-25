@@ -181,7 +181,7 @@ func parseXrayVMess(stream xrayStreamSettings, next xrayVnext, user xrayUser, na
 	}
 	return domain.Node{
 		Name: name, Protocol: domain.VMess, Server: next.Address, Port: next.Port,
-		Auth: domain.Auth{UUID: user.ID, AlterID: user.AlterID, Method: cmp.Or(user.Security, "auto")},
+		Auth:      domain.Auth{UUID: user.ID, AlterID: user.AlterID, Method: cmp.Or(user.Security, "auto")},
 		Transport: transport, TLS: xrayTLS(stream),
 	}, nil
 }
