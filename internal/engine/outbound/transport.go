@@ -3,6 +3,7 @@ package outbound
 import (
 	"cmp"
 	"encoding/json"
+	"net/netip"
 	"strings"
 
 	C "github.com/sagernet/sing-box/constant"
@@ -13,6 +14,9 @@ import (
 )
 
 func transport(n domain.Node) *option.V2RayTransportOptions {
+	if _, err := netip.ParseAddr(n.Server); err != nil && n.Transport.Host == "" {
+		n.Transport.Host = n.Server
+	}
 	switch n.Transport.Network {
 	case "ws":
 		ws := option.V2RayWebsocketOptions{Path: n.Transport.Path}

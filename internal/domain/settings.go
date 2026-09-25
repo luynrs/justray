@@ -93,7 +93,7 @@ func (s Settings) Normalize() (Settings, error) {
 		one("force tty", &s.ForceTTY, "off", Toggle),
 		one("autostart", &s.Autostart, "off", Toggle),
 		one("emoji", &s.Emoji, "off", Toggle),
-		text("dns", &s.DNS, DefaultDNS, "an IP address or an HTTPS URL", isDNS),
+		text("dns", &s.DNS, DefaultDNS, "an IP address or an https:// URL", isDNS),
 		text("probe url", &s.ProbeURL, DefaultProbeURL, "a url", isURL),
 		canon(&s.Direct),
 		canon(&s.Proxy),

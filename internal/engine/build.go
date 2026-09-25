@@ -5,8 +5,6 @@ import (
 	"net/netip"
 	"net/url"
 	"strconv"
-	"strings"
-	"sync"
 
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
@@ -30,7 +28,7 @@ var dnsStrategy = map[string]option.DomainStrategy{
 }
 
 func Build(ctx context.Context, n domain.Node, s domain.Settings, logPath string, tun bool) (*option.Options, error) {
-	ep, obs, err := Proxy(ctx, n, s)
+	ep, obs, err := outbound.New(n, Tag)
 	if err != nil {
 		return nil, err
 	}
@@ -50,14 +48,19 @@ func Build(ctx context.Context, n domain.Node, s domain.Settings, logPath string
 		},
 		DNS: &option.DNSOptions{RawDNSOptions: option.RawDNSOptions{
 			DNSClientOptions: option.DNSClientOptions{Strategy: dnsStrategy[s.IPVersion]},
-			Servers:          dnsServers(s, detour(s)),
+			Servers:          dnsServers(s, detour(s), "remote"),
 			Final:            "remote",
 		}},
 		Route: &option.RouteOptions{
-			Final:               final(s),
-			AutoDetectInterface: true,
-			Rules:               rules(s),
+			Final:                 final(s),
+			AutoDetectInterface:   true,
+			DefaultDomainResolver: &option.DomainResolveOptions{Server: "remote", Strategy: dnsStrategy[s.IPVersion]},
+			Rules:                 rules(s),
 		},
+	}
+	if detour(s) != "" {
+		opts.DNS.Servers = append(opts.DNS.Servers, dnsServers(s, "", "node")...)
+		opts.Route.DefaultDomainResolver.Server = "node"
 	}
 	attach(opts, ep, obs)
 	if tun {
@@ -66,59 +69,23 @@ func Build(ctx context.Context, n domain.Node, s domain.Settings, logPath string
 	return opts, nil
 }
 
-func Proxy(ctx context.Context, n domain.Node, s domain.Settings) (*option.Endpoint, []option.Outbound, error) {
-	n, err := resolved(ctx, n, s)
-	if err != nil {
-		return nil, nil, err
-	}
-	return outbound.New(n, Tag)
-}
-
 func ProbeTag(i int) string { return "p" + strconv.Itoa(i) }
 
 func ProbeConfig(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath string) *option.Options {
 	opts := &option.Options{
-		Log:       &option.LogOptions{Level: s.LogLevel, Output: logPath},
-		Route:     &option.RouteOptions{AutoDetectInterface: true},
+		Log: &option.LogOptions{Level: s.LogLevel, Output: logPath},
+		Route: &option.RouteOptions{
+			AutoDetectInterface:   true,
+			DefaultDomainResolver: &option.DomainResolveOptions{Server: "remote", Strategy: dnsStrategy[s.IPVersion]},
+		},
 		Outbounds: []option.Outbound{{Type: C.TypeDirect, Tag: "direct", Options: &option.DirectOutboundOptions{}}},
 		DNS: &option.DNSOptions{RawDNSOptions: option.RawDNSOptions{
 			DNSClientOptions: option.DNSClientOptions{Strategy: dnsStrategy[s.IPVersion]},
-			Servers: []option.DNSServerOptions{
-				{Type: C.DNSTypeLocal, Tag: "local", Options: &option.LocalDNSServerOptions{PreferGo: true}},
-			},
-			Final: "local",
+			Servers:          dnsServers(s, "", "remote"),
+			Final:            "remote",
 		}},
 	}
-	var resolvedHosts sync.Map
-	sem := make(chan struct{}, maxProbeWorkers)
-	var wg sync.WaitGroup
-loop:
-	for _, n := range nodes {
-		if _, err := netip.ParseAddr(n.Server); err == nil || n.Server == "" {
-			continue
-		}
-		if _, loaded := resolvedHosts.LoadOrStore(n.Server, ""); loaded {
-			continue
-		}
-		select {
-		case sem <- struct{}{}:
-		case <-ctx.Done():
-			break loop
-		}
-		host := n.Server
-		wg.Go(func() {
-			defer func() { <-sem }()
-			if r, err := resolved(ctx, domain.Node{Server: host}, s); err == nil {
-				resolvedHosts.Store(host, r.Server)
-			}
-		})
-	}
-	wg.Wait()
-
 	for i, n := range nodes {
-		if ip, ok := resolvedHosts.Load(n.Server); ok && ip.(string) != "" {
-			n = withServerIP(n, ip.(string))
-		}
 		if ep, obs, err := outbound.New(n, ProbeTag(i)); err == nil {
 			attach(opts, ep, obs)
 		}
@@ -152,71 +119,55 @@ func detour(s domain.Settings) string {
 	return Tag
 }
 
-func dnsServers(s domain.Settings, detour string) []option.DNSServerOptions {
+func dnsServers(s domain.Settings, detourTag, tag string) []option.DNSServerOptions {
 	dns := s.DNS
 	if dns == "" {
 		dns = domain.DefaultDNS
 	}
 	remote := option.RemoteDNSServerOptions{
 		RawLocalDNSServerOptions: option.RawLocalDNSServerOptions{
-			DialerOptions: option.DialerOptions{Detour: detour},
+			DialerOptions: option.DialerOptions{Detour: detourTag},
 		},
 		DNSServerAddressOptions: option.DNSServerAddressOptions{Server: dns},
 	}
-	if !strings.HasPrefix(dns, "https://") {
-		if ap, err := netip.ParseAddrPort(dns); err == nil {
-			remote.Server = ap.Addr().String()
-			remote.ServerPort = ap.Port()
-		}
-		return []option.DNSServerOptions{{Type: C.DNSTypeUDP, Tag: "remote", Options: &remote}}
+	transportType := C.DNSTypeUDP
+	if detourTag != "" {
+		transportType = C.DNSTypeTCP
 	}
-
 	u, _ := url.Parse(dns) // Settings.Normalize validates the URL
-	remote.Server = u.Hostname()
-	if u.Port() != "" {
-		port, _ := strconv.ParseUint(u.Port(), 10, 16)
-		remote.ServerPort = uint16(port)
-	}
-	var tlsOpts *option.OutboundTLSOptions
-	if remote.Server == "localhost" {
-		remote.Server = "127.0.0.1"
-		if s.IPVersion == "ipv6" {
-			remote.Server = "::1"
+	if u != nil && u.Hostname() != "" {
+		transportType = C.DNSTypeHTTPS
+		remote.Server = u.Hostname()
+		if u.Port() != "" {
+			port, _ := strconv.ParseUint(u.Port(), 10, 16)
+			remote.ServerPort = uint16(port)
 		}
-		tlsOpts = &option.OutboundTLSOptions{ServerName: "localhost"}
-	} else if _, err := netip.ParseAddr(remote.Server); err != nil {
-		remote.DomainResolver = &option.DomainResolveOptions{Server: "bootstrap"}
+	} else if address, err := netip.ParseAddrPort(dns); err == nil {
+		remote.Server = address.Addr().String()
+		remote.ServerPort = address.Port()
+	}
+	if transportType != C.DNSTypeHTTPS {
+		return []option.DNSServerOptions{{Type: transportType, Tag: tag, Options: &remote}}
+	}
+	if _, err := netip.ParseAddr(remote.Server); err != nil {
+		remote.DomainResolver = &option.DomainResolveOptions{Server: tag + "-bootstrap", Strategy: dnsStrategy[s.IPVersion]}
 	}
 	servers := []option.DNSServerOptions{
 		{
 			Type: C.DNSTypeHTTPS,
-			Tag:  "remote",
+			Tag:  tag,
 			Options: &option.RemoteHTTPSDNSServerOptions{
 				RemoteTLSDNSServerOptions: option.RemoteTLSDNSServerOptions{
-					RemoteDNSServerOptions:      remote,
-					OutboundTLSOptionsContainer: option.OutboundTLSOptionsContainer{TLS: tlsOpts},
+					RemoteDNSServerOptions: remote,
 				},
 				Path: u.EscapedPath(),
 			},
 		},
 	}
 	if remote.DomainResolver != nil {
-		servers = append(servers, option.DNSServerOptions{
-			Type: C.DNSTypeUDP,
-			Tag:  "bootstrap",
-			Options: &option.RemoteDNSServerOptions{
-				DNSServerAddressOptions: option.DNSServerAddressOptions{Server: defaultDNS(s.IPVersion)},
-			},
-		})
+		servers = append(servers, option.DNSServerOptions{Type: C.DNSTypeLocal, Tag: tag + "-bootstrap", Options: &option.LocalDNSServerOptions{}})
 	}
 	return servers
-}
-
-func defaultDNS(ipVersion string) string {
-	if ipVersion == "ipv6" {
-		return "2001:4860:4860::8888"
-	}
-	return domain.DefaultDNS
 }
 
 func listenAddr(s domain.Settings) netip.Addr {

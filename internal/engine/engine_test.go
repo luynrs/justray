@@ -76,23 +76,23 @@ func TestProbeEngine(t *testing.T) {
 		{ID: "n4", Protocol: domain.VLess, Server: "127.0.0.1", Port: 9994, Auth: domain.Auth{UUID: "11111111-1111-1111-1111-111111111111"}, Reality: &domain.Reality{PublicKey: "invalid-key"}},
 		{
 			ID: "ss-stls", Protocol: domain.SS, Server: "127.0.0.1", Port: 9995,
-			Auth: domain.Auth{Method: "aes-128-gcm", Password: "p"},
+			Auth:      domain.Auth{Method: "aes-128-gcm", Password: "p"},
 			ShadowTLS: &domain.ShadowTLS{Version: 3, Password: "p", SNI: "example.com"},
 		},
 		{
 			ID: "wg1", Protocol: domain.WG, Server: "127.0.0.1", Port: 51820,
 			WireGuard: &domain.WireGuard{
-				PrivateKey: "aGVsbG93b3JsZGhlbGxvd29ybGRoZWxsb3dvcmxkMTI=",
+				PrivateKey:    "aGVsbG93b3JsZGhlbGxvd29ybGRoZWxsb3dvcmxkMTI=",
 				PeerPublicKey: "aGVsbG93b3JsZGhlbGxvd29ybGRoZWxsb3dvcmxkMTI=",
-				Address: []string{"10.0.0.2/32"},
+				Address:       []string{"10.0.0.2/32"},
 			},
 		},
 		{
 			ID: "wg2", Protocol: domain.WG, Server: "127.0.0.1", Port: 51821,
 			WireGuard: &domain.WireGuard{
-				PrivateKey: "aGVsbG93b3JsZGhlbGxvd29ybGRoZWxsb3dvcmxkMTI=",
+				PrivateKey:    "aGVsbG93b3JsZGhlbGxvd29ybGRoZWxsb3dvcmxkMTI=",
 				PeerPublicKey: "aGVsbG93b3JsZGhlbGxvd29ybGRoZWxsb3dvcmxkMTI=",
-				Address: []string{"10.0.0.3/32"},
+				Address:       []string{"10.0.0.3/32"},
 			},
 		},
 	}
@@ -103,8 +103,8 @@ func TestProbeEngine(t *testing.T) {
 		res[id] = r
 		mu.Unlock()
 	})
-	if err != nil {
-		t.Fatalf("Probe: %v", err)
+	if err == nil {
+		t.Fatal("expected failed node errors")
 	}
 	if len(res) != len(nodes) {
 		t.Fatalf("expected %d results, got %d", len(nodes), len(res))
@@ -136,7 +136,7 @@ func TestDNSServers(t *testing.T) {
 	}
 	for _, tc := range tests {
 		s := domain.Settings{Connection: domain.Connection{DNS: tc.dns}}
-		servers := dnsServers(s, "proxy")
+		servers := dnsServers(s, "", "remote")
 		if len(servers) == 0 || servers[0].Type != tc.wantType {
 			t.Fatalf("%s: expected type %s, got %+v", tc.dns, tc.wantType, servers)
 		}
@@ -153,7 +153,7 @@ func TestDNSServers(t *testing.T) {
 			}
 		}
 		if tc.bootstrap {
-			if len(servers) < 2 || servers[1].Tag != "bootstrap" || servers[1].Type != "udp" {
+			if len(servers) < 2 || servers[1].Tag != "remote-bootstrap" || servers[1].Type != "local" {
 				t.Fatalf("%s: expected bootstrap resolver, got %+v", tc.dns, servers)
 			}
 		} else if len(servers) != 1 {

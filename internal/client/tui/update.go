@@ -70,9 +70,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err, m.errAt = msg.err.Error(), time.Now()
 			return m, nil
 		}
-		if msg.op != "probe" {
-			m.err = ""
-		}
+		m.err = ""
 		return m, nil
 
 	case pushed:

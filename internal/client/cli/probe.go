@@ -55,15 +55,15 @@ func (a *app) probe(cmd *cobra.Command, args []string) error {
 	}
 
 	stop := spin(spinnerText)
-	err = a.client.Probe(subID, nodeID)
+	probeErr := a.client.Probe(subID, nodeID)
 	stop()
-	if err != nil {
-		return err
-	}
 
 	snap, err := a.client.Snapshot()
 	if err != nil {
-		return err
+		return errors.Join(probeErr, err)
+	}
+	if probeErr != nil {
+		out(style.Dim.Render("Last known results"))
 	}
 
 	if nodeID != "" {
@@ -71,13 +71,17 @@ func (a *app) probe(cmd *cobra.Command, args []string) error {
 		if n.ID == "" {
 			return fmt.Errorf("node %q not found", nodeID)
 		}
-		done("Probed " + a.clean(n.Name))
-		lat := style.Dead.Render("t/o")
-		if n.Alive {
+		if probeErr == nil {
+			done("Probed " + a.clean(n.Name))
+		}
+		lat := style.Dim.Render("not tested")
+		if n.Probed && !n.Alive {
+			lat = style.Dead.Render("t/o")
+		} else if n.Probed {
 			lat = style.Alive.Render(fmt.Sprintf("%dms", n.MS))
 		}
 		fields(append([][2]string{{"Latency", lat}}, a.nodeFields(n)...)...)
-		return nil
+		return probeErr
 	}
 
 	nodes := snap.Nodes
@@ -89,16 +93,20 @@ func (a *app) probe(cmd *cobra.Command, args []string) error {
 		if len(subs) > 0 {
 			name = a.clean(subs[0].Name)
 		}
-		done("Probed " + name)
+		if probeErr == nil {
+			done("Probed " + name)
+		}
 	} else {
 		noun := "nodes"
 		if len(nodes) == 1 {
 			noun = "node"
 		}
-		done(fmt.Sprintf("Probed %d %s", len(nodes), noun))
+		if probeErr == nil {
+			done(fmt.Sprintf("Probed %d %s", len(nodes), noun))
+		}
 	}
 	a.showTree(subs, nodes)
-	return nil
+	return probeErr
 }
 
 func (a *app) completeProbe(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
