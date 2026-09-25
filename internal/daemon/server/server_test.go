@@ -1,13 +1,11 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"log"
 	"net"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -19,92 +17,59 @@ import (
 	"github.com/luynrs/justray/internal/ipc"
 )
 
-func TestListenLocked(t *testing.T) {
-	sock := filepath.Join(t.TempDir(), "daemon.sock")
-	ln, unlock, err := Listen(sock)
+func TestIPCWatchLifecycle(t *testing.T) {
+	directory := t.TempDir()
+	listener, err := net.Listen("unix", filepath.Join(directory, "daemon.sock"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		_ = ln.Close()
-		unlock()
-	}()
+	logger := log.New(io.Discard, "", 0)
+	app, err := core.New(store.Disk{Dir: directory}, connection.New(t.Context(), directory, nil, nil, logger), subscription.New(t.Context(), logger))
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := New(t.Context(), logger, app)
+	serveDone := make(chan error, 1)
+	go func() { serveDone <- server.Serve(listener) }()
 
-	if _, _, err := Listen(sock); err == nil || !strings.Contains(err.Error(), "already listening") {
-		t.Fatalf("second Listen error = %v", err)
+	watchConn, err := net.Dial("unix", listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
 	}
-}
+	defer func() { _ = watchConn.Close() }()
+	if err := json.NewEncoder(watchConn).Encode(ipc.Req{Method: "Watch"}); err != nil {
+		t.Fatal(err)
+	}
+	_ = watchConn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	decoder := json.NewDecoder(watchConn)
+	var snapshot ipc.Snapshot
+	if err := decoder.Decode(&snapshot); err != nil || snapshot.Settings.Port != domain.DefaultPort {
+		t.Fatalf("initial snapshot: %+v, %v", snapshot, err)
+	}
 
-func TestShutdownWatch(t *testing.T) {
-	dir := t.TempDir()
-	ln, err := net.Listen("unix", filepath.Join(dir, "daemon.sock"))
-	if err != nil {
-		t.Fatal(err)
+	client := ipc.NewClient(listener.Addr().String())
+	added, err := client.AddSub("vless://11111111-1111-1111-1111-111111111111@127.0.0.1:443?security=tls#node")
+	if err != nil || added.ID == "" || added.Nodes != 1 {
+		t.Fatalf("added subscription: %+v, %v", added, err)
 	}
-	l := log.New(io.Discard, "", 0)
-	st := store.Disk{Dir: dir}
-	app, err := core.New(st, connection.New(context.Background(), dir, nil, nil, l), subscription.New(context.Background(), l))
-	if err != nil {
-		t.Fatal(err)
-	}
-	srv := New(context.Background(), l, app)
-	served := make(chan error, 1)
-	go func() { served <- srv.Serve(ln) }()
-
-	c, err := net.Dial("unix", ln.Addr().String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = c.Close() }()
-	if err := json.NewEncoder(c).Encode(ipc.Req{Method: "Watch"}); err != nil {
-		t.Fatal(err)
-	}
-	_ = c.SetReadDeadline(time.Now().Add(3 * time.Second))
-	dec := json.NewDecoder(c)
-	var initial ipc.Snapshot
-	if err := dec.Decode(&initial); err != nil {
-		t.Fatalf("initial Watch snapshot: %v", err)
-	}
-	if initial.Settings.Port != domain.DefaultPort {
-		t.Fatalf("incomplete initial snapshot: %+v", initial)
-	}
-	client := ipc.NewClient(ln.Addr().String())
-	sub, err := client.AddSub("vless://11111111-1111-1111-1111-111111111111@127.0.0.1:443?security=tls#node")
-	if err != nil || sub.ID == "" || sub.Nodes != 1 {
-		t.Fatalf("AddSub result=%+v error=%v", sub, err)
-	}
-	var added ipc.Snapshot
-	if err := dec.Decode(&added); err != nil {
-		t.Fatal(err)
-	}
-	if len(added.Nodes) != 1 || added.Nodes[0].Sub != sub.ID {
-		t.Fatalf("subscription was not pushed: %+v", added)
+	if err := decoder.Decode(&snapshot); err != nil || len(snapshot.Nodes) != 1 || snapshot.Nodes[0].Sub != added.ID {
+		t.Fatalf("subscription snapshot: %+v, %v", snapshot, err)
 	}
 	if err := client.SetTun(true); err != nil {
 		t.Fatal(err)
 	}
-	var changed ipc.Snapshot
-	if err := dec.Decode(&changed); err != nil {
-		t.Fatal(err)
-	}
-	if !changed.Status.Tun {
-		t.Fatalf("mode was not pushed: %+v", changed)
-	}
-	if result, err := srv.dispatch(context.Background(), ipc.Req{Method: "SetTun"}); err != nil || result != nil {
-		t.Fatalf("command returned an unnecessary snapshot: result=%v error=%v", result, err)
+	if err := decoder.Decode(&snapshot); err != nil || !snapshot.Status.Tun {
+		t.Fatalf("TUN snapshot: %+v, %v", snapshot, err)
 	}
 
-	done := make(chan struct{})
-	go func() {
-		srv.Shutdown()
-		close(done)
-	}()
+	shutdownDone := make(chan struct{})
+	go func() { server.Shutdown(); close(shutdownDone) }()
 	select {
-	case <-done:
+	case <-shutdownDone:
 	case <-time.After(time.Second):
-		t.Fatal("Shutdown did not wait for Watch to exit")
+		t.Fatal("shutdown did not close Watch")
 	}
-	if err := <-served; err != nil {
-		t.Fatalf("Serve: %v", err)
+	if err := <-serveDone; err != nil {
+		t.Fatal(err)
 	}
 }

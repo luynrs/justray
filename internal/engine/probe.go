@@ -1,7 +1,6 @@
 package engine
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -42,7 +41,6 @@ func Probe(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath 
 	defer func() { _ = inst.Close() }()
 
 	sem := make(chan struct{}, min(len(nodes), maxProbeWorkers))
-	failures := make([]error, len(nodes))
 	var wg sync.WaitGroup
 	for i, n := range nodes {
 		tag := ProbeTag(i)
@@ -53,7 +51,6 @@ func Probe(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath 
 			dialer = ep
 		}
 		if dialer == nil {
-			failures[i] = fmt.Errorf("%s: invalid node configuration", cmp.Or(n.Name, n.ID))
 			onResult(n.ID, Result{})
 			continue
 		}
@@ -68,13 +65,13 @@ func Probe(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath 
 
 			ms, err := delay(ctx, dialer, s.ProbeURL)
 			if err != nil {
-				failures[i] = fmt.Errorf("%s: %w", cmp.Or(n.Name, n.ID), err)
+				ms = 0
 			}
 			onResult(n.ID, Result{Alive: err == nil, MS: ms})
 		})
 	}
 	wg.Wait()
-	return errors.Join(ctx.Err(), errors.Join(failures...))
+	return ctx.Err()
 }
 
 func delay(ctx context.Context, dialer N.Dialer, url string) (int, error) {

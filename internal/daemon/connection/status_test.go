@@ -22,60 +22,60 @@ func TestRestoreFallback(t *testing.T) {
 		t.Skip("requires a process without TUN privileges")
 	}
 	var logs bytes.Buffer
-	eng := &fakeEngine{tunErr: permission}
-	s := New(context.Background(), t.TempDir(), func(context.Context, string) engine.Engine { return eng }, nil, log.New(&logs, "", 0))
+	fake := &fakeEngine{tunErr: permission}
+	service := New(t.Context(), t.TempDir(), func(context.Context, string) engine.Engine { return fake }, nil, log.New(&logs, "", 0))
 	settings, _ := (domain.Settings{}).Normalize()
-	ref := domain.NodeRef{NodeID: "n"}
-	s.Restore(domain.Node{ID: "n"}, ref, settings, true)
-	st := s.Status()
-	if st.Connected {
-		t.Fatalf("expected disconnected when TUN needs elevation, got status=%+v", st)
+	reference := domain.NodeRef{NodeID: "node"}
+	service.Restore(domain.Node{ID: "node"}, reference, settings, true)
+	status := service.Status()
+	if status.Connected {
+		t.Fatalf("expected disconnected when TUN needs elevation, got status=%+v", status)
 	}
 	if !strings.Contains(logs.String(), "tun requires elevation") {
 		t.Fatalf("elevation requirement was not logged: %s", logs.String())
 	}
 	select {
-	case <-s.RestartRequested():
+	case <-service.RestartRequested():
 		t.Fatal("Restore requested elevation")
 	default:
 	}
 }
 
 func TestStatusDuringEngineOperations(t *testing.T) {
-	eng := &fakeEngine{}
-	s := testService(t, nil)
-	s.newEngine = func(context.Context, string) engine.Engine { return eng }
+	fake := &fakeEngine{}
+	service := testService(t, nil)
+	service.newEngine = func(context.Context, string) engine.Engine { return fake }
 	settings, _ := (domain.Settings{}).Normalize()
-	ref := domain.NodeRef{NodeID: "n"}
+	reference := domain.NodeRef{NodeID: "node"}
 
-	for _, op := range []string{"connect", "apply", "disconnect"} {
-		t.Run(op, func(t *testing.T) {
+	for _, operation := range []string{"connect", "apply", "disconnect"} {
+		t.Run(operation, func(t *testing.T) {
 			entered, release := make(chan struct{}), make(chan struct{})
 			block := func() { close(entered); <-release }
-			previous := s.Status()
+			previous := service.Status()
 			var run func() error
-			switch op {
+			switch operation {
 			case "connect":
-				eng.applying = block
-				run = func() error { return s.Connect(context.Background(), domain.Node{ID: "n"}, ref, settings, false) }
+				fake.applying = block
+				run = func() error { return service.Connect(t.Context(), domain.Node{ID: "node"}, reference, settings, false) }
 			case "apply":
-				eng.applying = block
+				fake.applying = block
 				settings.Port++
-				run = func() error { return s.Apply(context.Background(), domain.Node{ID: "n"}, ref, settings, false) }
+				run = func() error { return service.Apply(t.Context(), domain.Node{ID: "node"}, reference, settings, false) }
 			case "disconnect":
-				eng.stopping = block
-				run = func() error { return s.Disconnect(context.Background()) }
+				fake.stopping = block
+				run = func() error { return service.Disconnect(t.Context()) }
 				previous = ipc.Status{}
 			}
 			done := make(chan error, 1)
 			go func() { done <- run() }()
 			<-entered
 			read := make(chan ipc.Status, 1)
-			go func() { read <- s.Status() }()
+			go func() { read <- service.Status() }()
 			select {
-			case st := <-read:
-				if st != previous {
-					t.Errorf("in-flight status=%+v, want %+v", st, previous)
+			case status := <-read:
+				if status != previous {
+					t.Errorf("in-flight status=%+v, want %+v", status, previous)
 				}
 			case <-time.After(time.Second):
 				t.Error("status read blocked on the engine")
@@ -84,7 +84,7 @@ func TestStatusDuringEngineOperations(t *testing.T) {
 			if err := <-done; err != nil {
 				t.Fatal(err)
 			}
-			eng.applying, eng.stopping = nil, nil
+			fake.applying, fake.stopping = nil, nil
 		})
 	}
 }
