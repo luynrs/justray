@@ -10,7 +10,7 @@ require (
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/miekg/dns v1.1.73
 	github.com/sagernet/netlink v0.0.0-20260814022025-64455d367bbf
-	github.com/sagernet/sing v0.9.3
+	github.com/sagernet/sing v0.9.5
 	github.com/sagernet/sing-box v1.14.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/sys v0.48.0
