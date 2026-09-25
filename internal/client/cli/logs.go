@@ -133,4 +133,3 @@ func followFile(ctx context.Context, w *fsnotify.Watcher, path string, out io.Wr
 		}
 	}
 }
-

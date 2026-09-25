@@ -85,7 +85,7 @@ func TestDNSResolution(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			defer conn.Close()
+			defer func() { _ = conn.Close() }()
 			_, _ = stream.WriteString("HTTP/1.1 200 Connection Established\r\n\r\n")
 			if err := stream.Flush(); err != nil {
 				t.Error(err)
@@ -190,7 +190,7 @@ func TestDNSRouting(t *testing.T) {
 	}
 	hijacked := false
 	for _, rule := range options.Route.Rules {
-		if rule.DefaultOptions.RuleAction.Action == C.RuleActionTypeHijackDNS {
+		if rule.DefaultOptions.Action == C.RuleActionTypeHijackDNS {
 			hijacked = true
 		}
 	}

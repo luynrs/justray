@@ -83,7 +83,6 @@ type singboxTransportConfig struct {
 	Mode        string            `json:"mode"`
 }
 
-
 var singboxProtos = map[string]domain.Proto{
 	"vless": domain.VLess, "vmess": domain.VMess, "trojan": domain.Trojan,
 	"shadowsocks": domain.SS, "hysteria": domain.HY1, "hysteria2": domain.HY2,

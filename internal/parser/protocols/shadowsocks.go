@@ -91,7 +91,6 @@ func ParseShadowsocks(uri string) (domain.Node, error) {
 	return n, nil
 }
 
-
 func parsePluginQuery(query string) string {
 	qv, err := url.ParseQuery(query)
 	if err == nil && qv.Get("plugin") != "" {
