@@ -119,7 +119,6 @@ func ParseSingBox(raw []byte) ([]domain.Node, error) {
 		if err != nil {
 			continue
 		}
-		node.ID = NodeID(node)
 		nodes = append(nodes, node)
 	}
 	if len(nodes) == 0 {

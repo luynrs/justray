@@ -64,12 +64,7 @@ func ParseURI(uri string) (domain.Node, error) {
 	if parse == nil {
 		return domain.Node{}, fmt.Errorf("unknown scheme in %.80q", uri)
 	}
-	n, err := parse(strings.TrimSpace(uri))
-	if err != nil {
-		return domain.Node{}, err
-	}
-	n.ID = protocols.NodeID(n)
-	return n, nil
+	return parse(strings.TrimSpace(uri))
 }
 
 func ParseSubscription(raw []byte) ([]domain.Node, error) {

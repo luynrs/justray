@@ -288,7 +288,6 @@ func clashNode(p clashProxy) (domain.Node, error) {
 	default:
 		return domain.Node{}, fmt.Errorf("clash: unsupported type %q", p.Type)
 	}
-	n.ID = NodeID(n)
 	return n, nil
 }
 

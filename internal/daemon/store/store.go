@@ -12,6 +12,7 @@ import (
 	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/ipc"
 	"github.com/luynrs/justray/internal/parser"
+	"github.com/luynrs/justray/internal/parser/protocols"
 )
 
 type Subscription struct {
@@ -86,10 +87,10 @@ func (d Disk) Load() (PersistentState, error) {
 						directNodes = append(directNodes, node)
 					}
 				}
-				if state.Active.SubscriptionID == sub.ID || (state.Active.SubscriptionID == "" && slices.ContainsFunc(sub.Nodes, func(n domain.Node) bool { return n.ID == state.Active.NodeID })) {
+				if state.Active.SubscriptionID == sub.ID {
 					state.Active.SubscriptionID = "default"
 				}
-				if state.Last.SubscriptionID == sub.ID || (state.Last.SubscriptionID == "" && slices.ContainsFunc(sub.Nodes, func(n domain.Node) bool { return n.ID == state.Last.NodeID })) {
+				if state.Last.SubscriptionID == sub.ID {
 					state.Last.SubscriptionID = "default"
 				}
 				continue
@@ -108,6 +109,48 @@ func (d Disk) Load() (PersistentState, error) {
 			}
 		}
 		state.Subscriptions = subs
+		uniqueIDs := make(map[string]string)
+		for _, sub := range subs {
+			for _, node := range sub.Nodes {
+				if id, ok := uniqueIDs[node.ID]; ok && id != sub.ID {
+					uniqueIDs[node.ID] = ""
+				} else if !ok {
+					uniqueIDs[node.ID] = sub.ID
+				}
+			}
+		}
+		oldActive, oldLast := state.Active, state.Last
+		for i := range state.Subscriptions {
+			sub := &state.Subscriptions[i]
+			seen := make(map[string]int, len(sub.Nodes))
+			nodes := sub.Nodes[:0]
+			var activeKey, lastKey string
+			for _, node := range sub.Nodes {
+				key := protocols.NodeKey(node)
+				if node.ID == oldActive.NodeID && oldActive.NodeID != "" && (oldActive.SubscriptionID == sub.ID || oldActive.SubscriptionID == "" && uniqueIDs[node.ID] == sub.ID) {
+					activeKey = key
+				}
+				if node.ID == oldLast.NodeID && oldLast.NodeID != "" && (oldLast.SubscriptionID == sub.ID || oldLast.SubscriptionID == "" && uniqueIDs[node.ID] == sub.ID) {
+					lastKey = key
+				}
+				if index, ok := seen[key]; ok {
+					if node.ID == oldActive.NodeID && nodes[index].ID != node.ID && activeKey == key {
+						nodes[index] = node
+					}
+					continue
+				}
+				seen[key] = len(nodes)
+				nodes = append(nodes, node)
+			}
+			clear(sub.Nodes[len(nodes):])
+			sub.Nodes = nodes
+			if activeKey != "" {
+				state.Active = domain.NodeRef{SubscriptionID: sub.ID, NodeID: nodes[seen[activeKey]].ID}
+			}
+			if lastKey != "" {
+				state.Last = domain.NodeRef{SubscriptionID: sub.ID, NodeID: nodes[seen[lastKey]].ID}
+			}
+		}
 	} else if !os.IsNotExist(stateErr) {
 		return state, stateErr
 	}
@@ -191,5 +234,11 @@ func write(path string, data []byte) error {
 func NewID() string {
 	var b [4]byte
 	rand.Read(b[:]) // documented never to fail
+	return hex.EncodeToString(b[:])
+}
+
+func NewNodeID() string {
+	var b [16]byte
+	rand.Read(b[:])
 	return hex.EncodeToString(b[:])
 }

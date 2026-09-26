@@ -20,10 +20,12 @@ type fakeEngine struct {
 	closeErr error
 	stopped  bool
 	spec     engine.SessionSpec
+	applies  int
 }
 
 func (fake *fakeEngine) Apply(_ context.Context, spec engine.SessionSpec) error {
 	fake.spec = spec
+	fake.applies++
 	return nil
 }
 func (fake *fakeEngine) Stop() error   { fake.stopped = true; return fake.closeErr }
