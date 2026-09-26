@@ -16,7 +16,6 @@ import (
 	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/engine/outbound"
 	"github.com/luynrs/justray/internal/platform/link"
-	"github.com/luynrs/justray/internal/platform/wintun"
 )
 
 type Box struct {
@@ -157,9 +156,6 @@ func (e *Box) apply(ctx context.Context, n domain.Node) error {
 }
 
 func (e *Box) tunAdd() error {
-	if _, err := wintun.Ensure(); err != nil {
-		return err
-	}
 	inb := TunInbound(e.settings)
 	logger := e.inst.LogFactory().NewLogger("inbound/tun[tun-in]")
 
