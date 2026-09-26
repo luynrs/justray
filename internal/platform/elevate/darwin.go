@@ -22,24 +22,20 @@ func Restart(_ string) error {
 	if err != nil {
 		return err
 	}
-	if !sameHelper(self) {
-		script := `set source to system attribute "JUSTRAY_SOURCE"
-	do shell script "/usr/bin/install -d -o root -g wheel -m 0755 /Library/PrivilegedHelperTools && /usr/bin/install -o root -g wheel -m 0755 " & quoted form of source & " ` + helper + `" with administrator privileges`
-		cmd := exec.Command("osascript", "-e", script)
-		cmd.Env = append(os.Environ(), "JUSTRAY_SOURCE="+self)
-		if output, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("install helper failed (%w, %s)", err, strings.TrimSpace(string(output)))
-		}
-	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return err
 	}
-	command := "HOME=" + shellQuote(home) + " JUSTRAY_UID=" + strconv.Itoa(os.Getuid()) + " JUSTRAY_GID=" + strconv.Itoa(os.Getgid()) + " /usr/bin/nohup " + shellQuote(helper)
+	command := "HOME=" + shellQuote(home) + " JUSTRAY_UID=" + strconv.Itoa(os.Getuid()) + " JUSTRAY_GID=" + strconv.Itoa(os.Getgid()) + " " + shellQuote(helper)
 	for _, arg := range os.Args[1:] {
 		command += " " + shellQuote(arg)
 	}
-	command += " >/dev/null 2>&1 &"
+	command += " </dev/null >/dev/null 2>&1 &"
+	if !sameHelper(self) {
+		command = "/usr/bin/install -d -o root -g wheel -m 0755 /Library/PrivilegedHelperTools && " +
+			"/usr/bin/install -o root -g wheel -m 0755 " + shellQuote(self) + " " + helper +
+			" && { " + command + " }"
+	}
 	script := `do shell script "` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(command) + `" with administrator privileges`
 	if output, err := exec.Command("osascript", "-e", script).CombinedOutput(); err != nil {
 		return fmt.Errorf("start helper failed (%w, %s)", err, strings.TrimSpace(string(output)))

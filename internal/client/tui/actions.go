@@ -32,7 +32,7 @@ func (m Model) activate() (tea.Model, tea.Cmd) {
 	act := m.client.Disconnect
 	if !m.connected() || m.snapshot.Status.NodeRef != r.Node.Ref() {
 		ref := r.Node.Ref()
-		act = func() error { return m.client.Connect(ref) }
+		act = func() error { return m.client.Connect(ref, nil) }
 	}
 	return m, actionCmd("connection", m.start, act)
 }

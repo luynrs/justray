@@ -84,7 +84,9 @@ func main() {
 			logger.Fatalf("startup failed (%v)", err)
 		}
 		srv := server.New(ctx, logger, app)
-		app.Restore()
+		if err := app.Restore(); err != nil {
+			logger.Fatalf("restore failed (%v)", err)
+		}
 
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)

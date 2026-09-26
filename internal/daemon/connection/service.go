@@ -38,11 +38,11 @@ func New(ctx context.Context, dir string, newEngine func(context.Context, string
 }
 
 func (s *Service) Connect(ctx context.Context, n domain.Node, ref domain.NodeRef, settings domain.Settings, tun bool) error {
-	return s.requestElevation(s.apply(ctx, n, ref, settings, tun, true), tun)
+	return elevationError(s.apply(ctx, n, ref, settings, tun, true), tun)
 }
 
 func (s *Service) Apply(ctx context.Context, n domain.Node, ref domain.NodeRef, settings domain.Settings, tun bool) error {
-	return s.requestElevation(s.apply(ctx, n, ref, settings, tun, false), tun)
+	return elevationError(s.apply(ctx, n, ref, settings, tun, false), tun)
 }
 
 func (s *Service) Disconnect(ctx context.Context) error {
@@ -82,6 +82,13 @@ func (s *Service) Probe(ctx context.Context, nodes []domain.Node, settings domai
 }
 
 func (s *Service) RestartRequested() <-chan struct{} { return s.restart }
+
+func (s *Service) RequestRestart() {
+	select {
+	case s.restart <- struct{}{}:
+	default:
+	}
+}
 
 func (s *Service) Shutdown() {
 	if err := s.stop(); err != nil {
@@ -155,12 +162,8 @@ func (s *Service) stop() error {
 	return nil
 }
 
-func (s *Service) requestElevation(err error, tun bool) error {
+func elevationError(err error, tun bool) error {
 	if tun && elevate.Needed(err) {
-		select {
-		case s.restart <- struct{}{}:
-		default:
-		}
 		return ipc.ErrElevate
 	}
 	return err

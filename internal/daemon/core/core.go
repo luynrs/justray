@@ -69,19 +69,29 @@ type refreshCall struct {
 	err  error
 }
 
-func (c *Core) Restore() {
+func (c *Core) Restore() error {
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
 	state := c.current()
-	if state.Active.NodeID == "" {
-		return
+	if state.Pending != nil {
+		if node, ref, err := find(state.Subscriptions, state.Pending.Ref); err == nil {
+			c.conn.Restore(node, ref, state.Settings, state.Pending.Tun)
+			if status := c.conn.Status(); status.Connected && status.NodeRef == ref && status.Tun == state.Pending.Tun {
+				state.Active, state.Last, state.Tun = ref, ref, state.Pending.Tun
+			}
+		}
+		state.Pending = nil
+		if err := c.commit(state); err != nil {
+			return err
+		}
 	}
-	n, ref, err := find(state.Subscriptions, state.Active)
-	if err != nil {
-		return
+	if !c.conn.Status().Connected && state.Active.NodeID != "" {
+		if node, ref, err := find(state.Subscriptions, state.Active); err == nil {
+			c.conn.Restore(node, ref, state.Settings, state.Tun)
+		}
 	}
-	c.conn.Restore(n, ref, state.Settings, state.Tun)
 	c.publish()
+	return nil
 }
 
 func (c *Core) Shutdown() {
@@ -206,7 +216,7 @@ func (c *Core) AddSubscription(ctx context.Context, rawURL string) (ipc.Sub, err
 			next.Subscriptions = append(next.Subscriptions, store.Subscription{ID: "default", Name: "Default"})
 		}
 		sub.Nodes = assignNodeIDs(sub.Nodes, next.Subscriptions[i].Nodes)
-		updatedActive = next.Active.SubscriptionID == "default" && next.Active.NodeID == sub.Nodes[0].ID
+		updatedActive = c.conn.Status().NodeRef == (domain.NodeRef{SubscriptionID: "default", NodeID: sub.Nodes[0].ID})
 		for _, node := range sub.Nodes {
 			if idx := slices.IndexFunc(next.Subscriptions[i].Nodes, func(n domain.Node) bool { return n.ID == node.ID }); idx >= 0 {
 				next.Subscriptions[i].Nodes[idx] = node
@@ -307,10 +317,8 @@ func (c *Core) RemoveNode(ref domain.NodeRef) error {
 	}
 	ref.SubscriptionID = next.Subscriptions[i].ID
 	next.Subscriptions[i].Nodes = slices.DeleteFunc(slices.Clone(next.Subscriptions[i].Nodes), func(node domain.Node) bool { return node.ID == ref.NodeID })
-	var dropConn bool
 	if next.Active.NodeID == ref.NodeID && (next.Active.SubscriptionID == ref.SubscriptionID || next.Active.SubscriptionID == "") {
 		next.Active = domain.NodeRef{}
-		dropConn = true
 	}
 	if next.Last.NodeID == ref.NodeID && (next.Last.SubscriptionID == ref.SubscriptionID || next.Last.SubscriptionID == "") {
 		next.Last = domain.NodeRef{}
@@ -319,7 +327,7 @@ func (c *Core) RemoveNode(ref domain.NodeRef) error {
 		return err
 	}
 	var cleanupErr error
-	if dropConn || c.conn.Status().NodeRef == ref {
+	if c.conn.Status().NodeRef == ref {
 		cleanupErr = c.conn.Disconnect(context.Background())
 	}
 	c.publish()
@@ -395,10 +403,10 @@ func (c *Core) sanitizeRefs(state *store.PersistentState, updated store.Subscrip
 	nodeExists := func(ref domain.NodeRef) bool {
 		return slices.ContainsFunc(updated.Nodes, func(n domain.Node) bool { return n.ID == ref.NodeID })
 	}
-	var dropConn bool
+	status := c.conn.Status()
+	dropConn := status.Connected && status.NodeRef.SubscriptionID == updated.ID && !nodeExists(status.NodeRef)
 	if state.Active.SubscriptionID == updated.ID && state.Active.NodeID != "" && !nodeExists(state.Active) {
 		state.Active = domain.NodeRef{}
-		dropConn = true
 	}
 	if state.Last.SubscriptionID == updated.ID && state.Last.NodeID != "" && !nodeExists(state.Last) {
 		state.Last = domain.NodeRef{}
@@ -457,30 +465,34 @@ func (c *Core) refresh(ctx context.Context, sub store.Subscription) (err error) 
 	if dropConn {
 		return c.conn.Disconnect(ctx)
 	}
-	if next.Active.SubscriptionID == sub.ID {
+	if c.conn.Status().NodeRef.SubscriptionID == sub.ID {
 		return c.apply(ctx, next, c.conn.Status().Tun)
 	}
 	return nil
 }
 
-func (c *Core) Connect(ctx context.Context, nodeID, subscriptionID string) error {
+func (c *Core) Connect(ctx context.Context, nodeID, subscriptionID string, mode *bool) error {
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	next := c.current()
+	previous := c.current()
+	before := c.conn.Status()
+	if before.Connected {
+		previous.Active, previous.Last, previous.Tun = before.NodeRef, before.NodeRef, before.Tun
+	}
+	previous.Pending = nil
+	next := previous
 	n, ref, err := find(next.Subscriptions, domain.NodeRef{SubscriptionID: subscriptionID, NodeID: nodeID})
 	if err != nil {
 		return err
 	}
 	next.Active, next.Last = ref, ref
-	if saveErr := c.commit(next); saveErr != nil {
-		return saveErr
+	if mode != nil {
+		next.Tun = *mode
 	}
-	applyErr := c.conn.Connect(ctx, n, ref, next.Settings, next.Tun)
-	c.publish()
-	return applyErr
+	return c.finishConnection(ctx, previous, next, before, c.conn.Connect(ctx, n, ref, next.Settings, next.Tun))
 }
 
 func (c *Core) Disconnect(ctx context.Context) error {
@@ -491,6 +503,7 @@ func (c *Core) Disconnect(ctx context.Context) error {
 	}
 	next := c.current()
 	next.Active = domain.NodeRef{}
+	next.Pending = nil
 	if err := c.commit(next); err != nil {
 		return err
 	}
@@ -505,14 +518,60 @@ func (c *Core) SetTun(ctx context.Context, enable bool) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	next := c.current()
+	previous := c.current()
+	before := c.conn.Status()
+	if before.Connected {
+		previous.Active, previous.Last, previous.Tun = before.NodeRef, before.NodeRef, before.Tun
+	}
+	previous.Pending = nil
+	next := previous
 	next.Tun = enable
-	if err := c.commit(next); err != nil {
+	var applyErr error
+	if before.Connected && before.Tun != enable {
+		node, ref, err := find(next.Subscriptions, before.NodeRef)
+		if err != nil {
+			return err
+		}
+		applyErr = c.conn.Apply(ctx, node, ref, next.Settings, enable)
+	}
+	return c.finishConnection(ctx, previous, next, before, applyErr)
+}
+
+func (c *Core) finishConnection(ctx context.Context, previous, next store.PersistentState, before ipc.Status, err error) error {
+	switch {
+	case err == nil:
+		if saveErr := c.commit(next); saveErr != nil {
+			err = errors.Join(saveErr, c.restoreLive(ctx, previous, before))
+		}
+	case errors.Is(err, ipc.ErrElevate):
+		previous.Pending = &store.Pending{Ref: next.Active, Tun: next.Tun}
+		if saveErr := c.commit(previous); saveErr != nil {
+			err = errors.Join(saveErr, c.restoreLive(ctx, previous, before))
+		} else {
+			c.conn.RequestRestart()
+		}
+	default:
+		saveErr := c.commit(previous)
+		err = errors.Join(err, saveErr, c.restoreLive(ctx, previous, before))
+	}
+	c.publish()
+	return err
+}
+
+func (c *Core) restoreLive(ctx context.Context, state store.PersistentState, before ipc.Status) error {
+	status := c.conn.Status()
+	if status.Connected == before.Connected && status.NodeRef == before.NodeRef && status.Tun == before.Tun {
+		return nil
+	}
+	ctx = context.WithoutCancel(ctx)
+	if !before.Connected {
+		return c.conn.Disconnect(ctx)
+	}
+	node, ref, err := find(state.Subscriptions, before.NodeRef)
+	if err != nil {
 		return err
 	}
-	applyErr := c.apply(ctx, next, enable)
-	c.publish()
-	return applyErr
+	return c.conn.Connect(ctx, node, ref, state.Settings, before.Tun)
 }
 
 func (c *Core) SetSettings(ctx context.Context, settings domain.Settings) error {
@@ -635,14 +694,19 @@ func (c *Core) publishLocked() {
 }
 
 func (c *Core) apply(ctx context.Context, state store.PersistentState, tun bool) error {
-	if !c.conn.Status().Connected || state.Active.NodeID == "" {
+	status := c.conn.Status()
+	if !status.Connected {
 		return nil
 	}
-	node, ref, err := find(state.Subscriptions, state.Active)
+	node, ref, err := find(state.Subscriptions, status.NodeRef)
 	if err != nil {
 		return err
 	}
-	return c.conn.Apply(ctx, node, ref, state.Settings, tun)
+	err = c.conn.Apply(ctx, node, ref, state.Settings, tun)
+	if errors.Is(err, ipc.ErrElevate) {
+		c.conn.RequestRestart()
+	}
+	return err
 }
 
 func (c *Core) status(state store.PersistentState) ipc.Status {

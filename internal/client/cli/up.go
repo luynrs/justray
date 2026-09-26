@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/ipc"
 )
 
@@ -83,14 +84,9 @@ func (a *app) connectNode(ctx context.Context, key string, mode *bool) error {
 
 func (a *app) connect(ctx context.Context, n ipc.Node, mode *bool) error {
 	spinText := "Connecting to " + a.clean(n.Name)
-	if mode != nil {
-		if _, err := a.runOp(ctx, spinText, func() error { return a.client.SetTun(*mode) }, mode); err != nil {
-			return err
-		}
-	}
 	st, err := a.runOp(ctx, spinText, func() error {
-		return a.client.Connect(n.Ref())
-	}, mode)
+		return a.client.Connect(n.Ref(), mode)
+	}, n.Ref(), mode)
 	if err != nil {
 		return err
 	}
@@ -98,8 +94,7 @@ func (a *app) connect(ctx context.Context, n ipc.Node, mode *bool) error {
 	return nil
 }
 
-// runOp waits out the daemon re-execing itself with tun caps
-func (a *app) runOp(ctx context.Context, text string, op func() error, want *bool) (ipc.Status, error) {
+func (a *app) runOp(ctx context.Context, text string, op func() error, ref domain.NodeRef, want *bool) (ipc.Status, error) {
 	status := func() (ipc.Status, error) {
 		snapshot, err := a.client.Snapshot()
 		return snapshot.Status, err
@@ -108,26 +103,27 @@ func (a *app) runOp(ctx context.Context, text string, op func() error, want *boo
 	err := op()
 	stop()
 	if err == nil {
-		return status()
+		st, err := status()
+		if err == nil && (!st.Connected || st.NodeRef != ref || want != nil && st.Tun != *want) {
+			return st, errors.New("requested connection is not active")
+		}
+		return st, err
 	}
 	if err.Error() != ipc.ErrElevate.Error() {
 		return ipc.Status{}, err
 	}
 	stop = spin("Granting permissions")
 	defer stop()
-	st, err := awaitElevate(ctx, status, want, 30*time.Second)
-	if err == nil && want != nil && (!st.Connected || st.Tun != *want) {
-		if err := op(); err != nil {
-			return ipc.Status{}, err
-		}
-		return status()
+	if want == nil {
+		tun := true
+		want = &tun
 	}
-	return st, err
+	return awaitElevate(ctx, status, ref, want, 30*time.Second)
 }
 
 var elevatePoll = 500 * time.Millisecond
 
-func awaitElevate(ctx context.Context, status func() (ipc.Status, error), want *bool, timeout time.Duration) (ipc.Status, error) {
+func awaitElevate(ctx context.Context, status func() (ipc.Status, error), ref domain.NodeRef, want *bool, timeout time.Duration) (ipc.Status, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -137,10 +133,10 @@ func awaitElevate(ctx context.Context, status func() (ipc.Status, error), want *
 		switch {
 		case err != nil: // daemon mid exec-restart
 			pending = true
+		case st.Connected && st.NodeRef == ref && (want == nil || st.Tun == *want):
+			return st, nil
 		case pending:
-			return st, nil
-		case st.Connected && (want == nil || st.Tun == *want):
-			return st, nil
+			return st, errors.New("daemon restarted without requested connection")
 		}
 		select {
 		case <-ctx.Done():
@@ -154,13 +150,9 @@ func awaitElevate(ctx context.Context, status func() (ipc.Status, error), want *
 }
 
 func (a *app) switchMode(ctx context.Context, st ipc.Status, tun bool) error {
-	if st.Tun == tun {
-		a.report(upperFirst(state(st)), st)
-		return nil
-	}
 	next, err := a.runOp(ctx, "Switching to "+strings.ToUpper(modeWord(tun)), func() error {
 		return a.client.SetTun(tun)
-	}, &tun)
+	}, st.NodeRef, &tun)
 	if err != nil {
 		return err
 	}
