@@ -51,9 +51,6 @@ func TestParseURI(t *testing.T) {
 			if node.Protocol != testCase.protocol || node.Server != testCase.server || node.Port != testCase.port {
 				t.Fatalf("got %s %s:%d, want %s %s:%d", node.Protocol, node.Server, node.Port, testCase.protocol, testCase.server, testCase.port)
 			}
-			if len(node.ID) != 16 {
-				t.Fatalf("node ID %q has length %d, want 16", node.ID, len(node.ID))
-			}
 			if testCase.protocol == domain.WG && (node.WireGuard == nil || len(node.WireGuard.Address) == 0) {
 				t.Fatal("missing WireGuard settings")
 			}

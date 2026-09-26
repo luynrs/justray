@@ -19,7 +19,7 @@ func probeCore(t *testing.T, n int, probe func(context.Context, []domain.Node, d
 	t.Helper()
 	nodes := make([]domain.Node, n)
 	for i := range nodes {
-		nodes[i] = domain.Node{ID: fmt.Sprint(i), Name: "example node", Server: "127.0.0.1", Port: 443}
+		nodes[i] = domain.Node{ID: fmt.Sprint(i), Name: "example node", Server: fmt.Sprintf("node-%d.example", i), Port: 443}
 	}
 	app := testCore(t, &fakeEngine{}, store.PersistentState{Subscriptions: []store.Subscription{{ID: "s", Nodes: nodes}}})
 	app.conn = connection.New(context.Background(), t.TempDir(), nil, probe, log.New(io.Discard, "", 0))

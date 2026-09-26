@@ -17,6 +17,7 @@ import (
 	"github.com/luynrs/justray/internal/engine"
 	"github.com/luynrs/justray/internal/ipc"
 	"github.com/luynrs/justray/internal/parser"
+	"github.com/luynrs/justray/internal/parser/protocols"
 	"github.com/luynrs/justray/internal/platform/autostart"
 )
 
@@ -196,12 +197,16 @@ func (c *Core) AddSubscription(ctx context.Context, rawURL string) (ipc.Sub, err
 		return ipc.Sub{}, err
 	}
 	next := c.current()
-	if parser.IsLink(sub.URL) {
+	direct := parser.IsLink(sub.URL)
+	updatedActive := false
+	if direct {
 		i := slices.IndexFunc(next.Subscriptions, func(s store.Subscription) bool { return s.ID == "default" })
 		if i < 0 {
 			i = len(next.Subscriptions)
 			next.Subscriptions = append(next.Subscriptions, store.Subscription{ID: "default", Name: "Default"})
 		}
+		sub.Nodes = assignNodeIDs(sub.Nodes, next.Subscriptions[i].Nodes)
+		updatedActive = next.Active.SubscriptionID == "default" && next.Active.NodeID == sub.Nodes[0].ID
 		for _, node := range sub.Nodes {
 			if idx := slices.IndexFunc(next.Subscriptions[i].Nodes, func(n domain.Node) bool { return n.ID == node.ID }); idx >= 0 {
 				next.Subscriptions[i].Nodes[idx] = node
@@ -211,13 +216,42 @@ func (c *Core) AddSubscription(ctx context.Context, rawURL string) (ipc.Sub, err
 		}
 		sub = next.Subscriptions[i]
 	} else {
+		sub.Nodes = assignNodeIDs(sub.Nodes, nil)
 		next.Subscriptions = append(next.Subscriptions, sub)
 	}
 	if err := c.commit(next); err != nil {
 		return ipc.Sub{}, err
 	}
+	var applyErr error
+	if updatedActive {
+		applyErr = c.apply(ctx, next, c.conn.Status().Tun)
+	}
 	c.publish()
-	return subView(sub, false), nil
+	return subView(sub, false), applyErr
+}
+
+func assignNodeIDs(nodes, previous []domain.Node) []domain.Node {
+	ids := make(map[string]string, len(previous))
+	for _, node := range previous {
+		ids[protocols.NodeKey(node)] = node.ID
+	}
+	seen := make(map[string]bool, len(nodes))
+	unique := nodes[:0]
+	for _, node := range nodes {
+		key := protocols.NodeKey(node)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		if id := ids[key]; id != "" {
+			node.ID = id
+		} else {
+			node.ID = store.NewNodeID()
+		}
+		unique = append(unique, node)
+	}
+	clear(nodes[len(unique):])
+	return unique
 }
 
 func (c *Core) RemoveSubscription(id string) error {
@@ -413,6 +447,7 @@ func (c *Core) refresh(ctx context.Context, sub store.Subscription) (err error) 
 	if index < 0 {
 		return fmt.Errorf("subscription %q not found", sub.ID)
 	}
+	sub.Nodes = assignNodeIDs(sub.Nodes, next.Subscriptions[index].Nodes)
 	next.Subscriptions[index] = sub
 	dropConn := c.sanitizeRefs(&next, sub)
 	if err := c.commit(next); err != nil {
@@ -715,7 +750,7 @@ func find(subs []store.Subscription, query domain.NodeRef) (domain.Node, domain.
 			if !strings.HasPrefix(n.ID, query.NodeID) {
 				continue
 			}
-			if ref.NodeID != "" && ref.NodeID != n.ID {
+			if ref.NodeID != "" && ref != (domain.NodeRef{SubscriptionID: sub.ID, NodeID: n.ID}) {
 				return domain.Node{}, domain.NodeRef{}, fmt.Errorf("ambiguous node ID %q", query.NodeID)
 			}
 			node, ref = n, domain.NodeRef{SubscriptionID: sub.ID, NodeID: n.ID}

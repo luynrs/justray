@@ -126,7 +126,6 @@ func ParseXray(raw []byte) ([]domain.Node, error) {
 					node, err = parseXraySS(s, name)
 				}
 				if err == nil {
-					node.ID = NodeID(node)
 					nodes = append(nodes, node)
 				}
 			}
@@ -143,7 +142,6 @@ func ParseXray(raw []byte) ([]domain.Node, error) {
 						node, err = parseXrayTrojan(ob.StreamSettings, xrayServer{Address: next.Address, Port: next.Port, Password: cmp.Or(user.Password, user.ID)}, name)
 					}
 					if err == nil {
-						node.ID = NodeID(node)
 						nodes = append(nodes, node)
 					}
 				}
