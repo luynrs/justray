@@ -96,14 +96,12 @@ func rules(s domain.Settings) []option.Rule {
 }
 
 func TunInbound(s domain.Settings) option.Inbound {
-	var address, routes []netip.Prefix
+	var address []netip.Prefix
 	if s.IPVersion != "ipv6" {
 		address = append(address, netip.MustParsePrefix("172.19.0.1/30"))
-		routes = append(routes, netip.MustParsePrefix("0.0.0.0/0"))
 	}
 	if s.IPVersion != "ipv4" {
 		address = append(address, netip.MustParsePrefix("fdfe:dcba:9876::1/126"))
-		routes = append(routes, netip.MustParsePrefix("::/0"))
 	}
 	interfaceName := domain.TunInterface
 	if runtime.GOOS == "darwin" {
@@ -117,7 +115,6 @@ func TunInbound(s domain.Settings) option.Inbound {
 		Address:       address,
 		AutoRoute:     true,
 		StrictRoute:   s.TunStrict == "on",
-		RouteAddress:  routes,
 	}
 	return option.Inbound{Type: C.TypeTun, Tag: "tun-in", Options: tunOpts}
 }

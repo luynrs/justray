@@ -53,7 +53,7 @@ func TestConnection(t *testing.T) {
 		Settings:      settings,
 		Subscriptions: []store.Subscription{{ID: "sub", Nodes: []domain.Node{{ID: "node"}}}},
 	})
-	if err := app.Connect(t.Context(), "node", "sub"); err != nil {
+	if err := app.Connect(t.Context(), "node", "sub", nil); err != nil {
 		t.Fatal(err)
 	}
 	if status := app.Snapshot().Status; !status.Connected || status.Port != 1080 {
@@ -109,7 +109,7 @@ func TestDisconnectError(t *testing.T) {
 	app := testCore(t, &fakeEngine{closeErr: io.ErrUnexpectedEOF}, store.PersistentState{
 		Subscriptions: []store.Subscription{{ID: "sub", Nodes: []domain.Node{{ID: "node"}}}},
 	})
-	if err := app.Connect(t.Context(), "node", "sub"); err != nil {
+	if err := app.Connect(t.Context(), "node", "sub", nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := app.Disconnect(t.Context()); err == nil {
@@ -155,7 +155,7 @@ func TestSubscriptions(t *testing.T) {
 		{ID: "first", Nodes: []domain.Node{{ID: "node"}}},
 		{ID: "second"},
 	}})
-	if err := app.Connect(t.Context(), "node", "first"); err != nil {
+	if err := app.Connect(t.Context(), "node", "first", nil); err != nil {
 		t.Fatal(err)
 	}
 	_, updates, cancel := app.Watch()
@@ -209,7 +209,7 @@ func TestContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	for _, fn := range []func() error{
-		func() error { return app.Connect(ctx, "n1", "sub") },
+		func() error { return app.Connect(ctx, "n1", "sub", nil) },
 		func() error { return app.Disconnect(ctx) },
 		func() error { return app.SetTun(ctx, true) },
 		func() error { return app.SetSettings(ctx, settings) },

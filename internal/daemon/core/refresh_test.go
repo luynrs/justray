@@ -33,7 +33,7 @@ func TestRefreshSelected(t *testing.T) {
 		{ID: "bad", Name: "original", URL: server.URL + "/bad"},
 		{ID: "unselected", URL: server.URL + "/unselected"},
 	}})
-	if err := app.Connect(t.Context(), "old", "good"); err != nil {
+	if err := app.Connect(t.Context(), "old", "good", nil); err != nil {
 		t.Fatal(err)
 	}
 	refreshErr := app.RefreshSubscriptions(t.Context(), "good", "bad", "missing")

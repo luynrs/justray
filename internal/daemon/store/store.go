@@ -29,8 +29,14 @@ type PersistentState struct {
 	Active        domain.NodeRef
 	Last          domain.NodeRef
 	Tun           bool
+	Pending       *Pending
 	Settings      domain.Settings
 	Collapsed     []string
+}
+
+type Pending struct {
+	Ref domain.NodeRef `json:"ref"`
+	Tun bool           `json:"tun"`
 }
 
 // Disk reads and writes the daemon's persistent state.
@@ -43,6 +49,7 @@ type stateFile struct {
 	Last          string         `json:"last,omitempty"`
 	LastSub       string         `json:"last_subscription,omitempty"`
 	Tun           bool           `json:"tun,omitempty"`
+	Pending       *Pending       `json:"pending,omitempty"`
 	Collapsed     []string       `json:"collapsed,omitempty"`
 }
 
@@ -70,6 +77,7 @@ func (d Disk) Load() (PersistentState, error) {
 		state.Active = domain.NodeRef{SubscriptionID: sf.ActiveSub, NodeID: sf.Active}
 		state.Last = domain.NodeRef{SubscriptionID: sf.LastSub, NodeID: sf.Last}
 		state.Tun = sf.Tun
+		state.Pending = sf.Pending
 		state.Collapsed = sf.Collapsed
 		if sf.Subscriptions != nil {
 			state.Subscriptions = sf.Subscriptions
@@ -92,6 +100,9 @@ func (d Disk) Load() (PersistentState, error) {
 				}
 				if state.Last.SubscriptionID == sub.ID {
 					state.Last.SubscriptionID = "default"
+				}
+				if state.Pending != nil && state.Pending.Ref.SubscriptionID == sub.ID {
+					state.Pending.Ref.SubscriptionID = "default"
 				}
 				continue
 			}
@@ -124,7 +135,7 @@ func (d Disk) Load() (PersistentState, error) {
 			sub := &state.Subscriptions[i]
 			seen := make(map[string]int, len(sub.Nodes))
 			nodes := sub.Nodes[:0]
-			var activeKey, lastKey string
+			var activeKey, lastKey, pendingKey string
 			for _, node := range sub.Nodes {
 				key := protocols.NodeKey(node)
 				if node.ID == oldActive.NodeID && oldActive.NodeID != "" && (oldActive.SubscriptionID == sub.ID || oldActive.SubscriptionID == "" && uniqueIDs[node.ID] == sub.ID) {
@@ -132,6 +143,9 @@ func (d Disk) Load() (PersistentState, error) {
 				}
 				if node.ID == oldLast.NodeID && oldLast.NodeID != "" && (oldLast.SubscriptionID == sub.ID || oldLast.SubscriptionID == "" && uniqueIDs[node.ID] == sub.ID) {
 					lastKey = key
+				}
+				if state.Pending != nil && node.ID == state.Pending.Ref.NodeID && node.ID != "" && (state.Pending.Ref.SubscriptionID == sub.ID || state.Pending.Ref.SubscriptionID == "" && uniqueIDs[node.ID] == sub.ID) {
+					pendingKey = key
 				}
 				if index, ok := seen[key]; ok {
 					if node.ID == oldActive.NodeID && nodes[index].ID != node.ID && activeKey == key {
@@ -149,6 +163,9 @@ func (d Disk) Load() (PersistentState, error) {
 			}
 			if lastKey != "" {
 				state.Last = domain.NodeRef{SubscriptionID: sub.ID, NodeID: nodes[seen[lastKey]].ID}
+			}
+			if pendingKey != "" {
+				state.Pending.Ref = domain.NodeRef{SubscriptionID: sub.ID, NodeID: nodes[seen[pendingKey]].ID}
 			}
 		}
 	} else if !os.IsNotExist(stateErr) {
@@ -176,6 +193,7 @@ func (d Disk) SaveState(state PersistentState) error {
 		Last:          state.Last.NodeID,
 		LastSub:       state.Last.SubscriptionID,
 		Tun:           state.Tun,
+		Pending:       state.Pending,
 		Collapsed:     state.Collapsed,
 	}
 	stateData, err := json.MarshalIndent(sf, "", "  ")

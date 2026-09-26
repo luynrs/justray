@@ -21,6 +21,7 @@ type Args struct {
 	URL       string
 	Dir       int
 	Tun       bool
+	Mode      *bool
 	Settings  domain.Settings
 	Collapsed bool
 }

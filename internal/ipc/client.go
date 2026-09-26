@@ -104,8 +104,8 @@ func (c *Client) RefreshAll() error { return c.command("RefreshAll", Args{}) }
 func (c *Client) Refresh(id string) error {
 	return c.command("Refresh", Args{ID: id})
 }
-func (c *Client) Connect(ref domain.NodeRef) error {
-	return c.command("Connect", Args{ID: ref.NodeID, Sub: ref.SubscriptionID})
+func (c *Client) Connect(ref domain.NodeRef, mode *bool) error {
+	return c.command("Connect", Args{ID: ref.NodeID, Sub: ref.SubscriptionID, Mode: mode})
 }
 func (c *Client) Disconnect() error { return c.command("Disconnect", Args{}) }
 

@@ -83,7 +83,7 @@ func (s *Server) dispatch(ctx context.Context, req ipc.Req) (any, error) {
 	case "Probe":
 		return nil, s.core.Probe(ctx, a.Sub, a.ID)
 	case "Connect":
-		return nil, s.core.Connect(ctx, a.ID, a.Sub)
+		return nil, s.core.Connect(ctx, a.ID, a.Sub, a.Mode)
 	case "Disconnect":
 		return nil, s.core.Disconnect(ctx)
 	case "SetTun":
