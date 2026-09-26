@@ -8,6 +8,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/ipc"
 )
 
@@ -65,6 +66,8 @@ func (s *Server) dispatch(ctx context.Context, req ipc.Req) (any, error) {
 		return s.core.AddSubscription(ctx, a.URL)
 	case "RemoveSub":
 		return nil, s.core.RemoveSubscription(a.ID)
+	case "RemoveNode":
+		return nil, s.core.RemoveNode(domain.NodeRef{SubscriptionID: a.Sub, NodeID: a.ID})
 	case "MoveSub":
 		return nil, s.core.MoveSubscription(a.ID, a.Dir)
 	case "RefreshAll", "Refresh":

@@ -2,7 +2,9 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 
 	"charm.land/lipgloss/v2"
@@ -34,8 +36,13 @@ func (a *app) subAdd(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	done("Added " + a.clean(sub.Name))
-	fields([2]string{"ID", sub.ID}, [2]string{"Nodes", strconv.Itoa(sub.Nodes)}, [2]string{"Traffic", style.Usage(sub.Traffic)})
+	if sub.Refreshable {
+		done("Added " + a.clean(sub.Name))
+		fields([2]string{"ID", sub.ID}, [2]string{"Nodes", strconv.Itoa(sub.Nodes)}, [2]string{"Traffic", style.Usage(sub.Traffic)})
+	} else {
+		done("Added node to " + a.clean(sub.Name))
+		fields([2]string{"ID", sub.ID}, [2]string{"Nodes", strconv.Itoa(sub.Nodes)})
+	}
 	return nil
 }
 
@@ -46,19 +53,47 @@ var subRemoveCmd = &cobra.Command{
 }
 
 func (a *app) subRemove(cmd *cobra.Command, args []string) error {
-	sub, err := a.resolveSub(args[0])
+	snapshot, err := a.client.Snapshot()
 	if err != nil {
 		return err
 	}
-	name := a.clean(sub.Name)
-	stop := spin("Removing " + name)
-	err = a.client.RemoveSub(sub.ID)
-	stop()
-	if err != nil {
-		return err
+	sub, subErr := match(args[0], "subscription", snapshot.Subscriptions, func(s ipc.Sub) (string, string) { return s.ID, s.Name })
+	if subErr == nil {
+		name := a.clean(sub.Name)
+		stop := spin("Removing " + name)
+		err = a.client.RemoveSub(sub.ID)
+		stop()
+		if err != nil {
+			return err
+		}
+		done("Removed " + name)
+		return nil
 	}
-	done("Removed " + name)
-	return nil
+	if !errors.Is(subErr, errNotFound) {
+		return subErr
+	}
+
+	var directNodes []ipc.Node
+	for _, node := range snapshot.Nodes {
+		if slices.ContainsFunc(snapshot.Subscriptions, func(s ipc.Sub) bool { return s.ID == node.Sub && !s.Refreshable }) {
+			directNodes = append(directNodes, node)
+		}
+	}
+	node, nodeErr := match(args[0], "node", directNodes, func(n ipc.Node) (string, string) { return n.ID, n.Name })
+	if nodeErr == nil {
+		stop := spin("Removing " + a.clean(node.Name))
+		removeErr := a.client.RemoveNode(node.Ref())
+		stop()
+		if removeErr != nil {
+			return removeErr
+		}
+		done("Removed " + a.clean(node.Name))
+		return nil
+	}
+	if !errors.Is(nodeErr, errNotFound) {
+		return nodeErr
+	}
+	return subErr
 }
 
 var subRefreshCmd = &cobra.Command{
@@ -90,6 +125,9 @@ func (a *app) subRefresh(cmd *cobra.Command, args []string) error {
 	sub, err := a.resolveSub(args[0])
 	if err != nil {
 		return err
+	}
+	if !sub.Refreshable {
+		return fmt.Errorf("subscription %q cannot be refreshed", sub.Name)
 	}
 	name := a.clean(sub.Name)
 	stop := spin("Refreshing " + name)
@@ -187,7 +225,18 @@ func (a *app) completeSub(cmd *cobra.Command, args []string, toComplete string) 
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 	snapshot, err := c.Snapshot()
-	return completeNames(snapshot.Subscriptions, err, func(s ipc.Sub) string { return s.Name })
+	if err == nil && cmd == subRefreshCmd {
+		snapshot.Subscriptions = slices.DeleteFunc(snapshot.Subscriptions, func(s ipc.Sub) bool { return !s.Refreshable })
+	}
+	names, directive := completeNames(snapshot.Subscriptions, err, func(s ipc.Sub) string { return s.Name })
+	if err == nil && cmd == subRemoveCmd {
+		for _, node := range snapshot.Nodes {
+			if slices.ContainsFunc(snapshot.Subscriptions, func(sub ipc.Sub) bool { return sub.ID == node.Sub && !sub.Refreshable }) {
+				names = append(names, node.Name)
+			}
+		}
+	}
+	return names, directive
 }
 
 func (a *app) showTree(subs []ipc.Sub, nodes []ipc.Node) {
@@ -196,7 +245,7 @@ func (a *app) showTree(subs []ipc.Sub, nodes []ipc.Node) {
 		if i > 0 {
 			out("")
 		}
-		if g.Sub.ID == tree.Default {
+		if !g.Sub.Refreshable {
 			out(style.Name.Render(a.clean(g.Sub.Name)))
 		} else {
 			out(style.Name.Render(a.clean(g.Sub.Name)) + "  " + style.Dim.Render(g.Sub.ID))

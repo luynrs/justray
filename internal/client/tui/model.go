@@ -33,10 +33,10 @@ type Model struct {
 	scroll    int
 	wheel     time.Time
 
-	editor     textinput.Model
-	confirmSub ipc.Sub
-	dialog     *settings.Settings
-	filter     textinput.Model
+	editor  textinput.Model
+	confirm tree.Row
+	dialog  *settings.Settings
+	filter  textinput.Model
 
 	live    bool
 	updates chan pushed

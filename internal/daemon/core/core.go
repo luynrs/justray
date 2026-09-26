@@ -198,7 +198,23 @@ func (c *Core) AddSubscription(ctx context.Context, rawURL string) (ipc.Sub, err
 		return ipc.Sub{}, err
 	}
 	next := c.current()
-	next.Subscriptions = append(next.Subscriptions, sub)
+	if parser.IsLink(sub.URL) {
+		i := slices.IndexFunc(next.Subscriptions, func(s store.Subscription) bool { return s.ID == "default" })
+		if i < 0 {
+			i = len(next.Subscriptions)
+			next.Subscriptions = append(next.Subscriptions, store.Subscription{ID: "default", Name: "Default"})
+		}
+		for _, node := range sub.Nodes {
+			if idx := slices.IndexFunc(next.Subscriptions[i].Nodes, func(n domain.Node) bool { return n.ID == node.ID }); idx >= 0 {
+				next.Subscriptions[i].Nodes[idx] = node
+			} else {
+				next.Subscriptions[i].Nodes = append(next.Subscriptions[i].Nodes, node)
+			}
+		}
+		sub = next.Subscriptions[i]
+	} else {
+		next.Subscriptions = append(next.Subscriptions, sub)
+	}
 	if err := c.commit(next); err != nil {
 		return ipc.Sub{}, err
 	}
@@ -212,16 +228,13 @@ func (c *Core) RemoveSubscription(id string) error {
 	next := c.current()
 	var removed []store.Subscription
 	next.Subscriptions = slices.DeleteFunc(next.Subscriptions, func(s store.Subscription) bool {
-		if matchSub(s, id) {
+		if s.ID == id {
 			removed = append(removed, s)
 			return true
 		}
 		return false
 	})
 	if len(removed) == 0 {
-		if id == "default" {
-			return nil
-		}
 		return fmt.Errorf("subscription %q not found", id)
 	}
 	belongs := func(ref domain.NodeRef) bool {
@@ -244,6 +257,38 @@ func (c *Core) RemoveSubscription(id string) error {
 	var cleanupErr error
 	for _, sub := range removed {
 		cleanupErr = errors.Join(cleanupErr, c.conn.ForgetIfRemoved(sub.ID))
+	}
+	c.publish()
+	return cleanupErr
+}
+
+func (c *Core) RemoveNode(ref domain.NodeRef) error {
+	c.opMu.Lock()
+	defer c.opMu.Unlock()
+	next := c.current()
+	i := slices.IndexFunc(next.Subscriptions, func(sub store.Subscription) bool {
+		return (ref.SubscriptionID == "" || sub.ID == ref.SubscriptionID) && sub.URL == "" &&
+			slices.ContainsFunc(sub.Nodes, func(node domain.Node) bool { return node.ID == ref.NodeID })
+	})
+	if i < 0 {
+		return fmt.Errorf("node %q not found", ref.NodeID)
+	}
+	ref.SubscriptionID = next.Subscriptions[i].ID
+	next.Subscriptions[i].Nodes = slices.DeleteFunc(slices.Clone(next.Subscriptions[i].Nodes), func(node domain.Node) bool { return node.ID == ref.NodeID })
+	var dropConn bool
+	if next.Active.NodeID == ref.NodeID && (next.Active.SubscriptionID == ref.SubscriptionID || next.Active.SubscriptionID == "") {
+		next.Active = domain.NodeRef{}
+		dropConn = true
+	}
+	if next.Last.NodeID == ref.NodeID && (next.Last.SubscriptionID == ref.SubscriptionID || next.Last.SubscriptionID == "") {
+		next.Last = domain.NodeRef{}
+	}
+	if err := c.commit(next); err != nil {
+		return err
+	}
+	var cleanupErr error
+	if dropConn || c.conn.Status().NodeRef == ref {
+		cleanupErr = c.conn.Disconnect(context.Background())
 	}
 	c.publish()
 	return cleanupErr
@@ -276,12 +321,12 @@ func (c *Core) RefreshSubscriptions(ctx context.Context, ids ...string) error {
 	subs := c.current().Subscriptions
 	var refreshErr error
 	for _, id := range ids {
-		if !slices.ContainsFunc(subs, func(sub store.Subscription) bool { return sub.ID == id }) {
+		if !slices.ContainsFunc(subs, func(sub store.Subscription) bool { return sub.ID == id && sub.URL != "" }) {
 			refreshErr = errors.Join(refreshErr, fmt.Errorf("subscription %q not found", id))
 		}
 	}
 	subs = slices.DeleteFunc(subs, func(sub store.Subscription) bool {
-		return parser.IsLink(sub.URL) || len(ids) > 0 && !slices.Contains(ids, sub.ID)
+		return sub.URL == "" || len(ids) > 0 && !slices.Contains(ids, sub.ID)
 	})
 	if len(subs) == 0 {
 		return refreshErr
@@ -613,15 +658,11 @@ func (c *Core) nodes(subscriptions []store.Subscription) []ipc.Node {
 	return out
 }
 
-func matchSub(s store.Subscription, id string) bool {
-	return id == "" || s.ID == id || (id == "default" && parser.IsLink(s.URL))
-}
-
 func probeTargets(subscriptions []store.Subscription, subID, nodeID string) ([]domain.NodeRef, []domain.Node, error) {
 	var refs []domain.NodeRef
 	var nodes []domain.Node
 	for _, sub := range subscriptions {
-		if !matchSub(sub, subID) {
+		if subID != "" && sub.ID != subID {
 			continue
 		}
 		for _, node := range sub.Nodes {
@@ -650,7 +691,7 @@ func subView(sub store.Subscription, refreshing bool) ipc.Sub {
 	return ipc.Sub{
 		ID: sub.ID, Name: sub.Name, Nodes: len(sub.Nodes),
 		UpdatedAt: sub.UpdatedAt, Traffic: sub.Traffic,
-		Direct: parser.IsLink(sub.URL), Refreshing: refreshing,
+		Refreshable: sub.URL != "", Refreshing: refreshing,
 	}
 }
 

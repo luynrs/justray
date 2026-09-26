@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/ipc"
+	"github.com/luynrs/justray/internal/parser"
 )
 
 type Subscription struct {
@@ -71,6 +73,41 @@ func (d Disk) Load() (PersistentState, error) {
 		if sf.Subscriptions != nil {
 			state.Subscriptions = sf.Subscriptions
 		}
+		var directNodes []domain.Node
+		position := -1
+		subs := make([]Subscription, 0, len(state.Subscriptions))
+		for _, sub := range state.Subscriptions {
+			if parser.IsLink(sub.URL) {
+				if position < 0 {
+					position = len(subs)
+				}
+				for _, node := range sub.Nodes {
+					if !slices.ContainsFunc(directNodes, func(n domain.Node) bool { return n.ID == node.ID }) {
+						directNodes = append(directNodes, node)
+					}
+				}
+				if state.Active.SubscriptionID == sub.ID || (state.Active.SubscriptionID == "" && slices.ContainsFunc(sub.Nodes, func(n domain.Node) bool { return n.ID == state.Active.NodeID })) {
+					state.Active.SubscriptionID = "default"
+				}
+				if state.Last.SubscriptionID == sub.ID || (state.Last.SubscriptionID == "" && slices.ContainsFunc(sub.Nodes, func(n domain.Node) bool { return n.ID == state.Last.NodeID })) {
+					state.Last.SubscriptionID = "default"
+				}
+				continue
+			}
+			subs = append(subs, sub)
+		}
+		if position >= 0 {
+			if index := slices.IndexFunc(subs, func(sub Subscription) bool { return sub.ID == "default" }); index >= 0 {
+				for _, node := range directNodes {
+					if !slices.ContainsFunc(subs[index].Nodes, func(n domain.Node) bool { return n.ID == node.ID }) {
+						subs[index].Nodes = append(subs[index].Nodes, node)
+					}
+				}
+			} else {
+				subs = slices.Insert(subs, position, Subscription{ID: "default", Name: "Default", Nodes: directNodes})
+			}
+		}
+		state.Subscriptions = subs
 	} else if !os.IsNotExist(stateErr) {
 		return state, stateErr
 	}

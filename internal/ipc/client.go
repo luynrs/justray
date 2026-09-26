@@ -94,6 +94,9 @@ func (c *Client) AddSub(url string) (Sub, error) {
 func (c *Client) RemoveSub(id string) error {
 	return c.command("RemoveSub", Args{ID: id})
 }
+func (c *Client) RemoveNode(ref domain.NodeRef) error {
+	return c.command("RemoveNode", Args{ID: ref.NodeID, Sub: ref.SubscriptionID})
+}
 func (c *Client) MoveSub(id string, dir int) error {
 	return c.command("MoveSub", Args{ID: id, Dir: dir})
 }

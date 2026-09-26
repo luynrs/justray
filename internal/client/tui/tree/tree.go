@@ -16,17 +16,9 @@ const (
 )
 
 type Row struct {
-	Kind    Kind
-	GroupID string
-	Sub     ipc.Sub
-	Node    ipc.Node
-}
-
-func (r Row) SubID() string {
-	if r.GroupID != "" {
-		return r.GroupID
-	}
-	return r.Sub.ID
+	Kind Kind
+	Sub  ipc.Sub
+	Node ipc.Node
 }
 
 func (r Row) Selectable() bool { return r.Kind == Header || r.Kind == Node }
@@ -44,8 +36,6 @@ type Data struct {
 
 func (d Data) connected() bool { return d.Live && d.Status.Connected }
 
-const Default = "default"
-
 type Group struct {
 	Sub   ipc.Sub
 	Nodes []ipc.Node
@@ -58,17 +48,8 @@ func (d Data) Groups() []Group {
 	}
 
 	out := make([]Group, 0, len(d.Subs))
-	var loose []ipc.Node
 	for _, sub := range d.Subs {
-		nodes := index[sub.ID]
-		if sub.Direct {
-			loose = append(loose, nodes...)
-			continue
-		}
-		out = append(out, Group{Sub: sub, Nodes: nodes})
-	}
-	if len(loose) > 0 {
-		out = append(out, Group{Sub: ipc.Sub{Name: "Default", ID: Default}, Nodes: loose})
+		out = append(out, Group{Sub: sub, Nodes: index[sub.ID]})
 	}
 	return out
 }
@@ -93,13 +74,13 @@ func (d Data) Rows() []Row {
 			rows = append(rows, Row{Kind: Gap})
 		}
 
-		rows = append(rows, Row{Kind: Header, GroupID: g.Sub.ID, Sub: g.Sub})
-		if g.Sub.ID != Default {
-			rows = append(rows, Row{Kind: Meta, GroupID: g.Sub.ID, Sub: g.Sub})
+		rows = append(rows, Row{Kind: Header, Sub: g.Sub})
+		if g.Sub.Refreshable {
+			rows = append(rows, Row{Kind: Meta, Sub: g.Sub})
 		}
 		for _, n := range nodes {
 			if q != "" || !d.Collapsed[g.Sub.ID] || (d.connected() && d.Status.NodeRef == n.Ref()) {
-				rows = append(rows, Row{Kind: Node, GroupID: g.Sub.ID, Sub: subs[n.Sub], Node: n})
+				rows = append(rows, Row{Kind: Node, Sub: subs[n.Sub], Node: n})
 			}
 		}
 	}

@@ -10,7 +10,6 @@ import (
 
 	"github.com/luynrs/justray/internal/client/tui/settings"
 	"github.com/luynrs/justray/internal/client/tui/tree"
-	"github.com/luynrs/justray/internal/ipc"
 )
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -117,12 +116,15 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	k := msg.String()
 
 	switch {
-	case m.confirmSub.ID != "":
-		id := m.confirmSub.ID
-		m.confirmSub = ipc.Sub{}
+	case m.confirm.Sub.ID != "":
+		row := m.confirm
+		m.confirm = tree.Row{}
 		if k == "y" || k == "Y" {
-			delete(m.collapsed, id)
-			return m, actionCmd("mutation", m.start, func() error { return m.client.RemoveSub(id) })
+			if row.Kind == tree.Node && !row.Sub.Refreshable {
+				return m, actionCmd("mutation", m.start, func() error { return m.client.RemoveNode(row.Node.Ref()) })
+			}
+			delete(m.collapsed, row.Sub.ID)
+			return m, actionCmd("mutation", m.start, func() error { return m.client.RemoveSub(row.Sub.ID) })
 		}
 		return m, nil
 
@@ -200,8 +202,8 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.filter.CursorEnd()
 		return m, tea.Batch(m.filter.Focus(), textinput.Blink)
 	case "d":
-		if r, ok := m.at(); ok && r.Sub.ID != "" && r.Sub.ID != tree.Default {
-			m.confirmSub = r.Sub
+		if r, ok := m.at(); ok && r.Sub.ID != "" {
+			m.confirm = r
 		}
 	case "q":
 		return m.quit()
@@ -215,7 +217,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	if m.editor.Focused() || m.confirmSub.ID != "" {
+	if m.editor.Focused() || m.confirm.Sub.ID != "" {
 		return m, nil
 	}
 	mouse := msg.Mouse()

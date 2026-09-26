@@ -15,7 +15,7 @@ func (m Model) activate() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if r.Kind == tree.Header {
-		id := r.SubID()
+		id := r.Sub.ID
 		target := !m.collapsed[id]
 		m.collapsed[id] = target
 		m.clamp()
@@ -42,7 +42,7 @@ func (m Model) collapse() (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	id := r.SubID()
+	id := r.Sub.ID
 	var cmd tea.Cmd
 	if !m.collapsed[id] {
 		m.collapsed[id] = true
@@ -60,7 +60,7 @@ func (m Model) collapse() (tea.Model, tea.Cmd) {
 func (m *Model) toHeader(id string) {
 	rows := m.rows()
 	for i, idx := range tree.Selectable(rows) {
-		if rows[idx].Kind == tree.Header && rows[idx].SubID() == id {
+		if rows[idx].Kind == tree.Header && rows[idx].Sub.ID == id {
 			m.cursor = i
 			return
 		}
@@ -72,7 +72,7 @@ func (m Model) expand() (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	id := r.SubID()
+	id := r.Sub.ID
 	var cmd tea.Cmd
 	if m.collapsed[id] {
 		m.collapsed[id] = false
@@ -107,8 +107,8 @@ func (m Model) refresh() (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	id := r.SubID()
-	if id == tree.Default {
+	id := r.Sub.ID
+	if !r.Sub.Refreshable {
 		return m, nil
 	}
 	return m, actionCmd("refresh", m.start, func() error { return m.client.Refresh(id) })
@@ -120,11 +120,11 @@ func (m Model) refreshAll() (tea.Model, tea.Cmd) {
 
 func (m Model) moveSub(dir int) (tea.Model, tea.Cmd) {
 	r, ok := m.at()
-	if !ok || r.Kind != tree.Header || r.Sub.ID == tree.Default {
+	if !ok || r.Kind != tree.Header {
 		return m, nil
 	}
 	id := r.Sub.ID
-	i := slices.IndexFunc(m.snapshot.Subscriptions, func(s ipc.Sub) bool { return s.ID == id })
+	i := slices.IndexFunc(m.snapshot.Subscriptions, func(sub ipc.Sub) bool { return sub.ID == id })
 	j := i + dir
 	if i < 0 || j < 0 || j >= len(m.snapshot.Subscriptions) {
 		return m, nil

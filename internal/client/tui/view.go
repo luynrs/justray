@@ -107,7 +107,7 @@ func (m Model) keys() [][2]string {
 	switch {
 	case m.dialog != nil:
 		return m.dialog.Hints()
-	case m.confirmSub.ID != "":
+	case m.confirm.Sub.ID != "":
 		return [][2]string{{"y", "Delete"}, {"any", "Cancel"}}
 	case m.editor.Focused():
 		return [][2]string{{style.Enter(), "Add"}, {"esc", "Cancel"}}
@@ -161,8 +161,12 @@ func (m Model) footer() string {
 	}
 
 	hints := m.hints(m.w)
-	if m.confirmSub.ID != "" {
-		q := style.Err.Render(style.Sanitize("Delete "+m.confirmSub.Name+"?", true))
+	if m.confirm.Sub.ID != "" {
+		name := m.confirm.Sub.Name
+		if m.confirm.Kind == tree.Node && !m.confirm.Sub.Refreshable {
+			name = m.confirm.Node.Name
+		}
+		q := style.Err.Render(style.Sanitize("Delete "+name+"?", true))
 		hints = q + "  " + m.hints(max(m.w-lipgloss.Width(q)-2, 0))
 	}
 

@@ -32,13 +32,13 @@ type Resp struct {
 }
 
 type Sub struct {
-	ID         string
-	Name       string
-	Nodes      int
-	UpdatedAt  time.Time
-	Traffic    domain.Traffic
-	Direct     bool // a bare share link
-	Refreshing bool
+	ID          string
+	Name        string
+	Nodes       int
+	UpdatedAt   time.Time
+	Traffic     domain.Traffic
+	Refreshable bool
+	Refreshing  bool
 }
 
 type Node struct {
