@@ -4,19 +4,14 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/luynrs/justray/internal/daemon/connection"
 	"github.com/luynrs/justray/internal/daemon/store"
-	"github.com/luynrs/justray/internal/daemon/subscription"
 	"github.com/luynrs/justray/internal/domain"
 )
 
@@ -62,12 +57,20 @@ func TestRefreshSelected(t *testing.T) {
 
 func TestRefreshCanceled(t *testing.T) {
 	started := make(chan struct{})
-	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/fast" {
+			_, _ = io.WriteString(response, "vless://11111111-1111-1111-1111-111111111111@example.com:443?security=tls#fast")
+			return
+		}
 		close(started)
 		<-request.Context().Done()
 	}))
 	defer server.Close()
-	app := testCore(t, &fakeEngine{}, store.PersistentState{Subscriptions: []store.Subscription{{ID: "sub", URL: server.URL}}})
+	app := testCore(t, &fakeEngine{}, store.PersistentState{Subscriptions: []store.Subscription{
+		{ID: "fast", URL: server.URL + "/fast"}, {ID: "slow", URL: server.URL + "/slow"},
+	}})
+	_, updates, stop := app.Watch()
+	defer stop()
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	done := make(chan error, 1)
@@ -76,6 +79,13 @@ func TestRefreshCanceled(t *testing.T) {
 	case <-started:
 	case <-ctx.Done():
 		t.Fatal("refresh did not start")
+	}
+	for app.Snapshot().Subscriptions[0].UpdatedAt.IsZero() {
+		select {
+		case <-updates:
+		case <-ctx.Done():
+			t.Fatal("fast subscription did not finish")
+		}
 	}
 	cancel()
 	select {
@@ -86,104 +96,87 @@ func TestRefreshCanceled(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("refresh did not stop")
 	}
-	if app.Snapshot().Subscriptions[0].Refreshing || !app.current().Subscriptions[0].UpdatedAt.IsZero() {
-		t.Fatal("canceled refresh changed state or remained active")
+	if state, err := app.store.Load(); err != nil || state.Subscriptions[0].UpdatedAt.IsZero() ||
+		!state.Subscriptions[1].UpdatedAt.IsZero() || app.Snapshot().Subscriptions[1].Refreshing {
+		t.Fatalf("cancellation lost completed work or saved unfinished work: %+v, %v", state.Subscriptions, err)
 	}
 }
 
-func TestRefreshLock(t *testing.T) {
+func TestRefreshOrdering(t *testing.T) {
 	var calls atomic.Int32
-	var start sync.Once
-	started := make(chan struct{})
-	release := make(chan struct{})
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		calls.Add(1)
-		start.Do(func() { close(started) })
-		<-release
-		_, _ = io.WriteString(w, "vless://11111111-1111-1111-1111-111111111111@example.com:443?security=tls#node")
+	started, release := make(chan struct{}), make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		name := "B"
+		if r.URL.Path == "/a" {
+			name = "A2"
+			if calls.Add(1) == 1 {
+				name = "A1"
+			}
+		} else {
+			close(started)
+			select {
+			case <-release:
+			case <-r.Context().Done():
+				return
+			}
+		}
+		_, _ = io.WriteString(w, "vless://11111111-1111-1111-1111-111111111111@example.com:443?security=tls#"+name)
 	}))
 	defer srv.Close()
-
-	disk := store.Disk{Dir: t.TempDir()}
-	if err := disk.Save(store.PersistentState{Subscriptions: []store.Subscription{{ID: "sub", URL: srv.URL}}}); err != nil {
-		t.Fatal(err)
-	}
-	logger := log.New(io.Discard, "", 0)
-	subs := subscription.New(context.Background(), logger)
-	app, err := New(disk, connection.New(context.Background(), "", nil, nil, logger), subs)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sub := app.current().Subscriptions[0]
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
-	first := make(chan error, 1)
-	go func() {
-		_, err := app.refresh(ctx, sub)
-		first <- err
-	}()
+	app := testCore(t, &fakeEngine{}, store.PersistentState{Subscriptions: []store.Subscription{
+		{ID: "a", URL: srv.URL + "/a"}, {ID: "b", URL: srv.URL + "/b"},
+	}})
+	_, updates, stop := app.Watch()
+	defer stop()
+	done := make(chan error, 1)
+	go func() { done <- app.RefreshSubscriptions(ctx) }()
 	select {
 	case <-started:
 	case <-ctx.Done():
-		t.Fatal(ctx.Err())
+		t.Fatal("refresh did not start")
 	}
-	if snap := app.Snapshot(); len(snap.Subscriptions) == 0 || !snap.Subscriptions[0].Refreshing {
-		t.Fatalf("expected sub to be refreshing, got %+v", snap.Subscriptions)
-	}
-	moved := make(chan error, 1)
-	go func() { moved <- app.MoveSubscription("sub", 1) }()
+	mutated := make(chan error, 1)
+	go func() { mutated <- app.SetCollapsed("b", true) }()
 	select {
-	case err := <-moved:
+	case err := <-mutated:
 		if err != nil {
 			t.Fatal(err)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("mutation blocked on refresh I/O")
 	}
-
-	time.AfterFunc(200*time.Millisecond, func() { close(release) })
-	if _, err := app.refresh(ctx, sub); err != nil {
+	for app.Snapshot().Subscriptions[0].UpdatedAt.IsZero() || app.Snapshot().Subscriptions[0].Refreshing {
+		select {
+		case <-updates:
+		case <-ctx.Done():
+			t.Fatal("a waited for b before finishing")
+		}
+	}
+	if !app.Snapshot().Subscriptions[1].Refreshing {
+		t.Fatal("b finished early")
+	}
+	if err := app.RefreshSubscriptions(ctx, "a"); err != nil {
 		t.Fatal(err)
 	}
-	if err := <-first; err != nil {
-		t.Fatal(err)
+	close(release)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-ctx.Done():
+		t.Fatal("refresh did not finish")
 	}
-	if snap := app.Snapshot(); len(snap.Subscriptions) == 0 || snap.Subscriptions[0].Refreshing {
-		t.Fatalf("expected sub not to be refreshing, got %+v", snap.Subscriptions)
-	}
-	if got := calls.Load(); got != 1 {
-		t.Fatalf("HTTP calls = %d, want 1", got)
-	}
-}
-
-func TestRefreshSnapshot(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = io.WriteString(w, "vless://11111111-1111-1111-1111-111111111111@example.com:443?security=tls#node")
-	}))
-	defer srv.Close()
-
-	disk := store.Disk{Dir: t.TempDir()}
-	if err := disk.Save(store.PersistentState{Subscriptions: []store.Subscription{{ID: "sub", URL: srv.URL}}}); err != nil {
-		t.Fatal(err)
-	}
-	logger := log.New(io.Discard, "", 0)
-	app, err := New(disk, connection.New(context.Background(), "", nil, nil, logger), subscription.New(context.Background(), logger))
+	state, err := app.store.Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, changed, cancel := app.Watch()
-	defer cancel()
-	if err := app.RefreshSubscriptions(context.Background(), "sub"); err != nil {
-		t.Fatal(err)
+	if len(state.Subscriptions[0].Nodes) == 0 || len(state.Subscriptions[1].Nodes) == 0 || state.Subscriptions[0].Nodes[0].Name != "A2" || state.Subscriptions[1].Nodes[0].Name != "B" || calls.Load() != 2 {
+		t.Fatalf("stale refresh overwrote newer result: %+v", state.Subscriptions)
 	}
-	select {
-	case up := <-changed:
-		snap := app.Snapshot()
-		if !reflect.DeepEqual(up, snap) || len(snap.Nodes) != 1 || snap.Subscriptions[0].Refreshing {
-			t.Fatalf("update=%+v snap=%+v", up, snap)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("watch did not receive refresh snapshot")
+	if len(state.Collapsed) != 1 || state.Collapsed[0] != "b" || app.Snapshot().Subscriptions[0].Refreshing || app.Snapshot().Subscriptions[1].Refreshing {
+		t.Fatal("refresh lost concurrent mutation or remained active")
 	}
 }

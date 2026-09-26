@@ -31,7 +31,6 @@ type Core struct {
 	conn    *connection.Service
 	subs    *subscription.Service
 
-	jobsMu    sync.Mutex
 	refreshes map[string]*refreshCall
 
 	snapshot atomic.Pointer[ipc.Snapshot]
@@ -66,7 +65,6 @@ func New(st store.Disk, conn *connection.Service, subs *subscription.Service) (*
 
 type refreshCall struct {
 	done chan struct{}
-	sub  store.Subscription
 	err  error
 }
 
@@ -337,7 +335,7 @@ func (c *Core) RefreshSubscriptions(ctx context.Context, ids ...string) error {
 	for range min(8, len(subs)) {
 		wg.Go(func() {
 			for i := range jobs {
-				subs[i], errs[i] = c.refresh(ctx, subs[i])
+				errs[i] = c.refresh(ctx, subs[i])
 			}
 		})
 	}
@@ -351,43 +349,12 @@ dispatch:
 	}
 	close(jobs)
 	wg.Wait()
-	c.opMu.Lock()
-	defer c.opMu.Unlock()
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	next := c.current()
-	var dropConn bool
-	updated := 0
 	for i, sub := range subs {
 		if errs[i] != nil {
 			refreshErr = errors.Join(refreshErr, fmt.Errorf("%s: %w", sub.ID, errs[i]))
-			continue
-		}
-		if index := slices.IndexFunc(next.Subscriptions, func(current store.Subscription) bool { return current.ID == sub.ID }); index >= 0 {
-			next.Subscriptions[index] = sub
-			updated++
-			if c.sanitizeRefs(&next, sub) {
-				dropConn = true
-			}
-		} else if len(ids) == 1 {
-			refreshErr = errors.Join(refreshErr, fmt.Errorf("subscription %q not found", sub.ID))
 		}
 	}
-	if updated == 0 {
-		return refreshErr
-	}
-	if err := c.commit(next); err != nil {
-		return errors.Join(refreshErr, err)
-	}
-	var runtimeErr error
-	if dropConn {
-		runtimeErr = c.conn.Disconnect(ctx)
-	} else {
-		runtimeErr = c.apply(ctx, next, c.conn.Status().Tun)
-	}
-	c.publish()
-	return errors.Join(refreshErr, runtimeErr)
+	return errors.Join(refreshErr, ctx.Err())
 }
 
 func (c *Core) sanitizeRefs(state *store.PersistentState, updated store.Subscription) bool {
@@ -405,29 +372,60 @@ func (c *Core) sanitizeRefs(state *store.PersistentState, updated store.Subscrip
 	return dropConn
 }
 
-func (c *Core) refresh(ctx context.Context, sub store.Subscription) (store.Subscription, error) {
-	c.jobsMu.Lock()
+func (c *Core) refresh(ctx context.Context, sub store.Subscription) (err error) {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	c.pubMu.Lock()
 	if call := c.refreshes[sub.ID]; call != nil {
-		c.jobsMu.Unlock()
+		c.pubMu.Unlock()
 		select {
 		case <-call.done:
-			return call.sub, call.err
+			return call.err
 		case <-ctx.Done():
-			return sub, ctx.Err()
+			return ctx.Err()
 		}
 	}
 	call := &refreshCall{done: make(chan struct{})}
 	c.refreshes[sub.ID] = call
-	c.jobsMu.Unlock()
-	c.publish()
+	c.publishLocked()
+	c.pubMu.Unlock()
+	defer func() {
+		c.pubMu.Lock()
+		call.err = err
+		delete(c.refreshes, sub.ID)
+		c.publishLocked()
+		close(call.done)
+		c.pubMu.Unlock()
+	}()
 
-	call.sub, call.err = c.subs.Refresh(ctx, sub)
-	c.jobsMu.Lock()
-	delete(c.refreshes, sub.ID)
-	close(call.done)
-	c.jobsMu.Unlock()
-	c.publish()
-	return call.sub, call.err
+	sub, err = c.subs.Refresh(ctx, sub)
+	if err != nil {
+		return err
+	}
+	c.opMu.Lock()
+	defer c.opMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	next := c.current()
+	index := slices.IndexFunc(next.Subscriptions, func(current store.Subscription) bool { return current.ID == sub.ID })
+	if index < 0 {
+		return fmt.Errorf("subscription %q not found", sub.ID)
+	}
+	next.Subscriptions[index] = sub
+	dropConn := c.sanitizeRefs(&next, sub)
+	if err := c.commit(next); err != nil {
+		return err
+	}
+	ctx = context.WithoutCancel(ctx)
+	if dropConn {
+		return c.conn.Disconnect(ctx)
+	}
+	if next.Active.SubscriptionID == sub.ID {
+		return c.apply(ctx, next, c.conn.Status().Tun)
+	}
+	return nil
 }
 
 func (c *Core) Connect(ctx context.Context, nodeID, subscriptionID string) error {
@@ -566,14 +564,15 @@ func (c *Core) commit(state store.PersistentState) error {
 func (c *Core) publish() {
 	c.pubMu.Lock()
 	defer c.pubMu.Unlock()
+	c.publishLocked()
+}
 
+func (c *Core) publishLocked() {
 	state := c.current()
-	c.jobsMu.Lock()
 	subs := make([]ipc.Sub, len(state.Subscriptions))
 	for i, sub := range state.Subscriptions {
 		subs[i] = subView(sub, c.refreshes[sub.ID] != nil)
 	}
-	c.jobsMu.Unlock()
 	selected := state.Active
 	if selected.NodeID == "" {
 		selected = state.Last
