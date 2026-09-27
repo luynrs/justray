@@ -78,8 +78,12 @@ func xhttpOptions(t domain.Transport) (option.V2RayXHTTPOptions, error) {
 		}
 		for name := range fields {
 			switch strings.ToLower(name) {
-			case "xmux", "sc_max_concurrent_posts", "server_max_header_bytes", "no_sse_header", "sc_max_buffered_posts", "sc_stream_up_server_secs":
+			case "xmux":
 				return option.V2RayXHTTPOptions{}, fmt.Errorf("xhttp: invalid extra")
+			case "sc_max_concurrent_posts", "scmaxconcurrentposts", "server_max_header_bytes", "servermaxheaderbytes",
+				"no_sse_header", "nosseheader", "sc_max_buffered_posts", "scmaxbufferedposts",
+				"sc_stream_up_server_secs", "scstreamupserversecs":
+				delete(fields, name)
 			}
 		}
 		for name, aliases := range map[string][]string{

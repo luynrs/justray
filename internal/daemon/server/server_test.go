@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -79,12 +80,19 @@ func TestIPCWatchLifecycle(t *testing.T) {
 	}
 
 	client := ipc.NewClient(listener.Addr().String())
-	added, err := client.AddSub("vless://11111111-1111-1111-1111-111111111111@127.0.0.1:443?security=tls#node")
+	link := "vless://11111111-1111-1111-1111-111111111111@127.0.0.1:443?security=tls&type=xhttp&extra=" + url.QueryEscape(`{"serverMaxHeaderBytes":16384,"sessionIDPlacement":"query"}`)
+	added, err := client.AddSub(link)
 	if err != nil || added.ID == "" || added.Nodes != 1 {
 		t.Fatalf("added subscription: %+v, %v", added, err)
 	}
 	if err := decoder.Decode(&snapshot); err != nil || len(snapshot.Nodes) != 1 || snapshot.Nodes[0].Sub != added.ID {
 		t.Fatalf("subscription snapshot: %+v, %v", snapshot, err)
+	}
+	if _, err := client.AddSub(link); err != nil {
+		t.Fatal(err)
+	}
+	if err := decoder.Decode(&snapshot); err != nil || len(snapshot.Nodes) != 2 || snapshot.Nodes[0].ID == snapshot.Nodes[1].ID {
+		t.Fatalf("duplicate link snapshot: %+v, %v", snapshot, err)
 	}
 	if err := client.SetTun(true); err != nil {
 		t.Fatal(err)
@@ -114,9 +122,10 @@ func TestIPCWatchLifecycle(t *testing.T) {
 	}
 }
 
-func TestRefreshRejectsSkippedNodes(t *testing.T) {
+func TestSubscriptionRefresh(t *testing.T) {
 	var body atomic.Value
-	body.Store("trojan://secret@example.com:443#original")
+	first, second := "trojan://secret@example.com:443#first", "trojan://secret@example.com:443#second"
+	body.Store(first + "\n" + second)
 	source := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(response, body.Load().(string))
 	}))
@@ -152,6 +161,9 @@ func TestRefreshRejectsSkippedNodes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if nodes := before.Subscriptions[0].Nodes; len(nodes) != 2 || nodes[0].ID == nodes[1].ID {
+		t.Fatalf("duplicate links were merged or given the same ID: %d nodes", len(nodes))
+	}
 	for name, content := range map[string]string{
 		"uri":                "trojan://secret@example.com:443#new\nvless://uuid@example.com:443?type=quic",
 		"unknown uri":        "trojan://secret@example.com:443#new\nnewproto://secret@example.com:443#bad",
@@ -182,6 +194,18 @@ func TestRefreshRejectsSkippedNodes(t *testing.T) {
 				t.Fatalf("failed refresh changed subscriptions: before=%+v after=%+v err=%v", before.Subscriptions, after.Subscriptions, err)
 			}
 		})
+	}
+	body.Store(second + "\n" + first)
+	if err := client.Refresh(added.ID); err != nil {
+		t.Fatal(err)
+	}
+	after, err := disk.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old, current := before.Subscriptions[0].Nodes, after.Subscriptions[0].Nodes
+	if len(current) != 2 || current[0].ID != old[1].ID || current[1].ID != old[0].ID {
+		t.Fatal("refresh did not preserve separate IDs across reordering")
 	}
 }
 

@@ -207,61 +207,62 @@ func (c *Core) AddSubscription(ctx context.Context, rawURL string) (ipc.Sub, err
 		return ipc.Sub{}, err
 	}
 	next := c.current()
-	direct := parser.IsLink(sub.URL)
-	updatedActive := false
-	if direct {
+	sub.Nodes = assignNodeIDs(sub.Nodes, nil)
+	if parser.IsLink(sub.URL) {
 		i := slices.IndexFunc(next.Subscriptions, func(s store.Subscription) bool { return s.ID == "default" })
 		if i < 0 {
 			i = len(next.Subscriptions)
 			next.Subscriptions = append(next.Subscriptions, store.Subscription{ID: "default", Name: "Default"})
 		}
-		sub.Nodes = assignNodeIDs(sub.Nodes, next.Subscriptions[i].Nodes)
-		updatedActive = c.conn.Status().NodeRef == (domain.NodeRef{SubscriptionID: "default", NodeID: sub.Nodes[0].ID})
-		for _, node := range sub.Nodes {
-			if idx := slices.IndexFunc(next.Subscriptions[i].Nodes, func(n domain.Node) bool { return n.ID == node.ID }); idx >= 0 {
-				next.Subscriptions[i].Nodes[idx] = node
-			} else {
-				next.Subscriptions[i].Nodes = append(next.Subscriptions[i].Nodes, node)
-			}
-		}
+		next.Subscriptions[i].Nodes = append(next.Subscriptions[i].Nodes, sub.Nodes...)
 		sub = next.Subscriptions[i]
 	} else {
-		sub.Nodes = assignNodeIDs(sub.Nodes, nil)
 		next.Subscriptions = append(next.Subscriptions, sub)
 	}
 	if err := c.commit(next); err != nil {
 		return ipc.Sub{}, err
 	}
-	var applyErr error
-	if updatedActive {
-		applyErr = c.apply(ctx, next, c.conn.Status().Tun)
-	}
 	c.publish()
-	return subView(sub, false), applyErr
+	return subView(sub, false), nil
 }
 
 func assignNodeIDs(nodes, previous []domain.Node) []domain.Node {
-	ids := make(map[string]string, len(previous))
+	type nodeMatch struct{ config, name string }
+	byName := make(map[nodeMatch][]string, len(previous))
+	byConfig := make(map[string][]string, len(previous))
 	for _, node := range previous {
-		ids[protocols.NodeKey(node)] = node.ID
+		key := nodeMatch{protocols.NodeKey(node), node.Name}
+		byName[key] = append(byName[key], node.ID)
+		byConfig[key.config] = append(byConfig[key.config], node.ID)
 	}
-	seen := make(map[string]bool, len(nodes))
-	unique := nodes[:0]
-	for _, node := range nodes {
-		key := protocols.NodeKey(node)
-		if seen[key] {
+	used := make(map[string]bool, len(previous))
+	for i := range nodes {
+		key := nodeMatch{protocols.NodeKey(nodes[i]), nodes[i].Name}
+		if ids := byName[key]; len(ids) > 0 {
+			nodes[i].ID = ids[0]
+			byName[key] = ids[1:]
+			used[nodes[i].ID] = true
+		}
+	}
+	for i := range nodes {
+		if nodes[i].ID != "" {
 			continue
 		}
-		seen[key] = true
-		if id := ids[key]; id != "" {
-			node.ID = id
-		} else {
-			node.ID = store.NewNodeID()
+		key := protocols.NodeKey(nodes[i])
+		ids := byConfig[key]
+		for len(ids) > 0 && used[ids[0]] {
+			ids = ids[1:]
 		}
-		unique = append(unique, node)
+		if len(ids) > 0 {
+			nodes[i].ID = ids[0]
+			ids = ids[1:]
+		} else {
+			nodes[i].ID = store.NewNodeID()
+		}
+		byConfig[key] = ids
+		used[nodes[i].ID] = true
 	}
-	clear(nodes[len(unique):])
-	return unique
+	return nodes
 }
 
 func (c *Core) RemoveSubscription(id string) error {
