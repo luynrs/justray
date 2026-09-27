@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -165,10 +166,6 @@ func TestSubscriptionRefresh(t *testing.T) {
 		t.Fatalf("duplicate links were merged or given the same ID: %d nodes", len(nodes))
 	}
 	for name, content := range map[string]string{
-		"uri":                "trojan://secret@example.com:443#new\nvless://uuid@example.com:443?type=quic",
-		"unknown uri":        "trojan://secret@example.com:443#new\nnewproto://secret@example.com:443#bad",
-		"bad xhttp extra":    "trojan://secret@example.com:443#new\nvless://uuid@example.com:443?type=xhttp&extra=%7Bbad",
-		"invalid wireguard":  "trojan://secret@example.com:443#new\nwg://private@example.com:51820?publickey=public&address=not-an-address",
 		"clash":              "proxies:\n  - {name: valid, type: trojan, server: example.com, port: 443, password: secret}\n  - {name: bad, type: tuic, server: example.com, port: 443, password: secret}",
 		"clash malformed":    "proxies:\n  - {name: bad, type: trojan, server: example.com, port: [}\n",
 		"sing-box null":      `{"outbounds":[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},null]}`,
@@ -206,6 +203,40 @@ func TestSubscriptionRefresh(t *testing.T) {
 	old, current := before.Subscriptions[0].Nodes, after.Subscriptions[0].Nodes
 	if len(current) != 2 || current[0].ID != old[1].ID || current[1].ID != old[0].ID {
 		t.Fatal("refresh did not preserve separate IDs across reordering")
+	}
+	shadowsocks := "ss://" + base64.StdEncoding.EncodeToString([]byte("aes-256-gcm:pa%2Fss@word@example.com:8388")) + "#ss"
+	body.Store(base64.StdEncoding.EncodeToString([]byte(first + "\n" + shadowsocks + "\nv2rayn://hysteria2/opaque\nvless://uuid@example.com:443?type=quic")))
+	if err := client.Refresh(added.ID); err != nil {
+		t.Fatalf("mixed subscription refresh: %v", err)
+	}
+	partial, err := disk.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nodes := partial.Subscriptions[0].Nodes; len(nodes) != 2 || nodes[0].Name != "first" || nodes[1].Protocol != domain.SS || nodes[1].Server != "example.com" || nodes[1].Auth.Password != "pa%2Fss@word" {
+		t.Fatalf("mixed refresh did not save the supported node: %+v", nodes)
+	}
+	if warning := partial.Subscriptions[0].Warning; warning != "skipped nodes: 2 (invalid: 1, unsupported: 1)" {
+		t.Fatalf("partial refresh did not persist a useful warning: %q", warning)
+	}
+	if snapshot, err := client.Snapshot(); err != nil || snapshot.Subscriptions[0].Warning != partial.Subscriptions[0].Warning {
+		t.Fatalf("partial refresh warning is missing from IPC: %+v, %v", snapshot.Subscriptions, err)
+	}
+	body.Store("vless://uuid@example.com:443?type=quic")
+	if err := client.Refresh(added.ID); err == nil || !strings.Contains(err.Error(), "skipped nodes: 1 (invalid: 1)") {
+		t.Fatalf("unusable-only refresh: %v", err)
+	}
+	unchanged, err := disk.Load()
+	if err != nil || !reflect.DeepEqual(unchanged.Subscriptions, partial.Subscriptions) {
+		t.Fatalf("unusable-only refresh changed subscriptions: %v", err)
+	}
+	body.Store(first)
+	if err := client.Refresh(added.ID); err != nil {
+		t.Fatal(err)
+	}
+	clean, err := disk.Load()
+	if err != nil || clean.Subscriptions[0].Warning != "" {
+		t.Fatalf("clean refresh kept the old warning: %+v, %v", clean.Subscriptions, err)
 	}
 }
 

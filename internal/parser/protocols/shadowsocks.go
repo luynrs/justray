@@ -25,13 +25,21 @@ func ParseShadowsocks(uri string) (domain.Node, error) {
 		}
 	}
 
+	legacy := !strings.Contains(rest, "@")
+	if legacy {
+		if decoded, err := Unbase64(rest); err == nil {
+			rest = string(decoded)
+		}
+	}
 	at := strings.LastIndexByte(rest, '@')
 	if at < 0 {
 		return domain.Node{}, fmt.Errorf("ss: missing host")
 	}
 	userinfo := rest[:at]
-	if unescaped, err := url.PathUnescape(userinfo); err == nil {
-		userinfo = unescaped
+	if !legacy {
+		if unescaped, err := url.PathUnescape(userinfo); err == nil {
+			userinfo = unescaped
+		}
 	}
 	method, password := splitCreds(userinfo)
 	host, port, err := hostPort(strings.TrimSuffix(rest[at+1:], "/")) // SIP002 allows an empty path

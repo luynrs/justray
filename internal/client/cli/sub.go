@@ -39,6 +39,9 @@ func (a *app) subAdd(cmd *cobra.Command, args []string) error {
 	if sub.Refreshable {
 		done("Added " + a.clean(sub.Name))
 		fields([2]string{"ID", sub.ID}, [2]string{"Nodes", strconv.Itoa(sub.Nodes)}, [2]string{"Traffic", style.Usage(sub.Traffic)})
+		if sub.Warning != "" {
+			out(style.Pending.Render("Warning: " + a.clean(sub.Warning)))
+		}
 	} else {
 		done("Added node to " + a.clean(sub.Name))
 		fields([2]string{"ID", sub.ID}, [2]string{"Nodes", strconv.Itoa(sub.Nodes)})
@@ -119,6 +122,13 @@ func (a *app) subRefresh(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		done("Refreshed all subscriptions")
+		if snap, err := a.client.Snapshot(); err == nil {
+			for _, sub := range snap.Subscriptions {
+				if sub.Warning != "" {
+					out(style.Pending.Render("Warning: " + a.clean(sub.Name) + ": " + a.clean(sub.Warning)))
+				}
+			}
+		}
 		return nil
 	}
 
@@ -141,6 +151,9 @@ func (a *app) subRefresh(cmd *cobra.Command, args []string) error {
 		for _, s := range snap.Subscriptions {
 			if s.ID == sub.ID {
 				fields([2]string{"ID", s.ID}, [2]string{"Nodes", strconv.Itoa(s.Nodes)}, [2]string{"Traffic", style.Usage(s.Traffic)})
+				if s.Warning != "" {
+					out(style.Pending.Render("Warning: " + a.clean(s.Warning)))
+				}
 				break
 			}
 		}
@@ -175,6 +188,7 @@ func (a *app) subList(cmd *cobra.Command, args []string) error {
 			ID      string          `json:"id"`
 			Name    string          `json:"name"`
 			Traffic *domain.Traffic `json:"traffic,omitempty"`
+			Warning string          `json:"warning,omitempty"`
 			Nodes   []nodeOut       `json:"nodes"`
 		}
 		groups := (tree.Data{Subs: subs, Nodes: snapshot.Nodes}).Groups()
@@ -184,7 +198,7 @@ func (a *app) subList(cmd *cobra.Command, args []string) error {
 			for j, n := range g.Nodes {
 				nodes[j] = nodeOut{n.ID, n.Name, n.Protocol, n.Server, n.Port, n.Probed, n.Alive, n.MS}
 			}
-			s := subOut{ID: g.Sub.ID, Name: g.Sub.Name, Nodes: nodes}
+			s := subOut{ID: g.Sub.ID, Name: g.Sub.Name, Warning: g.Sub.Warning, Nodes: nodes}
 			if tr := g.Sub.Traffic; tr.TotalBytes > 0 || tr.UploadBytes > 0 || tr.DownloadBytes > 0 {
 				s.Traffic = &tr
 			}
@@ -250,6 +264,9 @@ func (a *app) showTree(subs []ipc.Sub, nodes []ipc.Node) {
 		} else {
 			out(style.Name.Render(a.clean(g.Sub.Name)) + "  " + style.Dim.Render(g.Sub.ID))
 			out(style.Usage(g.Sub.Traffic) + style.Dim.Render(" "+style.Sep()+" updated "+style.Since(g.Sub.UpdatedAt)))
+			if g.Sub.Warning != "" {
+				out(style.Pending.Render("Warning: " + a.clean(g.Sub.Warning)))
+			}
 		}
 
 		nameW, infoW := 0, 0

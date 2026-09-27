@@ -28,11 +28,11 @@ func (s *Service) Refresh(ctx context.Context, sub store.Subscription) (store.Su
 		return sub, nil
 	}
 
-	nodes, name, traffic, err := s.fetch(ctx, sub.URL)
+	nodes, name, traffic, warning, err := s.fetch(ctx, sub.URL)
 	if err != nil {
 		return sub, err
 	}
-	sub.Nodes, sub.Traffic, sub.UpdatedAt = nodes, traffic, time.Now().UTC()
+	sub.Nodes, sub.Traffic, sub.UpdatedAt, sub.Warning = nodes, traffic, time.Now().UTC(), warning
 	if name != "" { // change name if it changed on server
 		sub.Name = name
 	}

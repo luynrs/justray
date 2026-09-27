@@ -81,17 +81,17 @@ func ParseURI(uri string) (domain.Node, error) {
 	return node, nil
 }
 
-func ParseSubscription(raw []byte) ([]domain.Node, error) {
+func ParseSubscription(raw []byte) ([]domain.Node, string, error) {
 	if decoded, err := protocols.Unbase64(string(raw)); err == nil {
-		nodes, err := parseSub(decoded)
+		nodes, warning, err := parseSub(decoded)
 		if err != protocols.ErrNotFormat {
-			return nodes, err
+			return nodes, warning, err
 		}
 	}
 	return parseSub(raw)
 }
 
-func parseSub(body []byte) ([]domain.Node, error) {
+func parseSub(body []byte) ([]domain.Node, string, error) {
 	body = bytes.TrimPrefix(bytes.TrimSpace(body), []byte("\xef\xbb\xbf"))
 	for _, parse := range []func([]byte) ([]domain.Node, error){protocols.ParseSingBox, protocols.ParseXray, protocols.ParseClash} {
 		nodes, err := parse(body)
@@ -99,22 +99,22 @@ func parseSub(body []byte) ([]domain.Node, error) {
 			continue
 		}
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		for _, node := range nodes {
 			if err := validateNode(node); err != nil {
-				return nil, err
+				return nil, "", err
 			}
 		}
-		return nodes, nil
+		return nodes, "", nil
 	}
 	if len(body) > 0 && (body[0] == '{' || body[0] == '[') && !json.Valid(body) {
-		return nil, errors.New("invalid JSON subscription")
+		return nil, "", errors.New("invalid JSON subscription")
 	}
-	if nodes, err := parseURILines(body); len(nodes) > 0 || err != nil {
-		return nodes, err
+	if nodes, warning, err := parseURILines(body); len(nodes) > 0 || err != nil {
+		return nodes, warning, err
 	}
-	return nil, protocols.ErrNotFormat
+	return nil, "", protocols.ErrNotFormat
 }
 
 func validateNode(node domain.Node) error {
@@ -160,8 +160,9 @@ func validateNode(node domain.Node) error {
 	return outbound.ValidateTransport(node)
 }
 
-func parseURILines(raw []byte) ([]domain.Node, error) {
+func parseURILines(raw []byte) ([]domain.Node, string, error) {
 	var nodes []domain.Node
+	var invalid, unsupported int
 	for line := range strings.Lines(string(raw)) {
 		line = strings.TrimSpace(line)
 		if line == "" || line[0] == '#' || strings.HasPrefix(line, "//") {
@@ -170,12 +171,28 @@ func parseURILines(raw []byte) ([]domain.Node, error) {
 		n, err := ParseURI(line)
 		if err != nil {
 			scheme, _, hasScheme := strings.Cut(line, "://")
-			if IsLink(line) || hasScheme && !strings.EqualFold(scheme, "http") && !strings.EqualFold(scheme, "https") {
-				return nil, err
+			if IsLink(line) {
+				invalid++
+			} else if hasScheme && !strings.EqualFold(scheme, "http") && !strings.EqualFold(scheme, "https") {
+				unsupported++
 			}
 			continue
 		}
 		nodes = append(nodes, n)
 	}
-	return nodes, nil
+	if invalid+unsupported == 0 {
+		return nodes, "", nil
+	}
+	var reasons []string
+	if invalid > 0 {
+		reasons = append(reasons, fmt.Sprintf("invalid: %d", invalid))
+	}
+	if unsupported > 0 {
+		reasons = append(reasons, fmt.Sprintf("unsupported: %d", unsupported))
+	}
+	warning := fmt.Sprintf("skipped nodes: %d (%s)", invalid+unsupported, strings.Join(reasons, ", "))
+	if len(nodes) == 0 {
+		return nil, "", fmt.Errorf("no supported nodes; %s", warning)
+	}
+	return nodes, warning, nil
 }

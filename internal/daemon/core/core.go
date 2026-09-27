@@ -805,7 +805,7 @@ func subView(sub store.Subscription, refreshing bool) ipc.Sub {
 	return ipc.Sub{
 		ID: sub.ID, Name: sub.Name, Nodes: len(sub.Nodes),
 		UpdatedAt: sub.UpdatedAt, Traffic: sub.Traffic,
-		Refreshable: sub.URL != "", Refreshing: refreshing,
+		Refreshable: sub.URL != "", Refreshing: refreshing, Warning: sub.Warning,
 	}
 }
 

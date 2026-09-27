@@ -41,6 +41,7 @@ type Sub struct {
 	Traffic     domain.Traffic
 	Refreshable bool
 	Refreshing  bool
+	Warning     string
 }
 
 type Node struct {

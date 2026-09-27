@@ -19,6 +19,7 @@ type Subscription struct {
 	Nodes     []domain.Node  `json:"nodes"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	Traffic   domain.Traffic `json:"traffic,omitempty"`
+	Warning   string         `json:"warning,omitempty"`
 }
 
 type PersistentState struct {

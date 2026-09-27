@@ -85,7 +85,7 @@ func TestParseSubscriptionList(t *testing.T) {
 		"BOM base64": "\ufeff" + base64.StdEncoding.EncodeToString([]byte(body)),
 	} {
 		t.Run(name, func(t *testing.T) {
-			nodes, err := ParseSubscription([]byte(data))
+			nodes, _, err := ParseSubscription([]byte(data))
 			if err != nil || len(nodes) != 2 {
 				t.Fatalf("got %d nodes, err %v", len(nodes), err)
 			}
@@ -94,7 +94,7 @@ func TestParseSubscriptionList(t *testing.T) {
 }
 
 func TestParseSubscriptionXray(t *testing.T) {
-	nodes, err := ParseSubscription([]byte(`[{
+	nodes, _, err := ParseSubscription([]byte(`[{
 		"remarks": "Germany VLESS",
 		"outbounds": [
 			{"tag": "proxy", "protocol": "vless",
@@ -179,7 +179,7 @@ func TestParseClashProtocols(t *testing.T) {
     username: u
     password: p
 `
-	nodes, err := ParseSubscription([]byte(yaml))
+	nodes, _, err := ParseSubscription([]byte(yaml))
 	if err != nil {
 		t.Fatalf("ParseSubscription Clash: %v", err)
 	}
@@ -248,7 +248,7 @@ func TestParseSingBox(t *testing.T) {
 		{"type":"wireguard","tag":"wg","private_key":"priv","address":["10.0.0.2/32"],
 		 "peers":[{"address":"example.com","port":51820,"public_key":"pub","reserved":[1,2,3]}]}
 	]}`
-	nodes, err := ParseSubscription([]byte(raw))
+	nodes, _, err := ParseSubscription([]byte(raw))
 	if err != nil || len(nodes) != 4 {
 		t.Fatalf("unexpected nodes len %d, err=%v", len(nodes), err)
 	}
@@ -276,12 +276,12 @@ func FuzzParseSubscription(f *testing.F) {
 	f.Add([]byte("\x00\x01\xff not utf8 \xfe"))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
-		_, _ = ParseSubscription(data)
+		_, _, _ = ParseSubscription(data)
 	})
 }
 
 func TestXrayNames(t *testing.T) {
-	nodes, err := ParseSubscription([]byte(`{
+	nodes, _, err := ParseSubscription([]byte(`{
 		"remarks": "Switzerland",
 		"outbounds": [
 			{"tag": "proxy-decoy-1-direct", "protocol": "vless", "settings": {"vnext": [{"address": "one.example", "port": 443, "users": [{"id": "one"}]}]}},
@@ -308,7 +308,7 @@ func TestXrayNames(t *testing.T) {
 }
 
 func TestXrayEndpoints(t *testing.T) {
-	nodes, err := ParseSubscription([]byte(`{
+	nodes, _, err := ParseSubscription([]byte(`{
 		"outbounds": [{"protocol": "vless", "settings": {"vnext": [
 			{"address": "one.example", "port": 443, "users": [{"id": "one"}, {"id": "two"}]},
 			{"address": "two.example", "port": 8443, "users": [{"id": "three"}]}
@@ -327,7 +327,7 @@ func TestXrayInvalid(t *testing.T) {
 		`{"outbounds":[{"protocol":"vless","settings":{"vnext":[{"port":443,"users":[{"id":"uuid"}]}]}}]}`,
 		`{"outbounds":[{"protocol":"vless","settings":{"vnext":[{"address":"example.com","port":443,"users":[{"id":"uuid"}]}]},"streamSettings":{"network":"invalid"}}]}`,
 	} {
-		if _, err := ParseSubscription([]byte(body)); err == nil {
+		if _, _, err := ParseSubscription([]byte(body)); err == nil {
 			t.Fatalf("accepted invalid xray config: %s", body)
 		}
 	}
@@ -408,14 +408,14 @@ func TestParseClashFingerprints(t *testing.T) {
 		"  - {name: utls, type: trojan, server: example.com, port: 443, password: p, client-fingerprint: firefox, fingerprint: " + strings.Repeat("a", 64) + "}\n" +
 		"  - {name: stls, type: shadow-tls, server: example.com, port: 443, password: p, server_name: cloud.example}\n" +
 		"  - {name: wg, type: wg, server: example.com, port: 51820, private-key: priv, public-key: pub, address: 10.0.0.2/32}\n"
-	nodes, err := ParseSubscription([]byte(yaml))
+	nodes, _, err := ParseSubscription([]byte(yaml))
 	if err != nil || len(nodes) != 4 || !nodes[0].TLS.Insecure || nodes[1].TLS.Fingerprint != "firefox" || nodes[2].Protocol != domain.Shadow || nodes[3].Protocol != domain.WG {
 		t.Fatalf("unexpected nodes: %v, err=%v", nodes, err)
 	}
 }
 
 func TestSubscriptionGarbage(t *testing.T) {
-	if _, err := ParseSubscription([]byte("nothing here parses as anything\nnor does this")); err == nil {
+	if _, _, err := ParseSubscription([]byte("nothing here parses as anything\nnor does this")); err == nil {
 		t.Fatal("want error, got none")
 	}
 }
