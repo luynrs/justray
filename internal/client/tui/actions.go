@@ -9,20 +9,13 @@ import (
 	"github.com/luynrs/justray/internal/ipc"
 )
 
-func (m Model) activate() (tea.Model, tea.Cmd) {
-	r, ok := m.at()
-	if !ok {
-		return m, nil
-	}
+func (m Model) activate(r tree.Row) (tea.Model, tea.Cmd) {
 	if r.Kind == tree.Header {
 		id := r.Sub.ID
-		target := !m.collapsed[id]
-		m.collapsed[id] = target
-		m.clamp()
 		if m.client == nil {
 			return m, nil
 		}
-		return m, actionCmd("collapse", nil, func() error { return m.client.SetCollapsed(id, target) })
+		return m, actionCmd("collapse", nil, func() error { return m.client.SetCollapsed(id, !slices.Contains(m.snapshot.Collapsed, id)) })
 	}
 	if m.busy {
 		return m, nil
@@ -44,8 +37,7 @@ func (m Model) collapse() (tea.Model, tea.Cmd) {
 	}
 	id := r.Sub.ID
 	var cmd tea.Cmd
-	if !m.collapsed[id] {
-		m.collapsed[id] = true
+	if !slices.Contains(m.snapshot.Collapsed, id) {
 		if m.client != nil {
 			cmd = actionCmd("collapse", nil, func() error { return m.client.SetCollapsed(id, true) })
 		}
@@ -53,7 +45,6 @@ func (m Model) collapse() (tea.Model, tea.Cmd) {
 	if r.Kind == tree.Node {
 		m.toHeader(id)
 	}
-	m.clamp()
 	return m, cmd
 }
 
@@ -74,13 +65,11 @@ func (m Model) expand() (tea.Model, tea.Cmd) {
 	}
 	id := r.Sub.ID
 	var cmd tea.Cmd
-	if m.collapsed[id] {
-		m.collapsed[id] = false
+	if slices.Contains(m.snapshot.Collapsed, id) {
 		if m.client != nil {
 			cmd = actionCmd("collapse", nil, func() error { return m.client.SetCollapsed(id, false) })
 		}
 	}
-	m.clamp()
 	return m, cmd
 }
 

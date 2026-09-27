@@ -3,6 +3,7 @@ package tree
 import (
 	"cmp"
 	"fmt"
+	"slices"
 
 	"github.com/luynrs/justray/internal/client/tui/style"
 	"github.com/luynrs/justray/internal/ipc"
@@ -20,7 +21,7 @@ func (d Data) Render(r Row, selected bool, width int) string {
 	case Meta:
 		return bar + style.Flush("  "+style.Usage(r.Sub.Traffic), subMeta(r.Sub, d.Spinner), width-2)
 	case Header:
-		return bar + subHeader(r.Sub, d.Collapsed[r.Sub.ID], selected, d.Emoji)
+		return bar + subHeader(r.Sub, slices.Contains(d.Collapsed, r.Sub.ID), selected, d.Emoji)
 	}
 	return bar + style.Flush(d.node(r.Node, selected), info(r.Node), width-2)
 }

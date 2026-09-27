@@ -36,21 +36,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.mouse(msg)
 
-	case tea.PasteMsg:
-		switch {
-		case m.dialog != nil:
-			return m.updateSettings(msg)
-		case m.editor.Focused():
-			var cmd tea.Cmd
-			m.editor, cmd = m.editor.Update(msg)
-			return m, cmd
-		case m.filter.Focused():
-			var cmd tea.Cmd
-			m.filter, cmd = m.filter.Update(msg)
-			m.clamp()
-			return m, cmd
-		}
-
 	case tick:
 		if m.err != "" && time.Since(m.errAt) > 10*time.Second {
 			m.err = ""
@@ -84,11 +69,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.snapshot = msg.snapshot
 		m.syncTTY()
 		m.live = true
-		if initial {
-			for _, id := range m.snapshot.Collapsed {
-				m.collapsed[id] = true
-			}
-		}
 		rows := m.rows()
 		switch {
 		case initial && m.snapshot.Status.Connected:
@@ -101,6 +81,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case selectedOK:
 			for i, idx := range tree.Selectable(rows) {
 				row := rows[idx]
+				if selected.Kind == tree.Node && row.Kind == tree.Header && row.Sub.ID == selected.Sub.ID {
+					m.cursor = i
+				}
 				if row.Kind == selected.Kind && row.Sub.ID == selected.Sub.ID && (row.Kind != tree.Node || row.Node.Ref() == selected.Node.Ref()) {
 					m.cursor = i
 					break
@@ -109,6 +92,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.cursor, m.scroll = tree.Clamp(rows, m.cursor, m.scroll, m.height())
 		return m, next(m.watch, m.updates)
+
+	default:
+		if m.dialog != nil {
+			return m.updateSettings(msg)
+		}
+		if m.editor.Focused() {
+			var cmd tea.Cmd
+			m.editor, cmd = m.editor.Update(msg)
+			return m, cmd
+		}
+		if m.filter.Focused() {
+			var cmd tea.Cmd
+			m.filter, cmd = m.filter.Update(msg)
+			m.clamp()
+			return m, cmd
+		}
 	}
 	return m, nil
 }
@@ -124,7 +123,6 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			if row.Kind == tree.Node && !row.Sub.Refreshable {
 				return m, actionCmd("mutation", m.start, func() error { return m.client.RemoveNode(row.Node.Ref()) })
 			}
-			delete(m.collapsed, row.Sub.ID)
 			return m, actionCmd("mutation", m.start, func() error { return m.client.RemoveSub(row.Sub.ID) })
 		}
 		return m, nil
@@ -181,7 +179,9 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "right", "l":
 		return m.expand()
 	case "enter":
-		return m.activate()
+		if r, ok := m.at(); ok {
+			return m.activate(r)
+		}
 	case "t":
 		return m.probe()
 	case "T", "shift+t":
@@ -260,10 +260,10 @@ func (m Model) click(x, y int) (tea.Model, tea.Cmd) {
 	}
 	clicked := cursor == m.cursor
 	m.cursor = cursor
-	m.clamp()
+	m.cursor, m.scroll = tree.Clamp(rows, m.cursor, m.scroll, m.height())
 
-	if r, _ := m.at(); clicked || r.Kind == tree.Header {
-		return m.activate()
+	if r, _ := tree.At(rows, m.cursor); clicked || r.Kind == tree.Header {
+		return m.activate(r)
 	}
 	return m, nil
 }

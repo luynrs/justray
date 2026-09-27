@@ -3,6 +3,7 @@ package tui
 import (
 	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -64,5 +65,71 @@ func TestSnapshotAfterReconnect(t *testing.T) {
 	model = updated.(Model)
 	if !model.live || !reflect.DeepEqual(model.snapshot, restarted) {
 		t.Fatalf("new daemon's state was rejected: %+v", model.snapshot)
+	}
+}
+
+func TestCollapseFollowsDaemonSnapshot(t *testing.T) {
+	model := New(nil, nil)
+	defer model.stop()
+	model.w, model.h = 80, 24
+	snapshot := ipc.Snapshot{
+		Settings:      domain.Settings{Port: 10808},
+		Subscriptions: []ipc.Sub{{ID: "sub", Name: "Subscription"}},
+		Nodes:         []ipc.Node{{ID: "node", Sub: "sub", Name: "visible-node"}},
+	}
+	updated, _ := model.Update(pushed{live: true, snapshot: snapshot})
+	model = updated.(Model)
+	if !strings.Contains(model.tree(), "visible-node") {
+		t.Fatal("node hidden before collapse")
+	}
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if !strings.Contains(model.tree(), "visible-node") {
+		t.Fatal("collapse applied before daemon confirmation")
+	}
+	snapshot.Collapsed = []string{"sub"}
+	updated, _ = model.Update(pushed{live: true, snapshot: snapshot})
+	model = updated.(Model)
+	if strings.Contains(model.tree(), "visible-node") {
+		t.Fatal("daemon collapse was not applied")
+	}
+	snapshot.Collapsed = nil
+	updated, _ = model.Update(pushed{live: true, snapshot: snapshot})
+	model = updated.(Model)
+	if !strings.Contains(model.tree(), "visible-node") {
+		t.Fatal("daemon expansion was not applied")
+	}
+	snapshot.Subscriptions = append(snapshot.Subscriptions, ipc.Sub{ID: "other", Name: "Other"})
+	snapshot.Nodes = append(snapshot.Nodes, ipc.Node{ID: "other-node", Sub: "other", Name: "other-node"})
+	updated, _ = model.Update(pushed{live: true, snapshot: snapshot})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	model = updated.(Model)
+	snapshot.Collapsed = []string{"sub"}
+	updated, _ = model.Update(pushed{live: true, snapshot: snapshot})
+	if row, _ := updated.(Model).at(); row.Sub.ID != "sub" {
+		t.Fatal("remote collapse moved selection to another subscription")
+	}
+}
+
+func TestRoutingRuleThroughSettings(t *testing.T) {
+	model := New(nil, nil)
+	defer model.stop()
+	model.snapshot.Settings, _ = (domain.Settings{}).Normalize()
+	for _, key := range []tea.KeyPressMsg{{Code: 'o'}, {Code: tea.KeyTab}, {Code: tea.KeyTab},
+		{Code: tea.KeyDown}, {Code: tea.KeyDown}, {Code: tea.KeyDown}, {Code: tea.KeyDown}, {Code: tea.KeyEnter}} {
+		updated, _ := model.Update(key)
+		model = updated.(Model)
+	}
+	updated, _ := model.Update(tea.PasteMsg{Content: "example.com"})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if !slices.Equal(model.dialog.Current().Direct, []string{"example.com"}) {
+		t.Fatalf("rule was not added: %v", model.dialog.Current().Direct)
+	}
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'd'})
+	if len(updated.(Model).dialog.Current().Direct) != 0 {
+		t.Fatal("rule was not removed")
 	}
 }

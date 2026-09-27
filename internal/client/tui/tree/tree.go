@@ -1,6 +1,7 @@
 package tree
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/luynrs/justray/internal/ipc"
@@ -26,7 +27,7 @@ func (r Row) Selectable() bool { return r.Kind == Header || r.Kind == Node }
 type Data struct {
 	Subs      []ipc.Sub
 	Nodes     []ipc.Node
-	Collapsed map[string]bool
+	Collapsed []string
 	Query     string
 	Status    ipc.Status
 	Live      bool
@@ -43,28 +44,22 @@ type Group struct {
 
 func (d Data) Groups() []Group {
 	index := make(map[string][]ipc.Node, len(d.Subs))
-	for _, n := range d.Nodes {
-		index[n.Sub] = append(index[n.Sub], n)
+	for _, node := range d.Nodes {
+		index[node.Sub] = append(index[node.Sub], node)
 	}
-
-	out := make([]Group, 0, len(d.Subs))
+	groups := make([]Group, 0, len(d.Subs))
 	for _, sub := range d.Subs {
-		out = append(out, Group{Sub: sub, Nodes: index[sub.ID]})
+		groups = append(groups, Group{Sub: sub, Nodes: index[sub.ID]})
 	}
-	return out
+	return groups
 }
 
 func (d Data) Rows() []Row {
 	q := strings.ToLower(strings.TrimSpace(d.Query))
-	subs := make(map[string]ipc.Sub, len(d.Subs))
-	for _, sub := range d.Subs {
-		subs[sub.ID] = sub
-	}
-
 	var rows []Row
-	for _, g := range d.Groups() {
-		nodes := g.Nodes
-		if q != "" && !strings.Contains(strings.ToLower(g.Sub.Name), q) {
+	for _, group := range d.Groups() {
+		nodes := group.Nodes
+		if q != "" && !strings.Contains(strings.ToLower(group.Sub.Name), q) {
 			nodes = matching(nodes, q)
 			if len(nodes) == 0 {
 				continue
@@ -74,13 +69,14 @@ func (d Data) Rows() []Row {
 			rows = append(rows, Row{Kind: Gap})
 		}
 
-		rows = append(rows, Row{Kind: Header, Sub: g.Sub})
-		if g.Sub.Refreshable {
-			rows = append(rows, Row{Kind: Meta, Sub: g.Sub})
+		rows = append(rows, Row{Kind: Header, Sub: group.Sub})
+		if group.Sub.Refreshable {
+			rows = append(rows, Row{Kind: Meta, Sub: group.Sub})
 		}
+		collapsed := slices.Contains(d.Collapsed, group.Sub.ID)
 		for _, n := range nodes {
-			if q != "" || !d.Collapsed[g.Sub.ID] || (d.connected() && d.Status.NodeRef == n.Ref()) {
-				rows = append(rows, Row{Kind: Node, Sub: subs[n.Sub], Node: n})
+			if q != "" || !collapsed || (d.connected() && d.Status.NodeRef == n.Ref()) {
+				rows = append(rows, Row{Kind: Node, Sub: group.Sub, Node: n})
 			}
 		}
 	}

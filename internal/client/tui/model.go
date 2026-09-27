@@ -27,11 +27,10 @@ type Model struct {
 
 	snapshot ipc.Snapshot
 
-	collapsed map[string]bool
-	spin      spinner.Model
-	cursor    int
-	scroll    int
-	wheel     time.Time
+	spin   spinner.Model
+	cursor int
+	scroll int
+	wheel  time.Time
 
 	editor  textinput.Model
 	confirm tree.Row
@@ -62,15 +61,14 @@ func New(c *ipc.Client, start func(context.Context) error) Model {
 	filter.Prompt = ""
 	filter.CharLimit = 128
 	m := Model{
-		client:    c,
-		collapsed: map[string]bool{},
-		spin:      spinner.New(),
-		editor:    editor,
-		filter:    filter,
-		updates:   make(chan pushed),
-		watch:     watch,
-		stop:      stop,
-		start:     start,
+		client:  c,
+		spin:    spinner.New(),
+		editor:  editor,
+		filter:  filter,
+		updates: make(chan pushed),
+		watch:   watch,
+		stop:    stop,
+		start:   start,
 	}
 	m.syncTTY()
 	return m
@@ -103,7 +101,7 @@ func (m Model) data() tree.Data {
 	return tree.Data{
 		Subs:      m.snapshot.Subscriptions,
 		Nodes:     m.snapshot.Nodes,
-		Collapsed: m.collapsed,
+		Collapsed: m.snapshot.Collapsed,
 		Query:     m.filter.Value(),
 		Status:    m.snapshot.Status,
 		Live:      m.live,
