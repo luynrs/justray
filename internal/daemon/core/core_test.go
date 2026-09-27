@@ -94,7 +94,9 @@ func TestRestore(t *testing.T) {
 		Active:        domain.NodeRef{SubscriptionID: "sub", NodeID: "node"},
 		Subscriptions: []store.Subscription{{ID: "sub", Nodes: []domain.Node{{ID: "node"}}}},
 	})
-	app.Restore()
+	if err := app.Restore(); err != nil {
+		t.Fatal(err)
+	}
 	if !app.Snapshot().Status.Connected || engine.spec.Node.ID != "node" {
 		t.Fatalf("saved connection was not restored: %+v", app.Snapshot().Status)
 	}
