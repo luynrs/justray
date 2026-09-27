@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/url"
 	"strings"
 
@@ -48,10 +47,6 @@ func ParseVMess(uri string) (domain.Node, error) {
 	if err := json.Unmarshal(data, &vm); err != nil {
 		return domain.Node{}, errors.New("invalid vmess json")
 	}
-	if vm.Add == "" || !domain.ValidPort(int(vm.Port)) || vm.ID == "" {
-		return domain.Node{}, fmt.Errorf("vmess: missing add/port/id")
-	}
-
 	net := strings.ToLower(cmp.Or(vm.Net, "tcp"))
 	if net == "splithttp" {
 		net = "xhttp"

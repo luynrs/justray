@@ -79,8 +79,10 @@ func TestParseURIRejects(t *testing.T) {
 func TestParseSubscriptionList(t *testing.T) {
 	body := "trojan://secret@example.com:443#one\nvless://11111111-1111-1111-1111-111111111111@example.org:8443?security=tls#two"
 	for name, data := range map[string]string{
-		"plain":  "# a comment line\n\n" + body + "\nhttps://youtu.be/dQw4w9WgXcQ",
-		"base64": base64.StdEncoding.EncodeToString([]byte(body)),
+		"plain":      "# a comment line\n\n" + body + "\nhttps://youtu.be/dQw4w9WgXcQ",
+		"base64":     base64.StdEncoding.EncodeToString([]byte(body)),
+		"BOM plain":  "\ufeff" + body,
+		"BOM base64": "\ufeff" + base64.StdEncoding.EncodeToString([]byte(body)),
 	} {
 		t.Run(name, func(t *testing.T) {
 			nodes, err := ParseSubscription([]byte(data))
@@ -92,9 +94,16 @@ func TestParseSubscriptionList(t *testing.T) {
 }
 
 func TestParseSubscriptionXray(t *testing.T) {
-	jsonPayload := `[{"remarks":"Germany VLESS","outbounds":[{"tag":"proxy","protocol":"vless","settings":{"vnext":[{"address":"1.2.3.4","port":443,"users":[{"id":"11111111-1111-1111-1111-111111111111","flow":"xtls-rprx-vision"}]}]},"streamSettings":{"network":"tcp","security":"reality","realitySettings":{"serverName":"example.com","publicKey":"pubkey","shortId":"shortid"}}},{"protocol":"vmess","settings":{"vnext":[{"address":"1.2.3.4","port":443,"users":[{"id":"22222222-2222-2222-2222-222222222222"}]}]}},{"tag":"direct","protocol":"freedom"}]}]`
-
-	nodes, err := ParseSubscription([]byte(jsonPayload))
+	nodes, err := ParseSubscription([]byte(`[{
+		"remarks": "Germany VLESS",
+		"outbounds": [
+			{"tag": "proxy", "protocol": "vless",
+			 "settings": {"vnext": [{"address": "1.2.3.4", "port": 443, "users": [{"id": "uuid", "flow": "xtls-rprx-vision"}]}]},
+			 "streamSettings": {"security": "reality", "realitySettings": {"publicKey": "pubkey", "shortId": "shortid"}}},
+			{"protocol": "vmess", "settings": {"vnext": [{"address": "1.2.3.4", "port": 443, "users": [{"id": "uuid"}]}]}},
+			{"tag": "direct", "protocol": "freedom"}
+		]
+	}]`))
 	if err != nil || len(nodes) != 2 || nodes[1].Protocol != domain.VMess {
 		t.Fatalf("ParseSubscription Xray: err=%v, nodes=%+v", err, nodes)
 	}
@@ -104,6 +113,9 @@ func TestParseSubscriptionXray(t *testing.T) {
 	}
 	if node.Reality == nil || node.Reality.PublicKey != "pubkey" || node.Reality.ShortID != "shortid" {
 		t.Fatalf("unexpected reality: %+v", node.Reality)
+	}
+	if node.Auth.Flow != "xtls-rprx-vision" {
+		t.Fatalf("unexpected flow: %q", node.Auth.Flow)
 	}
 }
 
@@ -226,11 +238,15 @@ func TestIsLinkHTTP(t *testing.T) {
 func TestParseSingBox(t *testing.T) {
 	raw := `{"outbounds":[
 		{"type":"selector","tag":"select","outbounds":["vless-out"]},
-		{"type":"vless","tag":"vl","server":"example.com","server_port":443,"uuid":"11111111-1111-1111-1111-111111111111","tls":{"enabled":true,"server_name":"example.com","reality":{"enabled":true,"public_key":"pub","short_id":"1234"}},"transport":{"type":"ws","path":"/ws"}},
+		{"type":"vless","tag":"vl","server":"example.com","server_port":443,"uuid":"uuid",
+		 "tls":{"enabled":true,"reality":{"enabled":true,"public_key":"pub","short_id":"1234"}},
+		 "transport":{"type":"ws","path":"/ws"}},
 		{"type":"shadowtls","tag":"stls","server":"example.com","server_port":443,"password":"p","version":3},
 		{"type":"shadowsocks","tag":"ss","server":"example.com","server_port":8388,"method":"aes-128-gcm","password":"p","detour":"stls"},
-		{"type":"hysteria2","tag":"hy2","server":"example.com","server_port":443,"password":"p","obfs":{"type":"salamander","password":"obfs"}},
-		{"type":"wireguard","tag":"wg","server":"example.com","server_port":51820,"private_key":"priv","local_address":["10.0.0.2/32"],"peers":[{"public_key":"pub","reserved":[1,2,3]}]}
+		{"type":"hysteria2","tag":"hy2","server":"example.com","server_port":443,"password":"p",
+		 "obfs":{"type":"salamander","password":"obfs"}},
+		{"type":"wireguard","tag":"wg","server":"example.com","server_port":51820,
+		 "private_key":"priv","local_address":["10.0.0.2/32"],"peers":[{"public_key":"pub","reserved":[1,2,3]}]}
 	]}`
 	nodes, err := ParseSubscription([]byte(raw))
 	if err != nil || len(nodes) != 4 {
@@ -265,9 +281,15 @@ func FuzzParseSubscription(f *testing.F) {
 }
 
 func TestXrayNames(t *testing.T) {
-	jsonPayload := `[{"remarks":"Switzerland","outbounds":[{"tag":"proxy-decoy-1-direct","protocol":"vless","settings":{"vnext":[{"address":"87.84.224.105","port":443,"users":[{"id":"uuid1","flow":"xtls-rprx-vision"}]}]},"streamSettings":{"network":"tcp","security":"reality","realitySettings":{"serverName":"vk.com","publicKey":"pk1","shortId":"s1"}}},{"tag":"proxy-wl-1-direct","protocol":"vless","settings":{"vnext":[{"address":"46.243.142.42","port":9443,"users":[{"id":"uuid1"}]}]},"streamSettings":{"network":"grpc","security":"reality","realitySettings":{"serverName":"yandex.net","publicKey":"pk2","shortId":"s2"},"grpcSettings":{"serviceName":"proxy"}}}]}]`
-
-	nodes, err := ParseSubscription([]byte(jsonPayload))
+	nodes, err := ParseSubscription([]byte(`{
+		"remarks": "Switzerland",
+		"outbounds": [
+			{"tag": "proxy-decoy-1-direct", "protocol": "vless", "settings": {"vnext": [{"address": "one.example", "port": 443, "users": [{"id": "one"}]}]}},
+			{"tag": "proxy-wl-1-direct", "protocol": "vless",
+			 "settings": {"vnext": [{"address": "two.example", "port": 443, "users": [{"id": "two"}]}]},
+			 "streamSettings": {"network": "grpc", "grpcSettings": {"serviceName": "proxy"}}}
+		]
+	}`))
 	if err != nil {
 		t.Fatalf("ParseSubscription Xray: %v", err)
 	}
@@ -280,11 +302,18 @@ func TestXrayNames(t *testing.T) {
 	if nodes[1].Name != "Switzerland (proxy-wl-1-direct)" {
 		t.Errorf("unexpected name %q", nodes[1].Name)
 	}
+	if nodes[1].Transport.Network != "grpc" || nodes[1].Transport.ServiceName != "proxy" {
+		t.Errorf("unexpected transport: %+v", nodes[1].Transport)
+	}
 }
 
 func TestXrayEndpoints(t *testing.T) {
-	body := `{"outbounds":[{"protocol":"vless","settings":{"vnext":[{"address":"one.example","port":443,"users":[{"id":"one"},{"id":"two"}]},{"address":"two.example","port":8443,"users":[{"id":"three"}]}]}}]}`
-	nodes, err := ParseSubscription([]byte(body))
+	nodes, err := ParseSubscription([]byte(`{
+		"outbounds": [{"protocol": "vless", "settings": {"vnext": [
+			{"address": "one.example", "port": 443, "users": [{"id": "one"}, {"id": "two"}]},
+			{"address": "two.example", "port": 8443, "users": [{"id": "three"}]}
+		]}}]
+	}`))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -7,8 +7,13 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -97,6 +102,77 @@ func TestIPCWatchLifecycle(t *testing.T) {
 	}
 	if err := <-serveDone; err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRefreshRejectsSkippedNodes(t *testing.T) {
+	var body atomic.Value
+	body.Store("trojan://secret@example.com:443#original")
+	source := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(response, body.Load().(string))
+	}))
+	defer source.Close()
+
+	directory := t.TempDir()
+	disk := store.Disk{Dir: directory}
+	logger := log.New(io.Discard, "", 0)
+	app, err := core.New(disk, connection.New(t.Context(), directory, nil, nil, logger), subscription.New(t.Context(), logger))
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("unix", filepath.Join(directory, "daemon.sock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := New(t.Context(), logger, app)
+	serveDone := make(chan error, 1)
+	go func() { serveDone <- server.Serve(listener) }()
+	defer func() {
+		server.Shutdown()
+		if err := <-serveDone; err != nil {
+			t.Error(err)
+		}
+	}()
+
+	client := ipc.NewClient(listener.Addr().String())
+	added, err := client.AddSub(source.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := disk.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, content := range map[string]string{
+		"uri":                "trojan://secret@example.com:443#new\nvless://uuid@example.com:443?type=quic",
+		"unknown uri":        "trojan://secret@example.com:443#new\nnewproto://secret@example.com:443#bad",
+		"bad xhttp extra":    "trojan://secret@example.com:443#new\nvless://uuid@example.com:443?type=xhttp&extra=%7Bbad",
+		"invalid wireguard":  "trojan://secret@example.com:443#new\nwg://private@example.com:51820?publickey=public&address=not-an-address",
+		"clash":              "proxies:\n  - {name: valid, type: trojan, server: example.com, port: 443, password: secret}\n  - {name: bad, type: tuic, server: example.com, port: 443, password: secret}",
+		"clash malformed":    "proxies:\n  - {name: bad, type: trojan, server: example.com, port: [}\n",
+		"sing-box null":      `{"outbounds":[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},null]}`,
+		"sing-box no type":   `{"outbounds":[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},{"tag":"missing"}]}`,
+		"sing-box unknown":   `{"outbounds":[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},{"type":"future-proxy","tag":"unknown"}]}`,
+		"sing-box bad":       `{"outbounds":[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},{"type":"vless","server":"example.com","server_port":"bad"}]}`,
+		"sing-box transport": `{"outbounds":[{"type":"shadowsocks","server":"example.com","server_port":443,"method":"aes-128-gcm","password":"secret","transport":{"type":"ws"}}]}`,
+		"shadowtls detour":   `{"outbounds":[{"type":"shadowtls","tag":"stls","server":"example.com","server_port":443},{"type":"shadowsocks","server":"example.com","server_port":8388,"method":"aes-128-gcm","password":"secret","detour":"stls"}]}`,
+		"xray null":          `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]}},null]}`,
+		"xray no protocol":   `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]}},{"tag":"missing"}]}`,
+		"xray unknown":       `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]}},{"protocol":"future-proxy","tag":"unknown"}]}`,
+		"xray bad":           `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]}},{"protocol":"vless","settings":{"vnext":[{"address":"example.com","port":"bad","users":[{"id":"uuid"}]}]}}]}`,
+		"xray incompatible":  `{"outbounds":[{"protocol":"vless","settings":{"vnext":[{"address":"example.com","port":443,"users":[{"id":"uuid"}]}],"servers":[{"address":"ignored.example","port":443,"password":"secret"}]}}]}`,
+		"truncated json":     `{"outbounds":[{"type":"vless","server":"example.com"`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			body.Store(content)
+			if err := client.Refresh(added.ID); err == nil || strings.Contains(err.Error(), "secret") {
+				t.Fatalf("refresh error: %v", err)
+			}
+			after, err := disk.Load()
+			if err != nil || !reflect.DeepEqual(after.Subscriptions, before.Subscriptions) {
+				t.Fatalf("failed refresh changed subscriptions: before=%+v after=%+v err=%v", before.Subscriptions, after.Subscriptions, err)
+			}
+		})
 	}
 }
 

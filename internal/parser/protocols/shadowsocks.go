@@ -65,10 +65,6 @@ func ParseShadowsocks(uri string) (domain.Node, error) {
 		method, password, _ = strings.Cut(full[:at], ":")
 		hp = full[at+1:]
 	}
-	if method == "" || password == "" {
-		return domain.Node{}, fmt.Errorf("ss: missing method/password")
-	}
-
 	host, port, err := hostPort(strings.TrimSuffix(hp, "/")) // SIP002 allows an empty path
 	if err != nil {
 		return domain.Node{}, fmt.Errorf("ss: %w", err)

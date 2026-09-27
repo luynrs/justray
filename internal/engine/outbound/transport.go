@@ -3,6 +3,8 @@ package outbound
 import (
 	"cmp"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/netip"
 	"strings"
 
@@ -13,7 +15,13 @@ import (
 	"github.com/luynrs/justray/internal/domain"
 )
 
-func transport(n domain.Node) *option.V2RayTransportOptions {
+func transport(n domain.Node) (*option.V2RayTransportOptions, error) {
+	if n.Transport.Network == "" || n.Transport.Network == "tcp" {
+		return nil, nil
+	}
+	if n.Protocol != domain.VLess && n.Protocol != domain.VMess && n.Protocol != domain.Trojan {
+		return nil, fmt.Errorf("%s: unsupported transport %q", n.Protocol, n.Transport.Network)
+	}
 	if _, err := netip.ParseAddr(n.Server); err != nil && n.Transport.Host == "" {
 		n.Transport.Host = n.Server
 	}
@@ -23,18 +31,18 @@ func transport(n domain.Node) *option.V2RayTransportOptions {
 		if n.Transport.Host != "" {
 			ws.Headers = badoption.HTTPHeader{"Host": {n.Transport.Host}}
 		}
-		return &option.V2RayTransportOptions{Type: C.V2RayTransportTypeWebsocket, WebsocketOptions: ws}
+		return &option.V2RayTransportOptions{Type: C.V2RayTransportTypeWebsocket, WebsocketOptions: ws}, nil
 	case "grpc":
 		return &option.V2RayTransportOptions{
 			Type:        C.V2RayTransportTypeGRPC,
 			GRPCOptions: option.V2RayGRPCOptions{ServiceName: n.Transport.ServiceName},
-		}
+		}, nil
 	case "http":
 		h := option.V2RayHTTPOptions{Path: n.Transport.Path}
 		if n.Transport.Host != "" {
 			h.Host = badoption.Listable[string]{n.Transport.Host}
 		}
-		return &option.V2RayTransportOptions{Type: C.V2RayTransportTypeHTTP, HTTPOptions: h}
+		return &option.V2RayTransportOptions{Type: C.V2RayTransportTypeHTTP, HTTPOptions: h}, nil
 	case "httpupgrade":
 		return &option.V2RayTransportOptions{
 			Type: C.V2RayTransportTypeHTTPUpgrade,
@@ -42,14 +50,23 @@ func transport(n domain.Node) *option.V2RayTransportOptions {
 				Path: n.Transport.Path,
 				Host: n.Transport.Host,
 			},
-		}
+		}, nil
 	case "xhttp", "splithttp":
+		opts, err := xhttpOptions(n.Transport)
+		if err != nil {
+			return nil, err
+		}
 		return &option.V2RayTransportOptions{
 			Type:         C.V2RayTransportTypeXHTTP,
-			XHTTPOptions: xhttpOptions(n.Transport),
-		}
+			XHTTPOptions: opts,
+		}, nil
 	}
-	return nil
+	return nil, fmt.Errorf("unsupported transport %q", n.Transport.Network)
+}
+
+func ValidateTransport(node domain.Node) error {
+	_, err := transport(node)
+	return err
 }
 
 type xhttpExtra struct {
@@ -57,6 +74,7 @@ type xhttpExtra struct {
 	Host                 string            `json:"host"`
 	Mode                 string            `json:"mode"`
 	NoGRPCHeader         bool              `json:"noGRPCHeader"`
+	NoGRPCHeaderSnake    bool              `json:"no_grpc_header"`
 	SessionIDPlacement   string            `json:"sessionIDPlacement"`
 	SessionPlacement     string            `json:"sessionPlacement"`
 	SessionIDKey         string            `json:"sessionIDKey"`
@@ -100,40 +118,43 @@ type xhttpExtra struct {
 	ScMinPostsIntervalMsSnake string `json:"sc_min_posts_interval_ms"`
 }
 
-func xhttpOptions(t domain.Transport) option.V2RayXHTTPOptions {
+func xhttpOptions(t domain.Transport) (option.V2RayXHTTPOptions, error) {
 	opts := option.V2RayXHTTPOptions{Path: t.Path, Host: t.Host, Mode: t.Mode}
 	if t.Extra != "" {
 		var e xhttpExtra
-		if json.Unmarshal([]byte(t.Extra), &e) == nil {
-			opts.Path = cmp.Or(opts.Path, e.Path)
-			opts.Host = cmp.Or(opts.Host, e.Host)
-			opts.Mode = cmp.Or(opts.Mode, e.Mode)
-			opts.NoGRPCHeader = e.NoGRPCHeader
-			opts.SessionPlacement = cmp.Or(e.SessionIDPlacement, e.SessionPlacement, e.SessionPlacementSnake)
-			opts.SessionKey = cmp.Or(e.SessionIDKey, e.SessionKey, e.SessionKeySnake)
-			opts.SessionTable = cmp.Or(e.SessionIDTable, e.SessionTable, e.SessionTableSnake)
-			opts.SessionLength = cmp.Or(e.SessionLength, e.SessionLengthSnake)
-			opts.SeqPlacement = cmp.Or(e.SeqPlacement, e.SeqPlacementSnake)
-			opts.SeqKey = cmp.Or(e.SeqKey, e.SeqKeySnake)
-			opts.UplinkDataPlacement = cmp.Or(e.UplinkDataPlacement, e.UplinkDataPlacementSnake)
-			opts.UplinkDataKey = cmp.Or(e.UplinkDataKey, e.UplinkDataKeySnake)
-			opts.UplinkChunkSize = cmp.Or(e.UplinkChunkSize, e.UplinkChunkSizeSnake)
-			opts.UplinkHTTPMethod = cmp.Or(e.UplinkHTTPMethod, e.UplinkHTTPMethodSnake)
-			if pad := cmp.Or(e.XPaddingBytes, e.XPaddingBytesSnake); pad != "" && pad != "0-0" && pad != "0" {
-				opts.XPaddingBytes = pad
-			}
-			opts.XPaddingObfsMode = e.XPaddingObfsMode || e.XPaddingObfsModeSnake
-			opts.XPaddingKey = cmp.Or(e.XPaddingKey, e.XPaddingKeySnake)
-			opts.XPaddingHeader = cmp.Or(e.XPaddingHeader, e.XPaddingHeaderSnake)
-			opts.XPaddingPlacement = cmp.Or(e.XPaddingPlacement, e.XPaddingPlacementSnake)
-			opts.XPaddingMethod = cmp.Or(e.XPaddingMethod, e.XPaddingMethodSnake)
-			opts.ScMaxEachPostBytes = cmp.Or(e.ScMaxEachPostBytes, e.ScMaxEachPostBytesSnake)
-			opts.ScMinPostsIntervalMs = cmp.Or(e.ScMinPostsIntervalMs, e.ScMinPostsIntervalMsSnake)
-			if len(e.Headers) > 0 {
-				opts.Headers = make(badoption.HTTPHeader, len(e.Headers))
-				for k, v := range e.Headers {
-					opts.Headers[k] = badoption.Listable[string]{v}
-				}
+		decoder := json.NewDecoder(strings.NewReader(t.Extra))
+		decoder.DisallowUnknownFields()
+		if !strings.HasPrefix(strings.TrimSpace(t.Extra), "{") || decoder.Decode(&e) != nil || decoder.Decode(new(any)) != io.EOF {
+			return option.V2RayXHTTPOptions{}, fmt.Errorf("xhttp: invalid extra")
+		}
+		opts.Path = cmp.Or(opts.Path, e.Path)
+		opts.Host = cmp.Or(opts.Host, e.Host)
+		opts.Mode = cmp.Or(opts.Mode, e.Mode)
+		opts.NoGRPCHeader = e.NoGRPCHeader || e.NoGRPCHeaderSnake
+		opts.SessionPlacement = cmp.Or(e.SessionIDPlacement, e.SessionPlacement, e.SessionPlacementSnake)
+		opts.SessionKey = cmp.Or(e.SessionIDKey, e.SessionKey, e.SessionKeySnake)
+		opts.SessionTable = cmp.Or(e.SessionIDTable, e.SessionTable, e.SessionTableSnake)
+		opts.SessionLength = cmp.Or(e.SessionLength, e.SessionLengthSnake)
+		opts.SeqPlacement = cmp.Or(e.SeqPlacement, e.SeqPlacementSnake)
+		opts.SeqKey = cmp.Or(e.SeqKey, e.SeqKeySnake)
+		opts.UplinkDataPlacement = cmp.Or(e.UplinkDataPlacement, e.UplinkDataPlacementSnake)
+		opts.UplinkDataKey = cmp.Or(e.UplinkDataKey, e.UplinkDataKeySnake)
+		opts.UplinkChunkSize = cmp.Or(e.UplinkChunkSize, e.UplinkChunkSizeSnake)
+		opts.UplinkHTTPMethod = cmp.Or(e.UplinkHTTPMethod, e.UplinkHTTPMethodSnake)
+		if pad := cmp.Or(e.XPaddingBytes, e.XPaddingBytesSnake); pad != "" && pad != "0-0" && pad != "0" {
+			opts.XPaddingBytes = pad
+		}
+		opts.XPaddingObfsMode = e.XPaddingObfsMode || e.XPaddingObfsModeSnake
+		opts.XPaddingKey = cmp.Or(e.XPaddingKey, e.XPaddingKeySnake)
+		opts.XPaddingHeader = cmp.Or(e.XPaddingHeader, e.XPaddingHeaderSnake)
+		opts.XPaddingPlacement = cmp.Or(e.XPaddingPlacement, e.XPaddingPlacementSnake)
+		opts.XPaddingMethod = cmp.Or(e.XPaddingMethod, e.XPaddingMethodSnake)
+		opts.ScMaxEachPostBytes = cmp.Or(e.ScMaxEachPostBytes, e.ScMaxEachPostBytesSnake)
+		opts.ScMinPostsIntervalMs = cmp.Or(e.ScMinPostsIntervalMs, e.ScMinPostsIntervalMsSnake)
+		if len(e.Headers) > 0 {
+			opts.Headers = make(badoption.HTTPHeader, len(e.Headers))
+			for k, v := range e.Headers {
+				opts.Headers[k] = badoption.Listable[string]{v}
 			}
 		}
 	}
@@ -141,5 +162,5 @@ func xhttpOptions(t domain.Transport) option.V2RayXHTTPOptions {
 		opts.Mode = "packet-up"
 	}
 	opts.Mode = cmp.Or(opts.Mode, "auto")
-	return opts
+	return opts, nil
 }

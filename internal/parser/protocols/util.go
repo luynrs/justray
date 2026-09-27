@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -13,6 +14,36 @@ import (
 
 	"github.com/luynrs/justray/internal/domain"
 )
+
+var ErrNotFormat = errors.New("unrecognized subscription format")
+
+func hasOutboundField(raw []byte, field string) bool {
+	var items []map[string]json.RawMessage
+	if json.Unmarshal(raw, &items) != nil {
+		var item map[string]json.RawMessage
+		if json.Unmarshal(raw, &item) != nil {
+			return false
+		}
+		items = []map[string]json.RawMessage{item}
+	}
+	for _, item := range items {
+		if _, ok := item[field]; ok {
+			return true
+		}
+		for _, key := range []string{"outbounds", "endpoints"} {
+			var outbounds []map[string]json.RawMessage
+			if json.Unmarshal(item[key], &outbounds) != nil {
+				continue
+			}
+			for _, outbound := range outbounds {
+				if _, ok := outbound[field]; ok {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
 
 func Unbase64(s string) ([]byte, error) {
 	if strings.Contains(s, "%") {
@@ -66,9 +97,6 @@ func hostPort(hp string) (string, int, error) {
 	port, err := strconv.Atoi(p)
 	if err != nil {
 		return "", 0, fmt.Errorf("bad port %q", p)
-	}
-	if !domain.ValidPort(port) {
-		return "", 0, fmt.Errorf("port %d out of range", port)
 	}
 	return host, port, nil
 }

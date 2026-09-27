@@ -15,6 +15,10 @@ func New(n domain.Node, tag string) (*option.Endpoint, []option.Outbound, error)
 	if !domain.ValidPort(n.Port) {
 		return nil, nil, fmt.Errorf("%s: port %d out of range", n.Protocol, n.Port)
 	}
+	transportOptions, err := transport(n)
+	if err != nil {
+		return nil, nil, err
+	}
 	if n.Protocol == domain.WG {
 		ep, err := wireguard(n, tag)
 		return ep, nil, err
@@ -26,7 +30,7 @@ func New(n domain.Node, tag string) (*option.Endpoint, []option.Outbound, error)
 		return nil, []option.Outbound{shadowTLS(n, tag)}, nil
 	}
 
-	out, err := proxy(n, tag)
+	out, err := proxy(n, tag, transportOptions)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -47,7 +51,7 @@ func TLSOnly(p domain.Proto) bool {
 	return false
 }
 
-func proxy(n domain.Node, tag string) (*option.Outbound, error) {
+func proxy(n domain.Node, tag string, transportOptions *option.V2RayTransportOptions) (*option.Outbound, error) {
 	tls := tlsOptions(n)
 	if tls == nil && TLSOnly(n.Protocol) {
 		tls = &option.OutboundTLSOptions{Enabled: true}
@@ -62,7 +66,7 @@ func proxy(n domain.Node, tag string) (*option.Outbound, error) {
 			Flow:                        n.Auth.Flow,
 			PacketEncoding:              &pe,
 			OutboundTLSOptionsContainer: option.OutboundTLSOptionsContainer{TLS: tls},
-			Transport:                   transport(n),
+			Transport:                   transportOptions,
 		}}, nil
 
 	case domain.VMess:
@@ -73,7 +77,7 @@ func proxy(n domain.Node, tag string) (*option.Outbound, error) {
 			AlterId:                     n.Auth.AlterID,
 			PacketEncoding:              packetEncoding(n),
 			OutboundTLSOptionsContainer: option.OutboundTLSOptionsContainer{TLS: tls},
-			Transport:                   transport(n),
+			Transport:                   transportOptions,
 		}}, nil
 
 	case domain.Trojan:
@@ -81,7 +85,7 @@ func proxy(n domain.Node, tag string) (*option.Outbound, error) {
 			ServerOptions:               server(n),
 			Password:                    n.Auth.Password,
 			OutboundTLSOptionsContainer: option.OutboundTLSOptionsContainer{TLS: tls},
-			Transport:                   transport(n),
+			Transport:                   transportOptions,
 		}}, nil
 
 	case domain.SS:

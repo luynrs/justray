@@ -89,18 +89,28 @@ func ParseClash(raw []byte) ([]domain.Node, error) {
 		Proxies []yaml.Node `yaml:"proxies"`
 	}
 	if err := yaml.Unmarshal(raw, &doc); err != nil {
-		return nil, fmt.Errorf("clash: %w", err)
+		for line := range strings.Lines(string(raw)) {
+			if strings.HasPrefix(line, "proxies:") {
+				return nil, fmt.Errorf("clash: invalid YAML")
+			}
+		}
+		return nil, ErrNotFormat
+	}
+	if doc.Proxies == nil {
+		return nil, ErrNotFormat
 	}
 
 	var nodes []domain.Node
 	for _, raw := range doc.Proxies {
 		var p clashProxy
 		if err := raw.Decode(&p); err != nil {
-			continue
+			return nil, fmt.Errorf("clash: invalid proxy fields")
 		}
-		if n, err := clashNode(p); err == nil {
-			nodes = append(nodes, n)
+		node, err := clashNode(p)
+		if err != nil {
+			return nil, err
 		}
+		nodes = append(nodes, node)
 	}
 	if len(nodes) == 0 {
 		return nil, fmt.Errorf("clash: no supported proxies")
@@ -109,9 +119,6 @@ func ParseClash(raw []byte) ([]domain.Node, error) {
 }
 
 func clashNode(p clashProxy) (domain.Node, error) {
-	if p.Server == "" || !domain.ValidPort(p.Port) {
-		return domain.Node{}, fmt.Errorf("clash: missing server/port")
-	}
 	n := domain.Node{
 		Name:   cmp.Or(p.Name, p.Server),
 		Server: p.Server,
@@ -128,9 +135,6 @@ func clashNode(p clashProxy) (domain.Node, error) {
 
 	switch strings.ToLower(p.Type) {
 	case "vless":
-		if p.UUID == "" {
-			return domain.Node{}, fmt.Errorf("clash: vless missing uuid")
-		}
 		n.Protocol = domain.VLess
 		n.Auth = domain.Auth{UUID: p.UUID, Flow: p.Flow}
 		n.Transport = clashTransport(p)
@@ -149,9 +153,6 @@ func clashNode(p clashProxy) (domain.Node, error) {
 		}
 
 	case "vmess":
-		if p.UUID == "" {
-			return domain.Node{}, fmt.Errorf("clash: vmess missing uuid")
-		}
 		n.Protocol = domain.VMess
 		n.Auth = domain.Auth{UUID: p.UUID, AlterID: p.AlterID, Method: strings.ToLower(cmp.Or(p.Cipher, "auto"))}
 		n.Transport = clashTransport(p)
@@ -161,18 +162,12 @@ func clashNode(p clashProxy) (domain.Node, error) {
 		}
 
 	case "trojan":
-		if p.Password == "" {
-			return domain.Node{}, fmt.Errorf("clash: trojan missing password")
-		}
 		n.Protocol = domain.Trojan
 		n.Auth = domain.Auth{Password: p.Password}
 		n.Transport = clashTransport(p)
 		n.TLS = tls
 
 	case "ss", "shadowsocks":
-		if p.Cipher == "" || p.Password == "" {
-			return domain.Node{}, fmt.Errorf("clash: ss missing cipher/password")
-		}
 		n.Protocol = domain.SS
 		n.Auth = domain.Auth{Method: p.Cipher, Password: p.Password}
 		if err := checkPlugin(p.Plugin); err != nil {
@@ -192,9 +187,6 @@ func clashNode(p clashProxy) (domain.Node, error) {
 
 	case "shadow-tls", "shadowtls", "stls":
 		pw := cmp.Or(p.Password, p.AuthStr)
-		if pw == "" {
-			return domain.Node{}, fmt.Errorf("clash: shadow-tls missing password")
-		}
 		n.Protocol = domain.Shadow
 		n.TLS = tls
 		n.ShadowTLS = &domain.ShadowTLS{
@@ -204,9 +196,6 @@ func clashNode(p clashProxy) (domain.Node, error) {
 		}
 
 	case "hysteria2", "hy2":
-		if p.Password == "" {
-			return domain.Node{}, fmt.Errorf("clash: hysteria2 missing password")
-		}
 		n.Protocol = domain.HY2
 		n.Auth = domain.Auth{Password: p.Password}
 		n.TLS = tls
@@ -228,9 +217,6 @@ func clashNode(p clashProxy) (domain.Node, error) {
 		n.UpMbps, n.DownMbps = cmp.Or(int(p.Up), 100), cmp.Or(int(p.Down), 100)
 
 	case "tuic", "tuic5", "tuic-v5", "tuicv5":
-		if p.UUID == "" && p.Password == "" {
-			return domain.Node{}, fmt.Errorf("clash: tuic missing uuid/password")
-		}
 		n.Protocol = domain.TUIC
 		n.Auth = domain.Auth{UUID: p.UUID, Password: p.Password}
 		n.TLS = tls
@@ -241,9 +227,6 @@ func clashNode(p clashProxy) (domain.Node, error) {
 		n.UDPRelayMode = cmp.Or(p.UDPRelayMode, "native")
 
 	case "anytls":
-		if p.Password == "" {
-			return domain.Node{}, fmt.Errorf("clash: anytls missing password")
-		}
 		n.Protocol = domain.AnyTLS
 		n.Auth = domain.Auth{Password: p.Password}
 		n.TLS = tls
@@ -263,17 +246,11 @@ func clashNode(p clashProxy) (domain.Node, error) {
 		}
 
 	case "wireguard", "wg":
-		if p.PrivateKey == "" || p.PublicKey == "" {
-			return domain.Node{}, fmt.Errorf("clash: wireguard missing keys")
-		}
 		addr := addresses(cmp.Or(p.IP, p.Address), p.IPv6)
 		if len(addr) == 0 {
 			for _, a := range p.Addresses {
 				addr = append(addr, addresses(a, "")...)
 			}
-		}
-		if len(addr) == 0 {
-			return domain.Node{}, fmt.Errorf("clash: wireguard missing address")
 		}
 		n.Protocol = domain.WG
 		n.WireGuard = &domain.WireGuard{
