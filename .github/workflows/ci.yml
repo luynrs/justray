@@ -27,8 +27,6 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Verify
-        env:
-          JUSTRAY_TEST_SCHEDULER: "1"
         run: |
           go vet ./...
           go test ./...

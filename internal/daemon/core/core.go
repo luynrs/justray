@@ -44,13 +44,13 @@ func New(st store.Disk, conn *connection.Service, subs *subscription.Service) (*
 	if err != nil {
 		return nil, fmt.Errorf("load state: %w", err)
 	}
+	state.Settings.Autostart = "off"
+	if autostart.Enabled() {
+		state.Settings.Autostart = "on"
+	}
 	settings, err := state.Settings.Normalize()
 	if err != nil {
 		return nil, fmt.Errorf("normalize settings: %w", err)
-	}
-	settings.Autostart = "off"
-	if autostart.Enabled() {
-		settings.Autostart = "on"
 	}
 	state.Settings = settings
 	c := &Core{
@@ -280,8 +280,8 @@ func (c *Core) RemoveSubscription(id string) error {
 		return fmt.Errorf("subscription %q not found", id)
 	}
 	belongs := func(ref domain.NodeRef) bool {
-		return ref.NodeID != "" && slices.ContainsFunc(removed, func(sub store.Subscription) bool {
-			return ref.SubscriptionID == sub.ID || ref.SubscriptionID == "" && slices.ContainsFunc(sub.Nodes, func(n domain.Node) bool { return n.ID == ref.NodeID })
+		return slices.ContainsFunc(removed, func(sub store.Subscription) bool {
+			return ref.SubscriptionID == sub.ID
 		})
 	}
 	if belongs(next.Active) {
@@ -317,10 +317,10 @@ func (c *Core) RemoveNode(ref domain.NodeRef) error {
 	}
 	ref.SubscriptionID = next.Subscriptions[i].ID
 	next.Subscriptions[i].Nodes = slices.DeleteFunc(slices.Clone(next.Subscriptions[i].Nodes), func(node domain.Node) bool { return node.ID == ref.NodeID })
-	if next.Active.NodeID == ref.NodeID && (next.Active.SubscriptionID == ref.SubscriptionID || next.Active.SubscriptionID == "") {
+	if next.Active.NodeID == ref.NodeID && next.Active.SubscriptionID == ref.SubscriptionID {
 		next.Active = domain.NodeRef{}
 	}
-	if next.Last.NodeID == ref.NodeID && (next.Last.SubscriptionID == ref.SubscriptionID || next.Last.SubscriptionID == "") {
+	if next.Last.NodeID == ref.NodeID && next.Last.SubscriptionID == ref.SubscriptionID {
 		next.Last = domain.NodeRef{}
 	}
 	if err := c.commit(next); err != nil {
@@ -585,7 +585,9 @@ func (c *Core) SetSettings(ctx context.Context, settings domain.Settings) error 
 		return err
 	}
 	next := c.current()
-	old := next.Settings
+	if settings.Autostart != next.Settings.Autostart {
+		return errors.New("autostart must be changed separately")
+	}
 	next.Settings = settings
 	if err := c.store.SaveConfig(next.Settings); err != nil {
 		return err
@@ -593,26 +595,39 @@ func (c *Core) SetSettings(ctx context.Context, settings domain.Settings) error 
 	c.stateMu.Lock()
 	c.state.Settings = settings
 	c.stateMu.Unlock()
-	if settings.Autostart != old.Autostart {
-		apply := autostart.Enable
-		if settings.Autostart == "off" {
-			apply = autostart.Disable
-		}
-		if err := apply(); err != nil {
-			next.Settings.Autostart = old.Autostart
-			if rollbackErr := c.store.SaveConfig(next.Settings); rollbackErr != nil {
-				err = errors.Join(err, fmt.Errorf("restore autostart setting: %w", rollbackErr))
-			}
-			c.stateMu.Lock()
-			c.state.Settings = next.Settings
-			c.stateMu.Unlock()
-			c.publish()
-			return err
-		}
-	}
 	applyErr := c.apply(ctx, next, c.conn.Status().Tun)
 	c.publish()
 	return applyErr
+}
+
+func (c *Core) SetAutostart(ctx context.Context, enabled bool) error {
+	c.opMu.Lock()
+	defer c.opMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	actual := autostart.Enabled()
+	var err error
+	if actual != enabled {
+		if enabled {
+			err = autostart.Enable()
+		} else {
+			err = autostart.Disable()
+		}
+		actual = autostart.Enabled()
+	}
+	c.stateMu.Lock()
+	if actual {
+		c.state.Settings.Autostart = "on"
+	} else {
+		c.state.Settings.Autostart = "off"
+	}
+	c.stateMu.Unlock()
+	c.publish()
+	if err == nil && actual != enabled {
+		return errors.New("autostart state did not change")
+	}
+	return err
 }
 
 func (c *Core) SetCollapsed(id string, collapsed bool) error {

@@ -134,7 +134,6 @@ func TestParseClashProtocols(t *testing.T) {
     server: 1.1.1.1
     port: 443
     uuid: 11111111-1111-1111-1111-111111111111
-    alterId: 0
     cipher: auto
     tls: true
   - name: ss
@@ -244,9 +243,10 @@ func TestParseSingBox(t *testing.T) {
 		{"type":"shadowtls","tag":"stls","server":"example.com","server_port":443,"password":"p","version":3},
 		{"type":"shadowsocks","tag":"ss","server":"example.com","server_port":8388,"method":"aes-128-gcm","password":"p","detour":"stls"},
 		{"type":"hysteria2","tag":"hy2","server":"example.com","server_port":443,"password":"p",
-		 "obfs":{"type":"salamander","password":"obfs"}},
-		{"type":"wireguard","tag":"wg","server":"example.com","server_port":51820,
-		 "private_key":"priv","local_address":["10.0.0.2/32"],"peers":[{"public_key":"pub","reserved":[1,2,3]}]}
+		 "obfs":{"type":"salamander","password":"obfs"}}
+	],"endpoints":[
+		{"type":"wireguard","tag":"wg","private_key":"priv","address":["10.0.0.2/32"],
+		 "peers":[{"address":"example.com","port":51820,"public_key":"pub","reserved":[1,2,3]}]}
 	]}`
 	nodes, err := ParseSubscription([]byte(raw))
 	if err != nil || len(nodes) != 4 {

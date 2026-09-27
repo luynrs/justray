@@ -60,7 +60,6 @@ type Auth struct {
 	Username string `json:"username,omitempty"` // socks, http
 	Method   string `json:"method,omitempty"`   // ss cipher, vmess security
 	Flow     string `json:"flow,omitempty"`     // vless, e.g. xtls
-	AlterID  int    `json:"alter_id,omitempty"` // legacy vmess
 }
 
 type ShadowTLS struct {

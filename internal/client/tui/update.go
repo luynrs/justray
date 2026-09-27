@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -288,5 +289,22 @@ func (m Model) closeSettings() (Model, tea.Cmd) {
 	case !changed:
 		return m, nil
 	}
-	return m, actionCmd("settings", m.start, func() error { return m.client.SetSettings(next) })
+	old := m.snapshot.Settings
+	otherSettings := next
+	otherSettings.Autostart = old.Autostart
+	return m, actionCmd("settings", m.start, func() error {
+		if next.Autostart != old.Autostart {
+			if err := m.client.SetAutostart(next.Autostart == "on"); err != nil {
+				return err
+			}
+		}
+		if otherSettings.Equal(old) {
+			return nil
+		}
+		err := m.client.SetSettings(next)
+		if err != nil && next.Autostart != old.Autostart {
+			return fmt.Errorf("autostart changed; settings: %w", err)
+		}
+		return err
+	})
 }

@@ -23,6 +23,7 @@ type Args struct {
 	Tun       bool
 	Mode      *bool
 	Settings  domain.Settings
+	Autostart bool
 	Collapsed bool
 }
 

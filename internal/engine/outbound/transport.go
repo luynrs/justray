@@ -51,7 +51,7 @@ func transport(n domain.Node) (*option.V2RayTransportOptions, error) {
 				Host: n.Transport.Host,
 			},
 		}, nil
-	case "xhttp", "splithttp":
+	case "xhttp":
 		opts, err := xhttpOptions(n.Transport)
 		if err != nil {
 			return nil, err

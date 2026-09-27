@@ -92,6 +92,15 @@ func TestIPCWatchLifecycle(t *testing.T) {
 	if err := decoder.Decode(&snapshot); err != nil || !snapshot.Status.Tun {
 		t.Fatalf("TUN snapshot: %+v, %v", snapshot, err)
 	}
+	settings := snapshot.Settings
+	settings.DNS = "1.1.1.1"
+	if err := client.SetSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+	config, err := os.ReadFile(ipc.Config(directory))
+	if err != nil || strings.Contains(string(config), `"autostart"`) {
+		t.Fatalf("autostart stored in config: %s, %v", config, err)
+	}
 
 	shutdownDone := make(chan struct{})
 	go func() { server.Shutdown(); close(shutdownDone) }()

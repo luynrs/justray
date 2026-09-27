@@ -25,7 +25,7 @@ func (s *Server) handle(conn net.Conn, semHeld *bool) {
 		select {
 		case s.watchSem <- struct{}{}:
 			defer func() { <-s.watchSem }()
-		case <-s.ctx.Done():
+		default:
 			return
 		}
 		if semHeld != nil && *semHeld {
@@ -90,6 +90,8 @@ func (s *Server) dispatch(ctx context.Context, req ipc.Req) (any, error) {
 		return nil, s.core.SetTun(ctx, a.Tun)
 	case "SetSettings":
 		return nil, s.core.SetSettings(ctx, a.Settings)
+	case "SetAutostart":
+		return nil, s.core.SetAutostart(ctx, a.Autostart)
 	case "SetCollapsed":
 		return nil, s.core.SetCollapsed(a.ID, a.Collapsed)
 	}

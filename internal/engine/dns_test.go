@@ -42,7 +42,7 @@ func TestDNSResolution(t *testing.T) {
 		settings, _ := (domain.Settings{}).Normalize()
 		settings.DNS = server
 		settings.IPVersion = "ipv4"
-		options := ProbeConfig(t.Context(), nil, settings, "")
+		options := ProbeConfig(nil, settings, "")
 		if configure != nil {
 			configure(options)
 		}
@@ -113,7 +113,7 @@ func TestDNSResolution(t *testing.T) {
 		lookup(t, "203.0.113.53", func(options *option.Options) {
 			settings, _ := (domain.Settings{}).Normalize()
 			settings.DNS, settings.IPVersion = "203.0.113.53", "ipv4"
-			built, err := Build(t.Context(), domain.Node{Protocol: domain.HTTP, Server: "proxy.example.test", Port: proxy.Listener.Addr().(*net.TCPAddr).Port}, settings, "", false)
+			built, err := Build(domain.Node{Protocol: domain.HTTP, Server: "proxy.example.test", Port: proxy.Listener.Addr().(*net.TCPAddr).Port}, settings, "", false)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -167,7 +167,7 @@ func TestDNSResolution(t *testing.T) {
 
 	settings, _ := (domain.Settings{}).Normalize()
 	settings.DNS = "https://dns.example/dns-query"
-	servers := ProbeConfig(t.Context(), nil, settings, "").DNS.Servers
+	servers := ProbeConfig(nil, settings, "").DNS.Servers
 	resolver := servers[0].Options.(*option.RemoteHTTPSDNSServerOptions).DomainResolver
 	if len(servers) != 2 || resolver == nil || resolver.Server != "remote-bootstrap" || servers[1].Type != "local" {
 		t.Fatalf("DoH hostname bootstrap: %+v", servers)
@@ -178,7 +178,7 @@ func TestDNSRouting(t *testing.T) {
 	settings, _ := (domain.Settings{}).Normalize()
 	node := domain.Node{ID: "node", Protocol: domain.VLess, Server: "node.example", Port: 443, Auth: domain.Auth{UUID: "11111111-1111-1111-1111-111111111111"}}
 	settings.DNS = "1.1.1.1"
-	options, err := Build(t.Context(), node, settings, "", true)
+	options, err := Build(node, settings, "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +201,7 @@ func TestDNSRouting(t *testing.T) {
 	}
 
 	settings.DNS = "https://dns.example/dns-query"
-	options, err = Build(t.Context(), node, settings, "", false)
+	options, err = Build(node, settings, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +215,7 @@ func TestDNSRouting(t *testing.T) {
 	}
 
 	settings.Mode = domain.DirectAll
-	options, err = Build(t.Context(), node, settings, "", false)
+	options, err = Build(node, settings, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}

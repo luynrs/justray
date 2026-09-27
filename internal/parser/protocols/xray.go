@@ -44,20 +44,18 @@ type xrayUser struct {
 	ID       string `json:"id"`
 	Password string `json:"password"`
 	Flow     string `json:"flow"`
-	AlterID  int    `json:"alterId"`
 	Security string `json:"security"`
 }
 
 type xrayStreamSettings struct {
-	Network           string              `json:"network"`
-	Security          string              `json:"security"`
-	RealitySettings   xrayRealitySettings `json:"realitySettings"`
-	TLSSettings       xrayTLSSettings     `json:"tlsSettings"`
-	WSSettings        xrayHTTPTransport   `json:"wsSettings"`
-	GRPCSettings      xrayGRPCTransport   `json:"grpcSettings"`
-	HTTPSettings      xrayHTTPTransport   `json:"httpSettings"`
-	XHTTPSettings     xrayXHTTPTransport  `json:"xhttpSettings"`
-	SplitHTTPSettings xrayXHTTPTransport  `json:"splitHttpSettings"`
+	Network         string              `json:"network"`
+	Security        string              `json:"security"`
+	RealitySettings xrayRealitySettings `json:"realitySettings"`
+	TLSSettings     xrayTLSSettings     `json:"tlsSettings"`
+	WSSettings      xrayHTTPTransport   `json:"wsSettings"`
+	GRPCSettings    xrayGRPCTransport   `json:"grpcSettings"`
+	HTTPSettings    xrayHTTPTransport   `json:"httpSettings"`
+	XHTTPSettings   xrayXHTTPTransport  `json:"xhttpSettings"`
 }
 
 type xrayRealitySettings struct {
@@ -210,7 +208,7 @@ func parseXrayVMess(stream xrayStreamSettings, next xrayVnext, user xrayUser, na
 	}
 	return domain.Node{
 		Name: name, Protocol: domain.VMess, Server: next.Address, Port: next.Port,
-		Auth:      domain.Auth{UUID: user.ID, AlterID: user.AlterID, Method: cmp.Or(user.Security, "auto")},
+		Auth:      domain.Auth{UUID: user.ID, Method: cmp.Or(user.Security, "auto")},
 		Transport: transport, TLS: xrayTLS(stream),
 	}, nil
 }
@@ -239,14 +237,14 @@ func xrayTransport(s xrayStreamSettings) (domain.Transport, error) {
 		return domain.Transport{Network: network, Path: s.WSSettings.Path, Host: cmp.Or(s.WSSettings.Host, s.WSSettings.Headers["Host"])}, nil
 	case "grpc":
 		return domain.Transport{Network: network, ServiceName: s.GRPCSettings.ServiceName}, nil
-	case "http", "h2":
+	case "http":
 		return domain.Transport{Network: "http", Path: s.HTTPSettings.Path, Host: cmp.Or(s.HTTPSettings.Host, s.HTTPSettings.Headers["Host"])}, nil
-	case "xhttp", "splithttp":
+	case "xhttp":
 		return domain.Transport{
 			Network: "xhttp",
-			Path:    cmp.Or(s.XHTTPSettings.Path, s.SplitHTTPSettings.Path),
-			Host:    cmp.Or(s.XHTTPSettings.Host, s.SplitHTTPSettings.Host, s.XHTTPSettings.Headers["Host"], s.XHTTPSettings.Headers["host"], s.SplitHTTPSettings.Headers["Host"], s.SplitHTTPSettings.Headers["host"]),
-			Mode:    cmp.Or(s.XHTTPSettings.Mode, s.SplitHTTPSettings.Mode),
+			Path:    s.XHTTPSettings.Path,
+			Host:    cmp.Or(s.XHTTPSettings.Host, s.XHTTPSettings.Headers["Host"], s.XHTTPSettings.Headers["host"]),
+			Mode:    s.XHTTPSettings.Mode,
 		}, nil
 	default:
 		return domain.Transport{}, fmt.Errorf("unsupported xray transport: %s", network)

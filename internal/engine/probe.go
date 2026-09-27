@@ -30,7 +30,7 @@ func Probe(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath 
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	opts := ProbeConfig(ctx, nodes, s, logPath)
+	opts := ProbeConfig(nodes, s, logPath)
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}

@@ -125,7 +125,7 @@ func TestDisconnectError(t *testing.T) {
 
 func TestProbeResults(t *testing.T) {
 	app := testCore(t, &fakeEngine{}, store.PersistentState{Subscriptions: []store.Subscription{
-		{ID: "link", URL: "vless://node@example.com:443", Nodes: []domain.Node{{ID: "first"}}},
+		{ID: "default", Nodes: []domain.Node{{ID: "first"}}},
 		{ID: "sub", URL: "https://example.com/sub", Nodes: []domain.Node{{ID: "second"}}},
 	}})
 	probe := func(_ context.Context, nodes []domain.Node, _ domain.Settings, _ string, onResult func(string, engine.Result)) error {

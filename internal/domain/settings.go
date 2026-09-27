@@ -40,8 +40,8 @@ type Settings struct {
 }
 
 type General struct {
-	Autostart    string `json:"autostart"`     // on/off, kept by the OS
-	RefreshEvery int    `json:"refresh_hours"` // 0 = never
+	Autostart    string `json:"autostart,omitempty"` // on/off, kept by the OS
+	RefreshEvery int    `json:"refresh_hours"`       // 0 = never
 	Emoji        string `json:"emoji"`
 	ForceTTY     string `json:"force_tty"` // on/off
 	LogLevel     string `json:"log_level"`

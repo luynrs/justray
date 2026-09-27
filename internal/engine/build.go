@@ -1,7 +1,6 @@
 package engine
 
 import (
-	"context"
 	"net/netip"
 	"net/url"
 	"strconv"
@@ -27,7 +26,7 @@ var dnsStrategy = map[string]option.DomainStrategy{
 	"ipv6": option.DomainStrategy(C.DomainStrategyIPv6Only),
 }
 
-func Build(ctx context.Context, n domain.Node, s domain.Settings, logPath string, tun bool) (*option.Options, error) {
+func Build(n domain.Node, s domain.Settings, logPath string, tun bool) (*option.Options, error) {
 	ep, obs, err := outbound.New(n, Tag)
 	if err != nil {
 		return nil, err
@@ -71,7 +70,7 @@ func Build(ctx context.Context, n domain.Node, s domain.Settings, logPath string
 
 func ProbeTag(i int) string { return "p" + strconv.Itoa(i) }
 
-func ProbeConfig(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath string) *option.Options {
+func ProbeConfig(nodes []domain.Node, s domain.Settings, logPath string) *option.Options {
 	opts := &option.Options{
 		Log: &option.LogOptions{Level: s.LogLevel, Output: logPath},
 		Route: &option.RouteOptions{

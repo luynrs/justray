@@ -22,7 +22,6 @@ type singboxOutbound struct {
 	UUID           string        `json:"uuid"`
 	Password       string        `json:"password"`
 	Security       string        `json:"security"`
-	AlterID        int           `json:"alter_id"`
 	Flow           string        `json:"flow"`
 	PacketEncoding string        `json:"packet_encoding"`
 	Method         string        `json:"method"`
@@ -36,11 +35,7 @@ type singboxOutbound struct {
 	Username       string        `json:"username"`
 	Detour         string        `json:"detour"`
 	PrivateKey     string        `json:"private_key"`
-	PeerPublicKey  string        `json:"peer_public_key"`
-	PreSharedKey   string        `json:"pre_shared_key"`
-	LocalAddress   stringOrSlice `json:"local_address"`
 	Address        stringOrSlice `json:"address"`
-	Reserved       []int         `json:"reserved"`
 	MTU            uint32        `json:"mtu"`
 
 	Obfs struct {
@@ -48,8 +43,8 @@ type singboxOutbound struct {
 		Password string `json:"password"`
 	} `json:"obfs"`
 	Peers []struct {
-		Server       string `json:"server"`
-		ServerPort   int    `json:"server_port"`
+		Address      string `json:"address"`
+		Port         int    `json:"port"`
 		PublicKey    string `json:"public_key"`
 		PreSharedKey string `json:"pre_shared_key"`
 		Reserved     []int  `json:"reserved"`
@@ -96,16 +91,23 @@ func ParseSingBox(raw []byte) ([]domain.Node, error) {
 	}
 	var doc singboxDoc
 	var rawOutbounds []json.RawMessage
+	var endpointStart int
 	if err := json.Unmarshal(raw, &doc); err == nil && (len(doc.Outbounds) > 0 || len(doc.Endpoints) > 0) {
+		endpointStart = len(doc.Outbounds)
 		rawOutbounds = append(doc.Outbounds, doc.Endpoints...)
 	} else if err := json.Unmarshal(raw, &rawOutbounds); err != nil || len(rawOutbounds) == 0 {
 		return nil, errors.New("sing-box: invalid outbound fields")
+	} else {
+		endpointStart = len(rawOutbounds)
 	}
 	var outbounds []singboxOutbound
-	for _, rawOutbound := range rawOutbounds {
+	for i, rawOutbound := range rawOutbounds {
 		var outbound singboxOutbound
 		if json.Unmarshal(rawOutbound, &outbound) != nil || outbound.Type == "" {
 			return nil, errors.New("sing-box: invalid outbound fields")
+		}
+		if outbound.Type == "wireguard" && i < endpointStart {
+			return nil, errors.New("sing-box: WireGuard outbound is deprecated; use an endpoint")
 		}
 		outbounds = append(outbounds, outbound)
 	}
@@ -126,7 +128,7 @@ func ParseSingBox(raw []byte) ([]domain.Node, error) {
 			continue
 		}
 		switch strings.ToLower(ob.Type) {
-		case "direct", "block", "dns", "selector", "urltest":
+		case "direct", "selector", "urltest":
 			continue
 		}
 		if singboxProtos[strings.ToLower(ob.Type)] == "" {
@@ -151,9 +153,11 @@ func parseSingBoxOutbound(ob singboxOutbound, stlsByTag map[string]singboxOutbou
 	}
 
 	server, port := ob.Server, ob.ServerPort
-	if proto == domain.WG && len(ob.Peers) > 0 {
-		server = cmp.Or(server, ob.Peers[0].Server)
-		port = cmp.Or(port, ob.Peers[0].ServerPort)
+	if proto == domain.WG {
+		if len(ob.Peers) == 0 {
+			return domain.Node{}, errors.New("wireguard: missing peer")
+		}
+		server, port = ob.Peers[0].Address, ob.Peers[0].Port
 	}
 	n := domain.Node{
 		Name: cmp.Or(ob.Tag, server), Protocol: proto, Server: server, Port: port,
@@ -166,7 +170,7 @@ func parseSingBoxOutbound(ob singboxOutbound, stlsByTag map[string]singboxOutbou
 	case domain.VLess:
 		n.Auth = domain.Auth{UUID: ob.UUID, Flow: ob.Flow}
 	case domain.VMess:
-		n.Auth = domain.Auth{UUID: ob.UUID, Method: cmp.Or(ob.Security, "auto"), AlterID: ob.AlterID}
+		n.Auth = domain.Auth{UUID: ob.UUID, Method: cmp.Or(ob.Security, "auto")}
 	case domain.Trojan:
 		n.Auth = domain.Auth{Password: ob.Password}
 		if n.TLS == nil {
@@ -194,26 +198,17 @@ func parseSingBoxOutbound(ob singboxOutbound, stlsByTag map[string]singboxOutbou
 	case domain.AnyTLS:
 		n.Auth = domain.Auth{Password: ob.Password}
 	case domain.WG:
-		peerPK, psk := ob.PeerPublicKey, ob.PreSharedKey
-		res := ob.Reserved
-		if len(ob.Peers) > 0 {
-			peerPK = cmp.Or(peerPK, ob.Peers[0].PublicKey)
-			psk = cmp.Or(psk, ob.Peers[0].PreSharedKey)
-			if len(res) == 0 {
-				res = ob.Peers[0].Reserved
-			}
-		}
 		var reserved []uint8
-		for _, b := range res {
+		for _, b := range ob.Peers[0].Reserved {
 			if b < 0 || b > 255 {
 				return domain.Node{}, errors.New("wireguard: reserved byte out of range")
 			}
 			reserved = append(reserved, uint8(b))
 		}
-		addrs := fixCIDRs(append(append([]string(nil), ob.LocalAddress...), ob.Address...))
+		addrs := fixCIDRs(ob.Address)
 		if ob.PrivateKey != "" && len(addrs) > 0 {
 			n.WireGuard = &domain.WireGuard{
-				PrivateKey: ob.PrivateKey, PeerPublicKey: peerPK, PreSharedKey: psk,
+				PrivateKey: ob.PrivateKey, PeerPublicKey: ob.Peers[0].PublicKey, PreSharedKey: ob.Peers[0].PreSharedKey,
 				Address: addrs, Reserved: reserved, MTU: ob.MTU,
 			}
 		}

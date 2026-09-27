@@ -16,7 +16,6 @@ type vmessLink struct {
 	Add           string     `json:"add"`
 	Port          flexInt    `json:"port"`
 	ID            string     `json:"id"`
-	AID           flexInt    `json:"aid"`
 	SCY           string     `json:"scy"`
 	Net           string     `json:"net"`
 	Type          string     `json:"type"`
@@ -48,12 +47,6 @@ func ParseVMess(uri string) (domain.Node, error) {
 		return domain.Node{}, errors.New("invalid vmess json")
 	}
 	net := strings.ToLower(cmp.Or(vm.Net, "tcp"))
-	if net == "splithttp" {
-		net = "xhttp"
-	}
-	if net == "h2" {
-		net = "http"
-	}
 	host0 := strings.TrimSpace(strings.SplitN(vm.Host, ",", 2)[0])
 	n := domain.Node{
 		Name:     cmp.Or(vm.PS, frag, vm.Add),
@@ -61,9 +54,8 @@ func ParseVMess(uri string) (domain.Node, error) {
 		Server:   vm.Add,
 		Port:     int(vm.Port),
 		Auth: domain.Auth{
-			UUID:    vm.ID,
-			AlterID: int(vm.AID),
-			Method:  strings.ToLower(cmp.Or(vm.SCY, "auto")),
+			UUID:   vm.ID,
+			Method: strings.ToLower(cmp.Or(vm.SCY, "auto")),
 		},
 		Transport: domain.Transport{
 			Network: net,

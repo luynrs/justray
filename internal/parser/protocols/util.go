@@ -158,9 +158,6 @@ func fixCIDRs(list []string) []string {
 
 func transport(q url.Values) domain.Transport {
 	net := strings.ToLower(cmp.Or(q.Get("type"), q.Get("net"), q.Get("network"), "tcp"))
-	if net == "splithttp" {
-		net = "xhttp"
-	}
 	svc := cmp.Or(q.Get("serviceName"), q.Get("service_name"))
 	if net == "grpc" && svc == "" {
 		svc = strings.TrimPrefix(q.Get("path"), "/")

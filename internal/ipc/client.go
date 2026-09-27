@@ -121,6 +121,10 @@ func (c *Client) SetSettings(s domain.Settings) error {
 	return c.command("SetSettings", Args{Settings: s})
 }
 
+func (c *Client) SetAutostart(enabled bool) error {
+	return c.command("SetAutostart", Args{Autostart: enabled})
+}
+
 func (c *Client) SetCollapsed(id string, collapsed bool) error {
 	return c.command("SetCollapsed", Args{ID: id, Collapsed: collapsed})
 }

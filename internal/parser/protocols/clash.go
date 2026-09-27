@@ -18,7 +18,6 @@ type clashProxy struct {
 	UUID                string   `yaml:"uuid"`
 	Password            string   `yaml:"password"`
 	Cipher              string   `yaml:"cipher"`
-	AlterID             int      `yaml:"alterId"`
 	Network             string   `yaml:"network"`
 	TLS                 bool     `yaml:"tls"`
 	SkipCertVerify      bool     `yaml:"skip-cert-verify"`
@@ -36,7 +35,6 @@ type clashProxy struct {
 	ObfsParam           string   `yaml:"obfs-param"`
 	Username            string   `yaml:"username"`
 	AuthStr             string   `yaml:"auth-str"`
-	AuthStrOld          string   `yaml:"auth_str"`
 	Version             int      `yaml:"version"`
 	Up                  mbps     `yaml:"up"`
 	Down                mbps     `yaml:"down"`
@@ -154,7 +152,7 @@ func clashNode(p clashProxy) (domain.Node, error) {
 
 	case "vmess":
 		n.Protocol = domain.VMess
-		n.Auth = domain.Auth{UUID: p.UUID, AlterID: p.AlterID, Method: strings.ToLower(cmp.Or(p.Cipher, "auto"))}
+		n.Auth = domain.Auth{UUID: p.UUID, Method: strings.ToLower(cmp.Or(p.Cipher, "auto"))}
 		n.Transport = clashTransport(p)
 		n.PacketEncoding = p.PacketEncoding
 		if p.TLS {
@@ -206,7 +204,7 @@ func clashNode(p clashProxy) (domain.Node, error) {
 		}
 
 	case "hysteria", "hy", "hy1":
-		auth := cmp.Or(p.AuthStr, p.AuthStrOld, p.Password)
+		auth := cmp.Or(p.AuthStr, p.Password)
 		if auth == "" {
 			return domain.Node{}, fmt.Errorf("clash: hysteria missing auth")
 		}
@@ -329,8 +327,7 @@ func clashTransport(p clashProxy) domain.Transport {
 		if p.GRPCOpts != nil {
 			t.ServiceName = cmp.Or(p.GRPCOpts.ServiceName, p.GRPCOpts.ServiceNameKebab)
 		}
-	case "xhttp", "splithttp":
-		t.Network = "xhttp"
+	case "xhttp":
 		if p.XHTTPOpts != nil {
 			t.Path = p.XHTTPOpts.Path
 			t.Host = cmp.Or(p.XHTTPOpts.Host, p.XHTTPOpts.Headers["Host"], p.XHTTPOpts.Headers["host"])
