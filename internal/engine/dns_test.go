@@ -94,7 +94,9 @@ func TestDNSResolution(t *testing.T) {
 			connection := &dns.Conn{Conn: conn}
 			query, err := connection.ReadMsg()
 			if err != nil {
-				t.Error(err)
+				if !errors.Is(err, io.EOF) {
+					t.Error(err)
+				}
 				return
 			}
 			if query.Question[0].Name != "example.test." {
