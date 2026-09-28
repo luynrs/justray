@@ -82,20 +82,20 @@ func TestIPCWatchLifecycle(t *testing.T) {
 
 	client := ipc.NewClient(listener.Addr().String())
 	link := "vless://11111111-1111-1111-1111-111111111111@127.0.0.1:443?security=tls&type=xhttp&extra=" + url.QueryEscape(`{"serverMaxHeaderBytes":16384,"sessionIDPlacement":"query"}`)
-	added, err := client.AddSub(link)
+	added, err := client.AddSub(t.Context(), link)
 	if err != nil || added.ID == "" || added.Nodes != 1 {
 		t.Fatalf("added subscription: %+v, %v", added, err)
 	}
 	if err := decoder.Decode(&snapshot); err != nil || len(snapshot.Nodes) != 1 || snapshot.Nodes[0].Sub != added.ID {
 		t.Fatalf("subscription snapshot: %+v, %v", snapshot, err)
 	}
-	if _, err := client.AddSub(link); err != nil {
+	if _, err := client.AddSub(t.Context(), link); err != nil {
 		t.Fatal(err)
 	}
 	if err := decoder.Decode(&snapshot); err != nil || len(snapshot.Nodes) != 2 || snapshot.Nodes[0].ID == snapshot.Nodes[1].ID {
 		t.Fatalf("duplicate link snapshot: %+v, %v", snapshot, err)
 	}
-	if err := client.SetTun(true); err != nil {
+	if err := client.SetTun(t.Context(), true); err != nil {
 		t.Fatal(err)
 	}
 	if err := decoder.Decode(&snapshot); err != nil || !snapshot.Status.Tun {
@@ -103,7 +103,7 @@ func TestIPCWatchLifecycle(t *testing.T) {
 	}
 	settings := snapshot.Settings
 	settings.DNS = "1.1.1.1"
-	if err := client.SetSettings(settings); err != nil {
+	if err := client.SetSettings(t.Context(), settings); err != nil {
 		t.Fatal(err)
 	}
 	config, err := os.ReadFile(ipc.Config(directory))
@@ -154,7 +154,7 @@ func TestSubscriptionRefresh(t *testing.T) {
 	}()
 
 	client := ipc.NewClient(listener.Addr().String())
-	added, err := client.AddSub(source.URL)
+	added, err := client.AddSub(t.Context(), source.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func TestSubscriptionRefresh(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			body.Store(content)
-			if err := client.Refresh(added.ID); err == nil || strings.Contains(err.Error(), "secret") {
+			if err := client.Refresh(t.Context(), added.ID); err == nil || strings.Contains(err.Error(), "secret") {
 				t.Fatalf("refresh error: %v", err)
 			}
 			after, err := disk.Load()
@@ -193,7 +193,7 @@ func TestSubscriptionRefresh(t *testing.T) {
 		})
 	}
 	body.Store(second + "\n" + first)
-	if err := client.Refresh(added.ID); err != nil {
+	if err := client.Refresh(t.Context(), added.ID); err != nil {
 		t.Fatal(err)
 	}
 	after, err := disk.Load()
@@ -206,7 +206,7 @@ func TestSubscriptionRefresh(t *testing.T) {
 	}
 	shadowsocks := "ss://" + base64.StdEncoding.EncodeToString([]byte("aes-256-gcm:pa%2Fss@word@example.com:8388")) + "#ss"
 	body.Store(base64.StdEncoding.EncodeToString([]byte(first + "\n" + shadowsocks + "\nv2rayn://hysteria2/opaque\nvless://uuid@example.com:443?type=quic")))
-	if err := client.Refresh(added.ID); err != nil {
+	if err := client.Refresh(t.Context(), added.ID); err != nil {
 		t.Fatalf("mixed subscription refresh: %v", err)
 	}
 	partial, err := disk.Load()
@@ -219,11 +219,11 @@ func TestSubscriptionRefresh(t *testing.T) {
 	if warning := partial.Subscriptions[0].Warning; warning != "skipped nodes: 2 (invalid: 1, unsupported: 1)" {
 		t.Fatalf("partial refresh did not persist a useful warning: %q", warning)
 	}
-	if snapshot, err := client.Snapshot(); err != nil || snapshot.Subscriptions[0].Warning != partial.Subscriptions[0].Warning {
+	if snapshot, err := client.Snapshot(t.Context()); err != nil || snapshot.Subscriptions[0].Warning != partial.Subscriptions[0].Warning {
 		t.Fatalf("partial refresh warning is missing from IPC: %+v, %v", snapshot.Subscriptions, err)
 	}
 	body.Store("vless://uuid@example.com:443?type=quic")
-	if err := client.Refresh(added.ID); err == nil || !strings.Contains(err.Error(), "skipped nodes: 1 (invalid: 1)") {
+	if err := client.Refresh(t.Context(), added.ID); err == nil || !strings.Contains(err.Error(), "skipped nodes: 1 (invalid: 1)") {
 		t.Fatalf("unusable-only refresh: %v", err)
 	}
 	unchanged, err := disk.Load()
@@ -231,7 +231,7 @@ func TestSubscriptionRefresh(t *testing.T) {
 		t.Fatalf("unusable-only refresh changed subscriptions: %v", err)
 	}
 	body.Store(first)
-	if err := client.Refresh(added.ID); err != nil {
+	if err := client.Refresh(t.Context(), added.ID); err != nil {
 		t.Fatal(err)
 	}
 	clean, err := disk.Load()
@@ -286,7 +286,7 @@ func TestSwitch(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		snapshot, err := client.Snapshot()
+		snapshot, err := client.Snapshot(t.Context())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -297,14 +297,14 @@ func TestSwitch(t *testing.T) {
 	}
 	failure := errors.New("switch failed")
 	_, stop := start(failure, failure)
-	if err := client.Connect(a, nil); err != nil {
+	if err := client.Connect(t.Context(), a, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := client.Connect(b, &tun); err == nil {
+	if err := client.Connect(t.Context(), b, &tun); err == nil {
 		t.Fatal("switch to B succeeded")
 	}
 	check(a, false, false)
-	if err := client.SetTun(true); err == nil {
+	if err := client.SetTun(t.Context(), true); err == nil {
 		t.Fatal("TUN switch succeeded")
 	}
 	check(a, false, false)
@@ -316,7 +316,7 @@ func TestSwitch(t *testing.T) {
 	}
 	app, stop := start(permission, permission)
 	check(a, false, false)
-	if err := client.Connect(b, &tun); err == nil || err.Error() != ipc.ErrElevate.Error() {
+	if err := client.Connect(t.Context(), b, &tun); err == nil || err.Error() != ipc.ErrElevate.Error() {
 		t.Fatalf("elevation request: %v", err)
 	}
 	check(a, false, true)
@@ -333,7 +333,7 @@ func TestSwitch(t *testing.T) {
 
 	_, stop = start(permission, permission)
 	check(a, false, false)
-	if err := client.SetTun(true); err == nil || err.Error() != ipc.ErrElevate.Error() {
+	if err := client.SetTun(t.Context(), true); err == nil || err.Error() != ipc.ErrElevate.Error() {
 		t.Fatalf("mode elevation request: %v", err)
 	}
 	check(a, false, true)
@@ -345,7 +345,7 @@ func TestSwitch(t *testing.T) {
 
 	_, stop = start(permission, permission)
 	check(a, false, false)
-	if err := client.Connect(b, &tun); err == nil || err.Error() != ipc.ErrElevate.Error() {
+	if err := client.Connect(t.Context(), b, &tun); err == nil || err.Error() != ipc.ErrElevate.Error() {
 		t.Fatalf("elevation request: %v", err)
 	}
 	stop()

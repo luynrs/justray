@@ -19,10 +19,12 @@ type pushed struct {
 	live     bool
 }
 
-func actionCmd(op string, start func(context.Context) error, fn func() error) tea.Cmd {
+func (m Model) actionCmd(op string, start func(context.Context) error, fn func() error) tea.Cmd {
 	return func() tea.Msg {
 		if start != nil {
-			_ = start(context.Background())
+			if err := start(m.watch); err != nil {
+				return completed{op: op, err: err}
+			}
 		}
 		return completed{op: op, err: fn()}
 	}

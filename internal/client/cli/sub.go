@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -31,7 +32,7 @@ var subAddCmd = &cobra.Command{
 
 func (a *app) subAdd(cmd *cobra.Command, args []string) error {
 	stop := spin("Fetching subscription")
-	sub, err := a.client.AddSub(args[0])
+	sub, err := a.client.AddSub(cmd.Context(), args[0])
 	stop()
 	if err != nil {
 		return err
@@ -56,7 +57,7 @@ var subRemoveCmd = &cobra.Command{
 }
 
 func (a *app) subRemove(cmd *cobra.Command, args []string) error {
-	snapshot, err := a.client.Snapshot()
+	snapshot, err := a.client.Snapshot(cmd.Context())
 	if err != nil {
 		return err
 	}
@@ -64,7 +65,7 @@ func (a *app) subRemove(cmd *cobra.Command, args []string) error {
 	if subErr == nil {
 		name := a.clean(sub.Name)
 		stop := spin("Removing " + name)
-		err = a.client.RemoveSub(sub.ID)
+		err = a.client.RemoveSub(cmd.Context(), sub.ID)
 		stop()
 		if err != nil {
 			return err
@@ -85,7 +86,7 @@ func (a *app) subRemove(cmd *cobra.Command, args []string) error {
 	node, nodeErr := match(args[0], "node", directNodes, func(n ipc.Node) (string, string) { return n.ID, n.Name })
 	if nodeErr == nil {
 		stop := spin("Removing " + a.clean(node.Name))
-		removeErr := a.client.RemoveNode(node.Ref())
+		removeErr := a.client.RemoveNode(cmd.Context(), node.Ref())
 		stop()
 		if removeErr != nil {
 			return removeErr
@@ -107,7 +108,7 @@ var subRefreshCmd = &cobra.Command{
 
 func (a *app) subRefresh(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
-		snapshot, err := a.client.Snapshot()
+		snapshot, err := a.client.Snapshot(cmd.Context())
 		if err != nil {
 			return err
 		}
@@ -116,13 +117,13 @@ func (a *app) subRefresh(cmd *cobra.Command, args []string) error {
 			return nil
 		}
 		stop := spin("Refreshing subscriptions")
-		err = a.client.RefreshAll()
+		err = a.client.RefreshAll(cmd.Context())
 		stop()
 		if err != nil {
 			return err
 		}
 		done("Refreshed all subscriptions")
-		if snap, err := a.client.Snapshot(); err == nil {
+		if snap, err := a.client.Snapshot(cmd.Context()); err == nil {
 			for _, sub := range snap.Subscriptions {
 				if sub.Warning != "" {
 					out(style.Pending.Render("Warning: " + a.clean(sub.Name) + ": " + a.clean(sub.Warning)))
@@ -132,7 +133,7 @@ func (a *app) subRefresh(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	sub, err := a.resolveSub(args[0])
+	sub, err := a.resolveSub(cmd.Context(), args[0])
 	if err != nil {
 		return err
 	}
@@ -141,13 +142,13 @@ func (a *app) subRefresh(cmd *cobra.Command, args []string) error {
 	}
 	name := a.clean(sub.Name)
 	stop := spin("Refreshing " + name)
-	err = a.client.Refresh(sub.ID)
+	err = a.client.Refresh(cmd.Context(), sub.ID)
 	stop()
 	if err != nil {
 		return err
 	}
 	done("Refreshed " + name)
-	if snap, err := a.client.Snapshot(); err == nil {
+	if snap, err := a.client.Snapshot(cmd.Context()); err == nil {
 		for _, s := range snap.Subscriptions {
 			if s.ID == sub.ID {
 				fields([2]string{"ID", s.ID}, [2]string{"Nodes", strconv.Itoa(s.Nodes)}, [2]string{"Traffic", style.Usage(s.Traffic)})
@@ -168,7 +169,7 @@ var subListCmd = &cobra.Command{
 }
 
 func (a *app) subList(cmd *cobra.Command, args []string) error {
-	snapshot, err := a.client.Snapshot()
+	snapshot, err := a.client.Snapshot(cmd.Context())
 	if err != nil {
 		return err
 	}
@@ -222,8 +223,8 @@ func init() {
 	subListCmd.Flags().Bool("json", false, "Output subscriptions as JSON")
 }
 
-func (a *app) resolveSub(key string) (ipc.Sub, error) {
-	snapshot, err := a.client.Snapshot()
+func (a *app) resolveSub(ctx context.Context, key string) (ipc.Sub, error) {
+	snapshot, err := a.client.Snapshot(ctx)
 	if err != nil {
 		return ipc.Sub{}, err
 	}
@@ -235,10 +236,10 @@ func (a *app) completeSub(cmd *cobra.Command, args []string, toComplete string) 
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 	c := a.daemon()
-	if c == nil || c.Ping() != nil {
+	if c == nil || c.Ping(cmd.Context()) != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	snapshot, err := c.Snapshot()
+	snapshot, err := c.Snapshot(cmd.Context())
 	if err == nil && cmd == subRefreshCmd {
 		snapshot.Subscriptions = slices.DeleteFunc(snapshot.Subscriptions, func(s ipc.Sub) bool { return !s.Refreshable })
 	}

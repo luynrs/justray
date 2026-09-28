@@ -15,19 +15,19 @@ func (m Model) activate(r tree.Row) (tea.Model, tea.Cmd) {
 		if m.client == nil {
 			return m, nil
 		}
-		return m, actionCmd("collapse", nil, func() error { return m.client.SetCollapsed(id, !slices.Contains(m.snapshot.Collapsed, id)) })
+		return m, m.actionCmd("collapse", nil, func() error { return m.client.SetCollapsed(m.watch, id, !slices.Contains(m.snapshot.Collapsed, id)) })
 	}
 	if m.busy {
 		return m, nil
 	}
 
 	m.busy = true
-	act := m.client.Disconnect
+	act := func() error { return m.client.Disconnect(m.watch) }
 	if !m.connected() || m.snapshot.Status.NodeRef != r.Node.Ref() {
 		ref := r.Node.Ref()
-		act = func() error { return m.client.Connect(ref, nil) }
+		act = func() error { return m.client.Connect(m.watch, ref, nil) }
 	}
-	return m, actionCmd("connection", m.start, act)
+	return m, m.actionCmd("connection", m.start, act)
 }
 
 func (m Model) collapse() (tea.Model, tea.Cmd) {
@@ -39,7 +39,7 @@ func (m Model) collapse() (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	if !slices.Contains(m.snapshot.Collapsed, id) {
 		if m.client != nil {
-			cmd = actionCmd("collapse", nil, func() error { return m.client.SetCollapsed(id, true) })
+			cmd = m.actionCmd("collapse", nil, func() error { return m.client.SetCollapsed(m.watch, id, true) })
 		}
 	}
 	if r.Kind == tree.Node {
@@ -67,7 +67,7 @@ func (m Model) expand() (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	if slices.Contains(m.snapshot.Collapsed, id) {
 		if m.client != nil {
-			cmd = actionCmd("collapse", nil, func() error { return m.client.SetCollapsed(id, false) })
+			cmd = m.actionCmd("collapse", nil, func() error { return m.client.SetCollapsed(m.watch, id, false) })
 		}
 	}
 	return m, cmd
@@ -82,13 +82,13 @@ func (m Model) probe() (tea.Model, tea.Cmd) {
 		if r.Node.Probing {
 			return m, nil
 		}
-		return m, actionCmd("probe", m.start, func() error { return m.client.Probe(r.Node.Sub, r.Node.ID) })
+		return m, m.actionCmd("probe", m.start, func() error { return m.client.Probe(m.watch, r.Node.Sub, r.Node.ID) })
 	}
-	return m, actionCmd("probe", m.start, func() error { return m.client.Probe(r.Sub.ID, "") })
+	return m, m.actionCmd("probe", m.start, func() error { return m.client.Probe(m.watch, r.Sub.ID, "") })
 }
 
 func (m Model) probeAll() (tea.Model, tea.Cmd) {
-	return m, actionCmd("probe", m.start, func() error { return m.client.Probe("", "") })
+	return m, m.actionCmd("probe", m.start, func() error { return m.client.Probe(m.watch, "", "") })
 }
 
 func (m Model) refresh() (tea.Model, tea.Cmd) {
@@ -100,11 +100,11 @@ func (m Model) refresh() (tea.Model, tea.Cmd) {
 	if !r.Sub.Refreshable {
 		return m, nil
 	}
-	return m, actionCmd("refresh", m.start, func() error { return m.client.Refresh(id) })
+	return m, m.actionCmd("refresh", m.start, func() error { return m.client.Refresh(m.watch, id) })
 }
 
 func (m Model) refreshAll() (tea.Model, tea.Cmd) {
-	return m, actionCmd("refresh", m.start, m.client.RefreshAll)
+	return m, m.actionCmd("refresh", m.start, func() error { return m.client.RefreshAll(m.watch) })
 }
 
 func (m Model) moveSub(dir int) (tea.Model, tea.Cmd) {
@@ -118,7 +118,7 @@ func (m Model) moveSub(dir int) (tea.Model, tea.Cmd) {
 	if i < 0 || j < 0 || j >= len(m.snapshot.Subscriptions) {
 		return m, nil
 	}
-	return m, actionCmd("mutation", m.start, func() error { return m.client.MoveSub(id, dir) })
+	return m, m.actionCmd("mutation", m.start, func() error { return m.client.MoveSub(m.watch, id, dir) })
 }
 
 func (m Model) setTun(enable bool) (tea.Model, tea.Cmd) {
@@ -130,5 +130,5 @@ func (m Model) setTun(enable bool) (tea.Model, tea.Cmd) {
 		m.busy = true
 		op = "connection"
 	}
-	return m, actionCmd(op, m.start, func() error { return m.client.SetTun(enable) })
+	return m, m.actionCmd(op, m.start, func() error { return m.client.SetTun(m.watch, enable) })
 }

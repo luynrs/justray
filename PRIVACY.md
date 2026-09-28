@@ -29,7 +29,7 @@ All data is stored in your local user profile:
 
 Files include `config.json` (preferences), `state.json` (subscription URLs, node credentials), `logs/` (local troubleshooting logs), and `ipc/` (local socket for daemon control).
 
-- **Deletion:** Remove subscriptions via `jray sub remove <id>`, clear logs with `jray logs clear`, or delete the `justray` folder to erase everything.
+- **Deletion:** Remove subscriptions via `jray sub remove <id>`, clear files under `logs/`, or delete the `justray` folder to erase everything.
 
 ### 5. Contact
 For privacy-related questions, please open an issue on the project's GitHub repository.

@@ -42,12 +42,12 @@ func (c *Core) publishLocked() {
 		selected = state.Last
 	}
 	snapshot := &ipc.Snapshot{
-		Settings:      cloneSettings(state.Settings),
+		Settings:      state.Settings,
 		Subscriptions: subs,
 		Nodes:         c.nodes(state.Subscriptions),
 		Status:        c.status(state),
 		Selected:      selected,
-		Collapsed:     slices.Clone(state.Collapsed),
+		Collapsed:     state.Collapsed,
 	}
 	c.snapshot.Store(snapshot)
 	for ch := range c.watchers {

@@ -27,14 +27,17 @@ func (a *app) up(cmd *cobra.Command, args []string) error {
 	if tun && proxy {
 		return fmt.Errorf("pick either --tun or --proxy")
 	}
-	mode := tunMode(tun, proxy)
+	var mode *bool
+	if tun || proxy {
+		mode = &tun
+	}
 	ctx := cmd.Context()
 
 	if len(args) > 0 {
 		return a.connectNode(ctx, args[0], mode)
 	}
 
-	snapshot, err := a.client.Snapshot()
+	snapshot, err := a.client.Snapshot(ctx)
 	if err != nil {
 		return err
 	}
@@ -43,7 +46,7 @@ func (a *app) up(cmd *cobra.Command, args []string) error {
 		if mode != nil {
 			return a.switchMode(ctx, st, *mode)
 		}
-		a.report(upperFirst(state(st)), st)
+		a.report(snapshot)
 		return nil
 	}
 
@@ -51,7 +54,7 @@ func (a *app) up(cmd *cobra.Command, args []string) error {
 	if ref.NodeID == "" {
 		return fmt.Errorf("no node selected yet; pick one: %s <id | name>", cmd.CommandPath())
 	}
-	n, err := a.resolveNode(ref.NodeID, ref.SubscriptionID)
+	n, err := a.resolveNode(ctx, ref.NodeID, ref.SubscriptionID)
 	if err != nil {
 		return err
 	}
@@ -63,19 +66,8 @@ func init() {
 	upCmd.Flags().Bool("proxy", false, "Connect in proxy mode")
 }
 
-func tunMode(tun, proxy bool) *bool {
-	switch {
-	case tun:
-		return &tun
-	case proxy:
-		off := false
-		return &off
-	}
-	return nil
-}
-
 func (a *app) connectNode(ctx context.Context, key string, mode *bool) error {
-	n, err := a.resolveNode(key, "")
+	n, err := a.resolveNode(ctx, key, "")
 	if err != nil {
 		return err
 	}
@@ -84,33 +76,30 @@ func (a *app) connectNode(ctx context.Context, key string, mode *bool) error {
 
 func (a *app) connect(ctx context.Context, n ipc.Node, mode *bool) error {
 	spinText := "Connecting to " + a.clean(n.Name)
-	st, err := a.runOp(ctx, spinText, func() error {
-		return a.client.Connect(n.Ref(), mode)
+	snapshot, err := a.runOp(ctx, spinText, func() error {
+		return a.client.Connect(ctx, n.Ref(), mode)
 	}, n.Ref(), mode)
 	if err != nil {
 		return err
 	}
-	a.report(upperFirst(state(st)), st)
+	a.report(snapshot)
 	return nil
 }
 
-func (a *app) runOp(ctx context.Context, text string, op func() error, ref domain.NodeRef, want *bool) (ipc.Status, error) {
-	status := func() (ipc.Status, error) {
-		snapshot, err := a.client.Snapshot()
-		return snapshot.Status, err
-	}
+func (a *app) runOp(ctx context.Context, text string, op func() error, ref domain.NodeRef, want *bool) (ipc.Snapshot, error) {
 	stop := spin(text)
 	err := op()
 	stop()
 	if err == nil {
-		st, err := status()
+		snapshot, err := a.client.Snapshot(ctx)
+		st := snapshot.Status
 		if err == nil && (!st.Connected || st.NodeRef != ref || want != nil && st.Tun != *want) {
-			return st, errors.New("requested connection is not active")
+			return snapshot, errors.New("requested connection is not active")
 		}
-		return st, err
+		return snapshot, err
 	}
-	if err.Error() != ipc.ErrElevate.Error() {
-		return ipc.Status{}, err
+	if !errors.Is(err, ipc.ErrElevate) {
+		return ipc.Snapshot{}, err
 	}
 	stop = spin("Granting permissions")
 	defer stop()
@@ -118,32 +107,31 @@ func (a *app) runOp(ctx context.Context, text string, op func() error, ref domai
 		tun := true
 		want = &tun
 	}
-	return awaitElevate(ctx, status, ref, want, 30*time.Second)
+	return awaitElevate(ctx, a.client, ref, want, 30*time.Second)
 }
 
-var elevatePoll = 500 * time.Millisecond
-
-func awaitElevate(ctx context.Context, status func() (ipc.Status, error), ref domain.NodeRef, want *bool, timeout time.Duration) (ipc.Status, error) {
+func awaitElevate(ctx context.Context, client *ipc.Client, ref domain.NodeRef, want *bool, timeout time.Duration) (ipc.Snapshot, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	pending := false
-	for delay := min(5*time.Millisecond, elevatePoll); ; delay = min(delay*2, elevatePoll) {
-		st, err := status()
+	for delay := 5 * time.Millisecond; ; delay = min(delay*2, 500*time.Millisecond) {
+		snapshot, err := client.Snapshot(ctx)
+		st := snapshot.Status
 		switch {
 		case err != nil: // daemon mid exec-restart
 			pending = true
 		case st.Connected && st.NodeRef == ref && (want == nil || st.Tun == *want):
-			return st, nil
+			return snapshot, nil
 		case pending:
-			return st, errors.New("daemon restarted without requested connection")
+			return snapshot, errors.New("daemon restarted without requested connection")
 		}
 		select {
 		case <-ctx.Done():
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-				return ipc.Status{}, errors.New("timed out waiting for permissions")
+				return ipc.Snapshot{}, errors.New("timed out waiting for permissions")
 			}
-			return ipc.Status{}, ctx.Err()
+			return ipc.Snapshot{}, ctx.Err()
 		case <-time.After(delay):
 		}
 	}
@@ -151,22 +139,22 @@ func awaitElevate(ctx context.Context, status func() (ipc.Status, error), ref do
 
 func (a *app) switchMode(ctx context.Context, st ipc.Status, tun bool) error {
 	next, err := a.runOp(ctx, "Switching to "+strings.ToUpper(modeWord(tun)), func() error {
-		return a.client.SetTun(tun)
+		return a.client.SetTun(ctx, tun)
 	}, st.NodeRef, &tun)
 	if err != nil {
 		return err
 	}
-	a.report(upperFirst(state(next)), next)
+	a.report(next)
 	return nil
 }
 
-func (a *app) report(headline string, st ipc.Status) {
-	done(headline)
-	a.nodeDetails(st, nil)
+func (a *app) report(snapshot ipc.Snapshot) {
+	done(upperFirst(state(snapshot.Status)))
+	a.nodeDetails(snapshot.Status, snapshot.Nodes)
 }
 
-func (a *app) resolveNode(key, sub string) (ipc.Node, error) {
-	snapshot, err := a.client.Snapshot()
+func (a *app) resolveNode(ctx context.Context, key, sub string) (ipc.Node, error) {
+	snapshot, err := a.client.Snapshot(ctx)
 	if err != nil {
 		return ipc.Node{}, err
 	}
@@ -182,9 +170,9 @@ func (a *app) completeNode(cmd *cobra.Command, args []string, toComplete string)
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 	c := a.daemon()
-	if c == nil || c.Ping() != nil {
+	if c == nil || c.Ping(cmd.Context()) != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	snapshot, err := c.Snapshot()
+	snapshot, err := c.Snapshot(cmd.Context())
 	return completeNames(snapshot.Nodes, err, func(n ipc.Node) string { return n.Name })
 }

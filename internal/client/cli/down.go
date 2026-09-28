@@ -10,7 +10,7 @@ var downCmd = &cobra.Command{
 }
 
 func (a *app) down(cmd *cobra.Command, args []string) error {
-	snapshot, err := a.client.Snapshot()
+	snapshot, err := a.client.Snapshot(cmd.Context())
 	if err != nil {
 		return err
 	}
@@ -20,7 +20,7 @@ func (a *app) down(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	stop := spin("Disconnecting")
-	err = a.client.Disconnect()
+	err = a.client.Disconnect(cmd.Context())
 	stop()
 	if err != nil {
 		return err

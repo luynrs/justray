@@ -12,8 +12,17 @@ import (
 	"github.com/luynrs/justray/internal/ipc"
 )
 
-func (s *Server) handle(conn net.Conn, semHeld *bool) {
-	defer func() { _ = conn.Close() }()
+func (s *Server) handle(conn net.Conn) {
+	semHeld := true
+	defer func() {
+		_ = conn.Close()
+		s.mu.Lock()
+		delete(s.active, conn)
+		s.mu.Unlock()
+		if semHeld {
+			<-s.sem
+		}
+	}()
 	_ = conn.SetReadDeadline(time.Now().Add(ipc.IdleTimeout))
 
 	var req ipc.Req
@@ -28,10 +37,8 @@ func (s *Server) handle(conn net.Conn, semHeld *bool) {
 		default:
 			return
 		}
-		if semHeld != nil && *semHeld {
-			<-s.sem
-			*semHeld = false
-		}
+		<-s.sem
+		semHeld = false
 		s.watch(conn)
 		return
 	}

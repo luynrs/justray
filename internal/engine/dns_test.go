@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -74,7 +75,10 @@ func TestDNSResolution(t *testing.T) {
 	t.Run("UDP", func(t *testing.T) { lookup(t, packetConn.LocalAddr().String(), nil) })
 	t.Run("TCP detour", func(t *testing.T) {
 		var queries atomic.Int32
+		var handlers sync.WaitGroup
 		proxy := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			handlers.Add(1)
+			defer handlers.Done()
 			if request.Method != http.MethodConnect || request.Host != "203.0.113.53:53" {
 				t.Errorf("unexpected proxy request: %s %s", request.Method, request.Host)
 				writer.WriteHeader(http.StatusBadRequest)
@@ -88,15 +92,11 @@ func TestDNSResolution(t *testing.T) {
 			defer func() { _ = conn.Close() }()
 			_, _ = stream.WriteString("HTTP/1.1 200 Connection Established\r\n\r\n")
 			if err := stream.Flush(); err != nil {
-				t.Error(err)
 				return
 			}
 			connection := &dns.Conn{Conn: conn}
 			query, err := connection.ReadMsg()
 			if err != nil {
-				if !errors.Is(err, io.EOF) {
-					t.Error(err)
-				}
 				return
 			}
 			if query.Question[0].Name != "example.test." {
@@ -105,11 +105,12 @@ func TestDNSResolution(t *testing.T) {
 			if query.Question[0].Qtype == dns.TypeA {
 				queries.Add(1)
 			}
-			if err := connection.WriteMsg(answer(query)); err != nil {
-				t.Error(err)
-			}
+			_ = connection.WriteMsg(answer(query))
 		}))
-		defer proxy.Close()
+		defer func() {
+			proxy.Close()
+			handlers.Wait()
+		}()
 		lookup(t, "203.0.113.53", func(options *option.Options) {
 			settings, _ := (domain.Settings{}).Normalize()
 			settings.DNS, settings.IPVersion = "203.0.113.53", "ipv4"

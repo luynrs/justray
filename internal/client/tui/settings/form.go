@@ -57,7 +57,7 @@ func (s *Settings) lines(width, height int) []string {
 	blocks := make([][]string, len(rows))
 	picks := make([][]string, len(rows))
 	for i, f := range rows {
-		blocks[i], picks[i] = s.fieldBlock(f, i, w)
+		blocks[i], picks[i] = s.fieldBlock(f, i)
 	}
 
 	h := max(height, 1)
@@ -132,7 +132,7 @@ func (s *Settings) tabAt(x int) (int, bool) {
 }
 
 // fieldBlock renders one row, blank line above non-list rows
-func (s *Settings) fieldBlock(f field, i, width int) (lines, choices []string) {
+func (s *Settings) fieldBlock(f field, i int) (lines, choices []string) {
 	selected := i == s.cursor
 
 	bar := "  "

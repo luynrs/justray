@@ -7,7 +7,6 @@ import (
 	"io"
 	"mime"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -27,9 +26,7 @@ func (s *Service) fetch(ctx context.Context, rawURL string) ([]domain.Node, stri
 		return nil, "", none, "", err
 	}
 	req.Header = s.device.Clone()
-	if u, err := url.Parse(rawURL); err == nil {
-		req.Header.Set("X-Hwid", hash(s.device.Get("X-Hwid")+u.Hostname()))
-	}
+	req.Header.Set("X-Hwid", hash(s.device.Get("X-Hwid")+req.URL.Hostname()))
 
 	client := http.Client{
 		Timeout: 20 * time.Second,

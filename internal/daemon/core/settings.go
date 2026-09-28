@@ -69,8 +69,7 @@ func (c *Core) SetCollapsed(id string, collapsed bool) error {
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
 	next := c.current()
-	has := slices.Contains(next.Collapsed, id)
-	if has == collapsed {
+	if slices.Contains(next.Collapsed, id) == collapsed {
 		return nil
 	}
 	if collapsed {

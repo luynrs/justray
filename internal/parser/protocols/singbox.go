@@ -131,9 +131,6 @@ func ParseSingBox(raw []byte) ([]domain.Node, error) {
 		case "direct", "selector", "urltest":
 			continue
 		}
-		if singboxProtos[strings.ToLower(ob.Type)] == "" {
-			return nil, errors.New("unsupported sing-box outbound")
-		}
 		node, err := parseSingBoxOutbound(ob, stlsByTag)
 		if err != nil {
 			return nil, err
@@ -236,7 +233,7 @@ func singboxTransport(t *singboxTransportConfig) domain.Transport {
 	var host string
 	if len(t.Host) > 0 {
 		host = t.Host[0]
-	} else if t.Headers != nil {
+	} else {
 		host = cmp.Or(t.Headers["Host"], t.Headers["host"])
 	}
 	return domain.Transport{Network: net, Path: t.Path, Host: host, ServiceName: t.ServiceName, Mode: t.Mode}

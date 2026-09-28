@@ -121,9 +121,9 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.confirm = tree.Row{}
 		if k == "y" || k == "Y" {
 			if row.Kind == tree.Node && !row.Sub.Refreshable {
-				return m, actionCmd("mutation", m.start, func() error { return m.client.RemoveNode(row.Node.Ref()) })
+				return m, m.actionCmd("mutation", m.start, func() error { return m.client.RemoveNode(m.watch, row.Node.Ref()) })
 			}
-			return m, actionCmd("mutation", m.start, func() error { return m.client.RemoveSub(row.Sub.ID) })
+			return m, m.actionCmd("mutation", m.start, func() error { return m.client.RemoveSub(m.watch, row.Sub.ID) })
 		}
 		return m, nil
 
@@ -138,8 +138,8 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			if url == "" {
 				return m, nil
 			}
-			return m, actionCmd("mutation", m.start, func() error {
-				_, err := m.client.AddSub(url)
+			return m, m.actionCmd("mutation", m.start, func() error {
+				_, err := m.client.AddSub(m.watch, url)
 				return err
 			})
 		}
@@ -292,16 +292,16 @@ func (m Model) closeSettings() (Model, tea.Cmd) {
 	old := m.snapshot.Settings
 	otherSettings := next
 	otherSettings.Autostart = old.Autostart
-	return m, actionCmd("settings", m.start, func() error {
+	return m, m.actionCmd("settings", m.start, func() error {
 		if next.Autostart != old.Autostart {
-			if err := m.client.SetAutostart(next.Autostart == "on"); err != nil {
+			if err := m.client.SetAutostart(m.watch, next.Autostart == "on"); err != nil {
 				return err
 			}
 		}
 		if otherSettings.Equal(old) {
 			return nil
 		}
-		err := m.client.SetSettings(next)
+		err := m.client.SetSettings(m.watch, next)
 		if err != nil && next.Autostart != old.Autostart {
 			return fmt.Errorf("autostart changed; settings: %w", err)
 		}

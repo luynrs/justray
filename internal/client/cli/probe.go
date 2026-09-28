@@ -20,7 +20,7 @@ var probeCmd = &cobra.Command{
 }
 
 func (a *app) probe(cmd *cobra.Command, args []string) error {
-	snapshot, err := a.client.Snapshot()
+	snapshot, err := a.client.Snapshot(cmd.Context())
 	if err != nil {
 		return err
 	}
@@ -55,10 +55,10 @@ func (a *app) probe(cmd *cobra.Command, args []string) error {
 	}
 
 	stop := spin(spinnerText)
-	probeErr := a.client.Probe(subID, nodeID)
+	probeErr := a.client.Probe(cmd.Context(), subID, nodeID)
 	stop()
 
-	snap, err := a.client.Snapshot()
+	snap, err := a.client.Snapshot(cmd.Context())
 	if err != nil {
 		return errors.Join(probeErr, err)
 	}
@@ -114,10 +114,10 @@ func (a *app) completeProbe(cmd *cobra.Command, args []string, toComplete string
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 	c := a.daemon()
-	if c == nil || c.Ping() != nil {
+	if c == nil || c.Ping(cmd.Context()) != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	snap, err := c.Snapshot()
+	snap, err := c.Snapshot(cmd.Context())
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}

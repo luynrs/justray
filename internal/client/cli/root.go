@@ -146,8 +146,11 @@ func (a *app) start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if a.daemon().Ping() == nil {
+	if a.daemon().Ping(ctx) == nil {
 		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	if err := spawn(dir); err != nil {
 		return err
@@ -164,8 +167,8 @@ func (a *app) connectDaemon(ctx context.Context) error {
 		return fmt.Errorf("create config dir: %w", err)
 	}
 
-	a.client = ipc.NewClient(ipc.Socket(dir), ctx)
-	if a.client.Ping() != nil {
+	a.client = ipc.NewClient(ipc.Socket(dir))
+	if a.client.Ping(ctx) != nil {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -182,7 +185,7 @@ func (a *app) connectDaemon(ctx context.Context) error {
 			return fmt.Errorf("daemon did not start, see %s", ipc.DaemonLog(dir))
 		}
 	}
-	if snapshot, err := a.client.Snapshot(); err == nil {
+	if snapshot, err := a.client.Snapshot(ctx); err == nil {
 		a.emoji = snapshot.Settings.Emoji == "on"
 		style.TTY = style.DetectTTY(snapshot.Settings.ForceTTY)
 	}
@@ -255,7 +258,7 @@ func wait(ctx context.Context, c *ipc.Client, timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	for delay := 5 * time.Millisecond; c.Ping() != nil; delay = min(delay*2, 100*time.Millisecond) {
+	for delay := 5 * time.Millisecond; c.Ping(ctx) != nil; delay = min(delay*2, 100*time.Millisecond) {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()

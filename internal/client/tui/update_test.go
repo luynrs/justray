@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"slices"
@@ -13,6 +14,20 @@ import (
 	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/ipc"
 )
+
+func TestActionReportsDaemonStartFailure(t *testing.T) {
+	model := New(ipc.NewClient("missing-daemon.sock"), func(context.Context) error {
+		return errors.New("launcher failed")
+	})
+	defer model.stop()
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'm'})
+	updated, _ = updated.Update(command())
+	model = updated.(Model)
+	model.w, model.h = 80, 24
+	if !strings.Contains(model.View().Content, "launcher failed") {
+		t.Fatalf("launcher error missing from footer: %s", model.View().Content)
+	}
+}
 
 func TestSettingsWaitForSnapshot(t *testing.T) {
 	original, _ := (domain.Settings{}).Normalize()

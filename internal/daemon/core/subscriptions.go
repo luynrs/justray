@@ -85,26 +85,17 @@ func (c *Core) RemoveSubscription(id string) error {
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
 	next := c.current()
-	var removed []store.Subscription
+	count := len(next.Subscriptions)
 	next.Subscriptions = slices.DeleteFunc(next.Subscriptions, func(s store.Subscription) bool {
-		if s.ID == id {
-			removed = append(removed, s)
-			return true
-		}
-		return false
+		return s.ID == id
 	})
-	if len(removed) == 0 {
+	if len(next.Subscriptions) == count {
 		return fmt.Errorf("subscription %q not found", id)
 	}
-	belongs := func(ref domain.NodeRef) bool {
-		return slices.ContainsFunc(removed, func(sub store.Subscription) bool {
-			return ref.SubscriptionID == sub.ID
-		})
-	}
-	if belongs(next.Active) {
+	if next.Active.SubscriptionID == id {
 		next.Active = domain.NodeRef{}
 	}
-	if belongs(next.Last) {
+	if next.Last.SubscriptionID == id {
 		next.Last = domain.NodeRef{}
 	}
 	next.Collapsed = slices.DeleteFunc(next.Collapsed, func(s string) bool {
@@ -114,7 +105,7 @@ func (c *Core) RemoveSubscription(id string) error {
 		return err
 	}
 	var cleanupErr error
-	if belongs(c.conn.Status().NodeRef) {
+	if c.conn.Status().NodeRef.SubscriptionID == id {
 		cleanupErr = c.conn.Disconnect(context.Background())
 	}
 	c.publish()
@@ -134,10 +125,10 @@ func (c *Core) RemoveNode(ref domain.NodeRef) error {
 	}
 	ref.SubscriptionID = next.Subscriptions[i].ID
 	next.Subscriptions[i].Nodes = slices.DeleteFunc(slices.Clone(next.Subscriptions[i].Nodes), func(node domain.Node) bool { return node.ID == ref.NodeID })
-	if next.Active.NodeID == ref.NodeID && next.Active.SubscriptionID == ref.SubscriptionID {
+	if next.Active == ref {
 		next.Active = domain.NodeRef{}
 	}
-	if next.Last.NodeID == ref.NodeID && next.Last.SubscriptionID == ref.SubscriptionID {
+	if next.Last == ref {
 		next.Last = domain.NodeRef{}
 	}
 	if err := c.commit(next); err != nil {

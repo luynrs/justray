@@ -61,7 +61,7 @@ func TestLifecycle(t *testing.T) {
 	for _, crash := range []bool{false, true, false} {
 		cmd, done := start()
 		end := time.Now().Add(10 * time.Second)
-		for client.Ping() != nil {
+		for client.Ping(t.Context()) != nil {
 			select {
 			case <-done:
 				t.Fatal("daemon exited before ready")
@@ -83,7 +83,7 @@ func TestLifecycle(t *testing.T) {
 		if crash {
 			err = cmd.Process.Kill()
 		} else {
-			err = client.Shutdown()
+			err = client.Shutdown(t.Context())
 		}
 		if err != nil {
 			t.Fatal(err)

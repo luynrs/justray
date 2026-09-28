@@ -91,12 +91,7 @@ func (s *Service) Shutdown() {
 
 func (s *Service) Status() ipc.Status {
 	if st := s.status.Load(); st != nil {
-		out := *st
-		if out.Connected && !out.StartedAt.IsZero() && out.StartedAt.After(time.Now()) {
-			out.StartedAt = time.Now().Add(-max(time.Since(st.StartedAt), 0))
-			s.status.Store(&out)
-		}
-		return out
+		return *st
 	}
 	return ipc.Status{}
 }
@@ -134,7 +129,7 @@ func (s *Service) apply(ctx context.Context, n domain.Node, ref domain.NodeRef, 
 		return err
 	}
 
-	if resetStarted || started.IsZero() || started.After(time.Now()) {
+	if resetStarted || started.IsZero() {
 		started = time.Now()
 	}
 	s.eng = eng

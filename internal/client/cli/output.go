@@ -53,11 +53,6 @@ func stateHeadline(st ipc.Status) {
 }
 
 func (a *app) nodeDetails(st ipc.Status, nodes []ipc.Node) {
-	if nodes == nil {
-		if snap, err := a.client.Snapshot(); err == nil {
-			nodes = snap.Nodes
-		}
-	}
 	n := a.lookupNode(st.NodeRef, nodes)
 	pairs := [][2]string{{"Node", a.nodeName(st.NodeName, st.NodeRef.NodeID)}}
 	if !st.Tun && st.Port > 0 {
