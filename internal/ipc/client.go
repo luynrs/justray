@@ -73,7 +73,8 @@ func call[T any](ctx context.Context, c *Client, method string, args Args) (T, e
 		return out, cmp.Or(ctx.Err(), fmt.Errorf("%s: %w", method, err))
 	}
 	if !resp.OK {
-		if resp.Error == ErrElevate.Error() {
+		// Older daemons send only the message during an in-place upgrade.
+		if resp.ElevationRequired != nil && *resp.ElevationRequired || resp.ElevationRequired == nil && resp.Error == ErrElevate.Error() {
 			return out, ErrElevate
 		}
 		return out, errors.New(resp.Error)

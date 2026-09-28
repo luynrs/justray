@@ -1,6 +1,12 @@
 package cli
 
-import "github.com/spf13/cobra"
+import (
+	"errors"
+
+	"github.com/spf13/cobra"
+
+	"github.com/luynrs/justray/internal/ipc"
+)
 
 var downCmd = &cobra.Command{
 	Use:     "down",
@@ -11,6 +17,10 @@ var downCmd = &cobra.Command{
 
 func (a *app) down(cmd *cobra.Command, args []string) error {
 	snapshot, err := a.client.Snapshot(cmd.Context())
+	if errors.Is(err, ipc.ErrNoDaemon) {
+		done("Already disconnected")
+		return nil
+	}
 	if err != nil {
 		return err
 	}

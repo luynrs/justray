@@ -28,9 +28,10 @@ type Args struct {
 }
 
 type Resp struct {
-	OK     bool
-	Result json.RawMessage
-	Error  string
+	OK                bool
+	Result            json.RawMessage
+	Error             string
+	ElevationRequired *bool `json:",omitempty"`
 }
 
 type Sub struct {

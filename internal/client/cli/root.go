@@ -92,6 +92,14 @@ func Execute() error {
 				return nil
 			}
 		}
+		if cmd == statusCmd || cmd == subListCmd || cmd == downCmd {
+			dir, err := ipc.Dir()
+			if err != nil {
+				return err
+			}
+			a.client = ipc.NewClient(ipc.Socket(dir))
+			return nil
+		}
 		return a.connectDaemon(cmd.Context())
 	}
 	rootCmd.RunE = func(cmd *cobra.Command, args []string) error {

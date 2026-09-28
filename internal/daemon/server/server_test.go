@@ -295,17 +295,17 @@ func TestSwitch(t *testing.T) {
 			t.Fatalf("state=%+v snapshot=%+v", state, snapshot)
 		}
 	}
-	failure := errors.New("switch failed")
+	failure := errors.New("granting permissions")
 	_, stop := start(failure, failure)
 	if err := client.Connect(t.Context(), a, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := client.Connect(t.Context(), b, &tun); err == nil {
-		t.Fatal("switch to B succeeded")
+	if err := client.Connect(t.Context(), b, &tun); err == nil || errors.Is(err, ipc.ErrElevate) {
+		t.Fatalf("ordinary switch failure was treated as elevation: %v", err)
 	}
 	check(a, false, false)
-	if err := client.SetTun(t.Context(), true); err == nil {
-		t.Fatal("TUN switch succeeded")
+	if err := client.SetTun(t.Context(), true); err == nil || errors.Is(err, ipc.ErrElevate) {
+		t.Fatalf("ordinary TUN failure was treated as elevation: %v", err)
 	}
 	check(a, false, false)
 	stop()
@@ -316,7 +316,7 @@ func TestSwitch(t *testing.T) {
 	}
 	app, stop := start(permission, permission)
 	check(a, false, false)
-	if err := client.Connect(t.Context(), b, &tun); err == nil || err.Error() != ipc.ErrElevate.Error() {
+	if err := client.Connect(t.Context(), b, &tun); !errors.Is(err, ipc.ErrElevate) {
 		t.Fatalf("elevation request: %v", err)
 	}
 	check(a, false, true)
@@ -333,7 +333,7 @@ func TestSwitch(t *testing.T) {
 
 	_, stop = start(permission, permission)
 	check(a, false, false)
-	if err := client.SetTun(t.Context(), true); err == nil || err.Error() != ipc.ErrElevate.Error() {
+	if err := client.SetTun(t.Context(), true); !errors.Is(err, ipc.ErrElevate) {
 		t.Fatalf("mode elevation request: %v", err)
 	}
 	check(a, false, true)

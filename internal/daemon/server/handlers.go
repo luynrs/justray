@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -144,6 +145,8 @@ func reply(conn net.Conn, result any, err error) {
 	}
 	if err != nil {
 		resp.OK, resp.Error = false, err.Error()
+		required := errors.Is(err, ipc.ErrElevate)
+		resp.ElevationRequired = &required
 	}
 	_ = json.NewEncoder(conn).Encode(resp)
 }
