@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"slices"
 
 	"github.com/luynrs/justray/internal/domain"
 )
@@ -19,12 +20,10 @@ type SessionSpec struct {
 }
 
 func Rebuilds(x, y domain.Settings) bool {
-	x.ProbeURL, y.ProbeURL = "", ""
-	x.RefreshEvery, y.RefreshEvery = 0, 0
-	x.Autostart, y.Autostart = "", ""
-	x.Emoji, y.Emoji = "", ""
-	x.ForceTTY, y.ForceTTY = "", ""
-	return !x.Equal(y)
+	return x.LogLevel != y.LogLevel || x.Connection != y.Connection ||
+		x.Mode != y.Mode || x.BypassLocal != y.BypassLocal || x.TunStrict != y.TunStrict ||
+		x.BlockQUIC != y.BlockQUIC || !slices.Equal(x.Direct, y.Direct) ||
+		!slices.Equal(x.Proxy, y.Proxy) || !slices.Equal(x.Block, y.Block)
 }
 
 type Result struct {
