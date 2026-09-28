@@ -70,13 +70,6 @@ func (s *Service) Restore(n domain.Node, ref domain.NodeRef, settings domain.Set
 	}
 }
 
-func (s *Service) ForgetIfRemoved(subID string) error {
-	if s.Status().NodeRef.SubscriptionID != subID {
-		return nil
-	}
-	return s.Disconnect(context.Background())
-}
-
 func (s *Service) Probe(ctx context.Context, nodes []domain.Node, settings domain.Settings, onResult func(string, engine.Result)) error {
 	return s.probeAll(ctx, nodes, settings, ipc.EngineLog(s.dir), onResult)
 }
