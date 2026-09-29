@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"cmp"
 	"fmt"
 	"strings"
 
@@ -44,7 +45,7 @@ func (m Model) content() string {
 	case m.dialog != nil:
 		body := m.titleLine() + "\n\n" + m.dialog.View(m.w, max(m.h-topLines-footerLines, 1))
 		status := ""
-		if e := m.dialog.Err(); e != "" {
+		if e := cmp.Or(m.dialog.Err(), m.err); e != "" {
 			errLine, _, _ := strings.Cut(e, "\n")
 			status = style.Err.Render(style.Sanitize(errLine, true))
 		}
@@ -158,8 +159,6 @@ func (m Model) footer() string {
 	if m.err != "" {
 		errLine, _, _ := strings.Cut(m.err, "\n")
 		status += "   " + style.Err.Render(style.Sanitize(errLine, true))
-	} else if row, ok := m.at(); ok && row.Sub.Warning != "" {
-		status += "   " + style.Err.Render(style.Sanitize(row.Sub.Warning, true))
 	}
 
 	hints := m.hints(m.w)

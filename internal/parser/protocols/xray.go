@@ -48,14 +48,15 @@ type xrayUser struct {
 }
 
 type xrayStreamSettings struct {
-	Network         string              `json:"network"`
-	Security        string              `json:"security"`
-	RealitySettings xrayRealitySettings `json:"realitySettings"`
-	TLSSettings     xrayTLSSettings     `json:"tlsSettings"`
-	WSSettings      xrayHTTPTransport   `json:"wsSettings"`
-	GRPCSettings    xrayGRPCTransport   `json:"grpcSettings"`
-	HTTPSettings    xrayHTTPTransport   `json:"httpSettings"`
-	XHTTPSettings   xrayXHTTPTransport  `json:"xhttpSettings"`
+	Network           string              `json:"network"`
+	Security          string              `json:"security"`
+	RealitySettings   xrayRealitySettings `json:"realitySettings"`
+	TLSSettings       xrayTLSSettings     `json:"tlsSettings"`
+	WSSettings        xrayHTTPTransport   `json:"wsSettings"`
+	GRPCSettings      xrayGRPCTransport   `json:"grpcSettings"`
+	HTTPSettings      xrayHTTPTransport   `json:"httpSettings"`
+	XHTTPSettings     xrayXHTTPTransport  `json:"xhttpSettings"`
+	SplitHTTPSettings xrayXHTTPTransport  `json:"splitHttpSettings"`
 }
 
 type xrayRealitySettings struct {
@@ -89,26 +90,28 @@ type xrayGRPCTransport struct {
 	ServiceName string `json:"serviceName"`
 }
 
-func ParseXray(raw []byte) ([]domain.Node, error) {
+func ParseXray(raw []byte) ([]domain.Node, map[string]int, error) {
 	if !hasOutboundField(raw, "protocol") {
-		return nil, ErrNotFormat
+		return nil, nil, ErrNotFormat
 	}
 	var docs []xrayDoc
 	if err := json.Unmarshal(raw, &docs); err != nil {
 		var doc xrayDoc
 		if json.Unmarshal(raw, &doc) != nil {
-			return nil, errors.New("xray: invalid outbound fields")
+			return nil, nil, errors.New("xray: invalid outbound fields")
 		}
 		docs = []xrayDoc{doc}
 	}
 
 	var nodes []domain.Node
+	skipped := make(map[string]int)
 	for _, doc := range docs {
 		proxies := make([]xrayOutbound, 0, len(doc.Outbounds))
 		for _, rawOutbound := range doc.Outbounds {
 			var ob xrayOutbound
 			if json.Unmarshal(rawOutbound, &ob) != nil || ob.Protocol == "" {
-				return nil, errors.New("xray: invalid outbound fields")
+				skipped["xray: invalid outbound fields"]++
+				continue
 			}
 			p := strings.ToLower(ob.Protocol)
 			switch p {
@@ -116,11 +119,10 @@ func ParseXray(raw []byte) ([]domain.Node, error) {
 				proxies = append(proxies, ob)
 			case "freedom", "blackhole", "dns", "loopback":
 			default:
-				return nil, errors.New("unsupported xray outbound")
+				skipped["unsupported"]++
 			}
 		}
 		for _, ob := range proxies {
-			beforeNodes := len(nodes)
 			name := cmp.Or(doc.Remarks, ob.Tag)
 			if len(proxies) > 1 && doc.Remarks != "" && ob.Tag != "" && !strings.EqualFold(ob.Tag, "proxy") {
 				name += " (" + ob.Tag + ")"
@@ -128,12 +130,19 @@ func ParseXray(raw []byte) ([]domain.Node, error) {
 			proto := strings.ToLower(ob.Protocol)
 			switch proto {
 			case "vless", "vmess":
-				if len(ob.Settings.Servers) > 0 {
-					return nil, errors.New("incompatible outbound settings")
+				if len(ob.Settings.Servers) > 0 || len(ob.Settings.Vnext) == 0 {
+					skipped["incompatible outbound settings"]++
+					continue
 				}
 			case "shadowsocks", "ss":
-				if len(ob.Settings.Vnext) > 0 {
-					return nil, errors.New("incompatible outbound settings")
+				if len(ob.Settings.Vnext) > 0 || len(ob.Settings.Servers) == 0 {
+					skipped["incompatible outbound settings"]++
+					continue
+				}
+			case "trojan":
+				if len(ob.Settings.Servers) == 0 && len(ob.Settings.Vnext) == 0 {
+					skipped["incompatible outbound settings"]++
+					continue
 				}
 			}
 			for _, s := range ob.Settings.Servers {
@@ -151,13 +160,15 @@ func ParseXray(raw []byte) ([]domain.Node, error) {
 					continue
 				}
 				if err != nil {
-					return nil, err
+					skipped[err.Error()]++
+					continue
 				}
 				nodes = append(nodes, node)
 			}
 			for _, next := range ob.Settings.Vnext {
 				if len(next.Users) == 0 {
-					return nil, errors.New("incompatible outbound settings")
+					skipped["incompatible outbound settings"]++
+					continue
 				}
 				for _, user := range next.Users {
 					var node domain.Node
@@ -173,20 +184,18 @@ func ParseXray(raw []byte) ([]domain.Node, error) {
 						continue
 					}
 					if err != nil {
-						return nil, err
+						skipped[err.Error()]++
+						continue
 					}
 					nodes = append(nodes, node)
 				}
 			}
-			if len(nodes) == beforeNodes {
-				return nil, errors.New("incompatible outbound settings")
-			}
 		}
 	}
-	if len(nodes) == 0 {
-		return nil, errors.New("no supported outbounds in xray config")
+	if len(nodes) == 0 && len(skipped) == 0 {
+		return nil, nil, errors.New("no supported outbounds in xray config")
 	}
-	return nodes, nil
+	return nodes, skipped, nil
 }
 
 func parseXrayVLess(stream xrayStreamSettings, next xrayVnext, user xrayUser, name string) (domain.Node, error) {
@@ -237,14 +246,14 @@ func xrayTransport(s xrayStreamSettings) (domain.Transport, error) {
 		return domain.Transport{Network: network, Path: s.WSSettings.Path, Host: cmp.Or(s.WSSettings.Host, s.WSSettings.Headers["Host"])}, nil
 	case "grpc":
 		return domain.Transport{Network: network, ServiceName: s.GRPCSettings.ServiceName}, nil
-	case "http":
+	case "http", "h2":
 		return domain.Transport{Network: "http", Path: s.HTTPSettings.Path, Host: cmp.Or(s.HTTPSettings.Host, s.HTTPSettings.Headers["Host"])}, nil
-	case "xhttp":
+	case "xhttp", "splithttp":
 		return domain.Transport{
 			Network: "xhttp",
-			Path:    s.XHTTPSettings.Path,
-			Host:    cmp.Or(s.XHTTPSettings.Host, s.XHTTPSettings.Headers["Host"], s.XHTTPSettings.Headers["host"]),
-			Mode:    s.XHTTPSettings.Mode,
+			Path:    cmp.Or(s.XHTTPSettings.Path, s.SplitHTTPSettings.Path),
+			Host:    cmp.Or(s.XHTTPSettings.Host, s.SplitHTTPSettings.Host, s.XHTTPSettings.Headers["Host"], s.XHTTPSettings.Headers["host"], s.SplitHTTPSettings.Headers["Host"], s.SplitHTTPSettings.Headers["host"]),
+			Mode:    cmp.Or(s.XHTTPSettings.Mode, s.SplitHTTPSettings.Mode),
 		}, nil
 	default:
 		return domain.Transport{}, fmt.Errorf("unsupported xray transport: %s", network)

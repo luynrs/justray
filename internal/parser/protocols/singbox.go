@@ -35,7 +35,11 @@ type singboxOutbound struct {
 	Username       string        `json:"username"`
 	Detour         string        `json:"detour"`
 	PrivateKey     string        `json:"private_key"`
+	PeerPublicKey  string        `json:"peer_public_key"`
+	PreSharedKey   string        `json:"pre_shared_key"`
+	LocalAddress   stringOrSlice `json:"local_address"`
 	Address        stringOrSlice `json:"address"`
+	Reserved       []int         `json:"reserved"`
 	MTU            uint32        `json:"mtu"`
 
 	Obfs struct {
@@ -43,6 +47,8 @@ type singboxOutbound struct {
 		Password string `json:"password"`
 	} `json:"obfs"`
 	Peers []struct {
+		Server       string `json:"server"`
+		ServerPort   int    `json:"server_port"`
 		Address      string `json:"address"`
 		Port         int    `json:"port"`
 		PublicKey    string `json:"public_key"`
@@ -85,33 +91,27 @@ var singboxProtos = map[string]domain.Proto{
 	"shadowtls": domain.Shadow, "socks": domain.SOCKS, "http": domain.HTTP,
 }
 
-func ParseSingBox(raw []byte) ([]domain.Node, error) {
+func ParseSingBox(raw []byte) ([]domain.Node, map[string]int, error) {
 	if !hasOutboundField(raw, "type") {
-		return nil, ErrNotFormat
+		return nil, nil, ErrNotFormat
 	}
 	var doc singboxDoc
-	var rawOutbounds []json.RawMessage
-	var endpointStart int
+	var entries []json.RawMessage
 	if err := json.Unmarshal(raw, &doc); err == nil && (len(doc.Outbounds) > 0 || len(doc.Endpoints) > 0) {
-		endpointStart = len(doc.Outbounds)
-		rawOutbounds = append(doc.Outbounds, doc.Endpoints...)
-	} else if err := json.Unmarshal(raw, &rawOutbounds); err != nil || len(rawOutbounds) == 0 {
-		return nil, errors.New("sing-box: invalid outbound fields")
-	} else {
-		endpointStart = len(rawOutbounds)
+		entries = append(doc.Outbounds, doc.Endpoints...)
+	} else if err := json.Unmarshal(raw, &entries); err != nil || len(entries) == 0 {
+		return nil, nil, errors.New("sing-box: invalid outbound fields")
 	}
+	skipped := make(map[string]int)
 	var outbounds []singboxOutbound
-	for i, rawOutbound := range rawOutbounds {
+	for _, entry := range entries {
 		var outbound singboxOutbound
-		if json.Unmarshal(rawOutbound, &outbound) != nil || outbound.Type == "" {
-			return nil, errors.New("sing-box: invalid outbound fields")
-		}
-		if outbound.Type == "wireguard" && i < endpointStart {
-			return nil, errors.New("sing-box: WireGuard outbound is deprecated; use an endpoint")
+		if json.Unmarshal(entry, &outbound) != nil || outbound.Type == "" {
+			skipped["sing-box: invalid outbound fields"]++
+			continue
 		}
 		outbounds = append(outbounds, outbound)
 	}
-
 	stlsByTag := make(map[string]singboxOutbound)
 	detoured := make(map[string]bool)
 	for _, ob := range outbounds {
@@ -128,25 +128,30 @@ func ParseSingBox(raw []byte) ([]domain.Node, error) {
 			continue
 		}
 		switch strings.ToLower(ob.Type) {
-		case "direct", "selector", "urltest":
+		case "direct", "block", "dns", "selector", "urltest":
 			continue
 		}
 		node, err := parseSingBoxOutbound(ob, stlsByTag)
+		if errors.Is(err, errUnsupported) {
+			skipped["unsupported"]++
+			continue
+		}
 		if err != nil {
-			return nil, err
+			skipped[err.Error()]++
+			continue
 		}
 		nodes = append(nodes, node)
 	}
-	if len(nodes) == 0 {
-		return nil, errors.New("no supported outbounds in sing-box config")
+	if len(nodes) == 0 && len(skipped) == 0 {
+		return nil, nil, errors.New("no supported outbounds in sing-box config")
 	}
-	return nodes, nil
+	return nodes, skipped, nil
 }
 
 func parseSingBoxOutbound(ob singboxOutbound, stlsByTag map[string]singboxOutbound) (domain.Node, error) {
 	proto, ok := singboxProtos[strings.ToLower(ob.Type)]
 	if !ok {
-		return domain.Node{}, errors.New("unsupported sing-box outbound")
+		return domain.Node{}, errUnsupported
 	}
 
 	server, port := ob.Server, ob.ServerPort
@@ -154,7 +159,8 @@ func parseSingBoxOutbound(ob singboxOutbound, stlsByTag map[string]singboxOutbou
 		if len(ob.Peers) == 0 {
 			return domain.Node{}, errors.New("wireguard: missing peer")
 		}
-		server, port = ob.Peers[0].Address, ob.Peers[0].Port
+		server = cmp.Or(ob.Peers[0].Address, ob.Peers[0].Server)
+		port = cmp.Or(ob.Peers[0].Port, ob.Peers[0].ServerPort)
 	}
 	n := domain.Node{
 		Name: cmp.Or(ob.Tag, server), Protocol: proto, Server: server, Port: port,
@@ -175,7 +181,11 @@ func parseSingBoxOutbound(ob singboxOutbound, stlsByTag map[string]singboxOutbou
 		}
 	case domain.SS:
 		n.Auth = domain.Auth{Password: ob.Password, Method: ob.Method}
-		if stls, ok := stlsByTag[ob.Detour]; ok {
+		if ob.Detour != "" {
+			stls, ok := stlsByTag[ob.Detour]
+			if !ok {
+				return domain.Node{}, errors.New("shadowsocks: missing or invalid shadowtls detour")
+			}
 			sni := server
 			if stls.TLS != nil && stls.TLS.ServerName != "" {
 				sni = stls.TLS.ServerName
@@ -195,17 +205,23 @@ func parseSingBoxOutbound(ob singboxOutbound, stlsByTag map[string]singboxOutbou
 	case domain.AnyTLS:
 		n.Auth = domain.Auth{Password: ob.Password}
 	case domain.WG:
+		peerPK := cmp.Or(ob.Peers[0].PublicKey, ob.PeerPublicKey)
+		psk := cmp.Or(ob.Peers[0].PreSharedKey, ob.PreSharedKey)
+		res := ob.Peers[0].Reserved
+		if len(res) == 0 {
+			res = ob.Reserved
+		}
 		var reserved []uint8
-		for _, b := range ob.Peers[0].Reserved {
+		for _, b := range res {
 			if b < 0 || b > 255 {
 				return domain.Node{}, errors.New("wireguard: reserved byte out of range")
 			}
 			reserved = append(reserved, uint8(b))
 		}
-		addrs := fixCIDRs(ob.Address)
+		addrs := fixCIDRs(append(append([]string(nil), ob.LocalAddress...), ob.Address...))
 		if ob.PrivateKey != "" && len(addrs) > 0 {
 			n.WireGuard = &domain.WireGuard{
-				PrivateKey: ob.PrivateKey, PeerPublicKey: ob.Peers[0].PublicKey, PreSharedKey: ob.Peers[0].PreSharedKey,
+				PrivateKey: ob.PrivateKey, PeerPublicKey: peerPK, PreSharedKey: psk,
 				Address: addrs, Reserved: reserved, MTU: ob.MTU,
 			}
 		}
@@ -226,17 +242,14 @@ func singboxTransport(t *singboxTransportConfig) domain.Transport {
 	if t == nil {
 		return domain.Transport{Network: "tcp"}
 	}
-	net := strings.ToLower(t.Type)
-	if net == "" {
-		net = "tcp"
-	}
+	network := cmp.Or(strings.ToLower(t.Type), "tcp")
 	var host string
 	if len(t.Host) > 0 {
 		host = t.Host[0]
 	} else {
 		host = cmp.Or(t.Headers["Host"], t.Headers["host"])
 	}
-	return domain.Transport{Network: net, Path: t.Path, Host: host, ServiceName: t.ServiceName, Mode: t.Mode}
+	return domain.Transport{Network: network, Path: t.Path, Host: host, ServiceName: t.ServiceName, Mode: t.Mode}
 }
 
 func singboxTLS(t *singboxTLSConfig, server string) (*domain.TLS, *domain.Reality) {

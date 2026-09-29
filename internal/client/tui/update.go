@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 
 	"github.com/luynrs/justray/internal/client/tui/settings"
 	"github.com/luynrs/justray/internal/client/tui/tree"
+	"github.com/luynrs/justray/internal/ipc"
 )
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -55,7 +57,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err, m.errAt = msg.err.Error(), time.Now()
 			return m, nil
 		}
-		m.err = ""
 		return m, nil
 
 	case pushed:
@@ -69,6 +70,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		initial := m.snapshot.Settings.Port == 0
 		selected, selectedOK := m.at()
+		if !initial {
+			for _, sub := range msg.snapshot.Subscriptions {
+				if sub.Warning != "" && !slices.ContainsFunc(m.snapshot.Subscriptions, func(previous ipc.Subscription) bool {
+					return previous.SubscriptionID == sub.SubscriptionID && previous.Warning == sub.Warning && previous.UpdatedAt.Equal(sub.UpdatedAt)
+				}) {
+					m.err, m.errAt = sub.Warning, time.Now()
+				}
+			}
+		}
 		m.snapshot = msg.snapshot
 		m.syncTTY()
 		m.live = true

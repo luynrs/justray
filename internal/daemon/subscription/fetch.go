@@ -44,9 +44,7 @@ func (s *Service) fetch(ctx context.Context, rawURL string) ([]domain.Node, stri
 				for k := range s.device {
 					r.Header.Del(k)
 				}
-				if hwid := s.device.Get("X-Hwid"); hwid != "" {
-					r.Header.Set("X-Hwid", hash(hwid+r.URL.Hostname()))
-				}
+				r.Header.Set("X-Hwid", hash(s.device.Get("X-Hwid")+r.URL.Hostname()))
 			}
 			return nil
 		},
@@ -76,9 +74,6 @@ func (s *Service) fetch(ctx context.Context, rawURL string) ([]domain.Node, stri
 	}
 	nodes, warning, err := parser.ParseSubscription(body)
 	if err != nil {
-		return nil, "", none, "", err
-	}
-	if err := validateNodes(nodes); err != nil {
 		return nil, "", none, "", err
 	}
 	return nodes, title(resp.Header), usage(resp.Header), warning, nil

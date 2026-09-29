@@ -16,26 +16,31 @@ import (
 )
 
 var ErrNotFormat = errors.New("unrecognized subscription format")
+var errUnsupported = errors.New("unsupported protocol")
 
 func hasOutboundField(raw []byte, field string) bool {
-	var items []map[string]json.RawMessage
+	var items []json.RawMessage
 	if json.Unmarshal(raw, &items) != nil {
-		var item map[string]json.RawMessage
-		if json.Unmarshal(raw, &item) != nil {
-			return false
-		}
-		items = []map[string]json.RawMessage{item}
+		items = []json.RawMessage{raw}
 	}
-	for _, item := range items {
+	for _, entry := range items {
+		var item map[string]json.RawMessage
+		if json.Unmarshal(entry, &item) != nil {
+			continue
+		}
 		if _, ok := item[field]; ok {
 			return true
 		}
 		for _, key := range []string{"outbounds", "endpoints"} {
-			var outbounds []map[string]json.RawMessage
+			var outbounds []json.RawMessage
 			if json.Unmarshal(item[key], &outbounds) != nil {
 				continue
 			}
-			for _, outbound := range outbounds {
+			for _, entry := range outbounds {
+				var outbound map[string]json.RawMessage
+				if json.Unmarshal(entry, &outbound) != nil {
+					continue
+				}
 				if _, ok := outbound[field]; ok {
 					return true
 				}

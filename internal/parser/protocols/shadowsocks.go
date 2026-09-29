@@ -13,23 +13,25 @@ func ParseShadowsocks(uri string) (domain.Node, error) {
 	rest := strings.TrimPrefix(uri, "ss://")
 
 	rest, remark, _ := strings.Cut(rest, "#")
-	if unescaped, err := url.PathUnescape(remark); err == nil {
-		remark = unescaped
-	}
 	rest, query, hasQuery := strings.Cut(rest, "?")
-	var plugin string
-	if hasQuery {
-		plugin = parsePluginQuery(query)
-		if err := checkPlugin(plugin); err != nil {
-			return domain.Node{}, fmt.Errorf("ss: %w", err)
-		}
-	}
-
 	legacy := !strings.Contains(rest, "@")
 	if legacy {
 		if decoded, err := Unbase64(rest); err == nil {
-			rest = string(decoded)
+			var innerRemark, innerQuery string
+			rest, innerRemark, _ = strings.Cut(string(decoded), "#")
+			rest, innerQuery, _ = strings.Cut(rest, "?")
+			remark = cmp.Or(remark, innerRemark)
+			if !hasQuery {
+				query = innerQuery
+			}
 		}
+	}
+	if unescaped, err := url.PathUnescape(remark); err == nil {
+		remark = unescaped
+	}
+	plugin := parsePluginQuery(query)
+	if err := checkPlugin(plugin); err != nil {
+		return domain.Node{}, fmt.Errorf("ss: %w", err)
 	}
 	at := strings.LastIndexByte(rest, '@')
 	if at < 0 {

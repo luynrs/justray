@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/ipc"
+	"github.com/luynrs/justray/internal/parser"
 )
 
 type Subscription struct {
@@ -79,6 +81,27 @@ func (d Disk) Load() (PersistentState, error) {
 		state.Collapsed = sf.Collapsed
 		if sf.Subscriptions != nil {
 			state.Subscriptions = sf.Subscriptions
+		}
+		for _, sub := range slices.Clone(state.Subscriptions) {
+			if !parser.IsLink(sub.URL) {
+				continue
+			}
+			index := slices.IndexFunc(state.Subscriptions, func(current Subscription) bool { return current.ID == "default" })
+			if index < 0 {
+				index = slices.IndexFunc(state.Subscriptions, func(current Subscription) bool { return current.ID == sub.ID })
+				state.Subscriptions[index] = Subscription{ID: "default", Name: "Default"}
+			}
+			for _, node := range sub.Nodes {
+				if !slices.ContainsFunc(state.Subscriptions[index].Nodes, func(current domain.Node) bool { return current.ID == node.ID }) {
+					state.Subscriptions[index].Nodes = append(state.Subscriptions[index].Nodes, node)
+				}
+			}
+			for _, ref := range []*domain.NodeRef{&state.Active, &state.Last} {
+				if ref.SubscriptionID == sub.ID || ref.SubscriptionID == "" && slices.ContainsFunc(sub.Nodes, func(node domain.Node) bool { return node.ID == ref.NodeID }) {
+					ref.SubscriptionID = "default"
+				}
+			}
+			state.Subscriptions = slices.DeleteFunc(state.Subscriptions, func(current Subscription) bool { return current.ID == sub.ID && current.ID != "default" })
 		}
 	} else if !os.IsNotExist(stateErr) {
 		return state, stateErr

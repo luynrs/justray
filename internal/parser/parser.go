@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/netip"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/luynrs/justray/internal/domain"
@@ -93,20 +94,23 @@ func ParseSubscription(raw []byte) ([]domain.Node, string, error) {
 
 func parseSub(body []byte) ([]domain.Node, string, error) {
 	body = bytes.TrimPrefix(bytes.TrimSpace(body), []byte("\xef\xbb\xbf"))
-	for _, parse := range []func([]byte) ([]domain.Node, error){protocols.ParseSingBox, protocols.ParseXray, protocols.ParseClash} {
-		nodes, err := parse(body)
+	for _, parse := range []func([]byte) ([]domain.Node, map[string]int, error){protocols.ParseSingBox, protocols.ParseXray, protocols.ParseClash} {
+		nodes, skipped, err := parse(body)
 		if err == protocols.ErrNotFormat {
 			continue
 		}
 		if err != nil {
 			return nil, "", err
 		}
+		valid := nodes[:0]
 		for _, node := range nodes {
 			if err := validateNode(node); err != nil {
-				return nil, "", err
+				skipped[err.Error()]++
+				continue
 			}
+			valid = append(valid, node)
 		}
-		return nodes, "", nil
+		return subscriptionResult(valid, skipped)
 	}
 	if len(body) > 0 && (body[0] == '{' || body[0] == '[') && !json.Valid(body) {
 		return nil, "", errors.New("invalid JSON subscription")
@@ -118,6 +122,9 @@ func parseSub(body []byte) ([]domain.Node, string, error) {
 }
 
 func validateNode(node domain.Node) error {
+	if node.TLS != nil && node.TLS.Insecure {
+		return errors.New("TLS certificate verification is disabled")
+	}
 	if node.Server == "" || !domain.ValidPort(node.Port) {
 		return errors.New("missing server or valid port")
 	}
@@ -162,7 +169,7 @@ func validateNode(node domain.Node) error {
 
 func parseURILines(raw []byte) ([]domain.Node, string, error) {
 	var nodes []domain.Node
-	var invalid, unsupported int
+	skipped := make(map[string]int)
 	for line := range strings.Lines(string(raw)) {
 		line = strings.TrimSpace(line)
 		if line == "" || line[0] == '#' || strings.HasPrefix(line, "//") {
@@ -172,25 +179,29 @@ func parseURILines(raw []byte) ([]domain.Node, string, error) {
 		if err != nil {
 			scheme, _, hasScheme := strings.Cut(line, "://")
 			if IsLink(line) {
-				invalid++
+				skipped[err.Error()]++
 			} else if hasScheme && !strings.EqualFold(scheme, "http") && !strings.EqualFold(scheme, "https") {
-				unsupported++
+				skipped["unsupported"]++
 			}
 			continue
 		}
 		nodes = append(nodes, n)
 	}
-	if invalid+unsupported == 0 {
+	return subscriptionResult(nodes, skipped)
+}
+
+func subscriptionResult(nodes []domain.Node, skipped map[string]int) ([]domain.Node, string, error) {
+	if len(skipped) == 0 {
 		return nodes, "", nil
 	}
 	var reasons []string
-	if invalid > 0 {
-		reasons = append(reasons, fmt.Sprintf("invalid: %d", invalid))
+	var total int
+	for reason, count := range skipped {
+		total += count
+		reasons = append(reasons, fmt.Sprintf("%s: %d", reason, count))
 	}
-	if unsupported > 0 {
-		reasons = append(reasons, fmt.Sprintf("unsupported: %d", unsupported))
-	}
-	warning := fmt.Sprintf("skipped nodes: %d (%s)", invalid+unsupported, strings.Join(reasons, ", "))
+	slices.Sort(reasons)
+	warning := fmt.Sprintf("skipped nodes: %d (%s)", total, strings.Join(reasons, "; "))
 	if len(nodes) == 0 {
 		return nil, "", fmt.Errorf("no supported nodes; %s", warning)
 	}

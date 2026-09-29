@@ -379,8 +379,8 @@ func TestWireGuardReserved(t *testing.T) {
 }
 
 func TestImplicitReality(t *testing.T) {
-	n, err := ParseURI("vless://11111111-1111-1111-1111-111111111111@example.com:443?publicKey=publickey&shortId=1234&sni=example.com&packet-encoding=packetaddr&skip-cert-verify=1&service_name=svc&type=grpc")
-	if err != nil || n.Reality == nil || n.Reality.PublicKey != "publickey" || n.Reality.ShortID != "1234" || n.PacketEncoding != "packetaddr" || !n.TLS.Insecure || n.Transport.ServiceName != "svc" {
+	n, err := ParseURI("vless://11111111-1111-1111-1111-111111111111@example.com:443?publicKey=publickey&shortId=1234&sni=example.com&packet-encoding=packetaddr&service_name=svc&type=grpc")
+	if err != nil || n.Reality == nil || n.Reality.PublicKey != "publickey" || n.Reality.ShortID != "1234" || n.PacketEncoding != "packetaddr" || n.TLS.Insecure || n.Transport.ServiceName != "svc" {
 		t.Fatalf("unexpected implicit reality: err=%v, node=%+v", err, n)
 	}
 }
@@ -408,8 +408,8 @@ func TestParseClashFingerprints(t *testing.T) {
 		"  - {name: utls, type: trojan, server: example.com, port: 443, password: p, client-fingerprint: firefox, fingerprint: " + strings.Repeat("a", 64) + "}\n" +
 		"  - {name: stls, type: shadow-tls, server: example.com, port: 443, password: p, server_name: cloud.example}\n" +
 		"  - {name: wg, type: wg, server: example.com, port: 51820, private-key: priv, public-key: pub, address: 10.0.0.2/32}\n"
-	nodes, _, err := ParseSubscription([]byte(yaml))
-	if err != nil || len(nodes) != 4 || !nodes[0].TLS.Insecure || nodes[1].TLS.Fingerprint != "firefox" || nodes[2].Protocol != domain.Shadow || nodes[3].Protocol != domain.WG {
+	nodes, warning, err := ParseSubscription([]byte(yaml))
+	if err != nil || len(nodes) != 2 || nodes[0].Protocol != domain.Shadow || nodes[1].Protocol != domain.WG || warning != "skipped nodes: 2 (TLS certificate verification is disabled: 2)" {
 		t.Fatalf("unexpected nodes: %v, err=%v", nodes, err)
 	}
 }

@@ -191,18 +191,9 @@ func TestSubscriptionRefresh(t *testing.T) {
 		t.Fatalf("duplicate links were merged or given the same ID: %d nodes", len(nodes))
 	}
 	for name, content := range map[string]string{
-		"clash":              "proxies:\n  - {name: valid, type: trojan, server: example.com, port: 443, password: secret}\n  - {name: bad, type: tuic, server: example.com, port: 443, password: secret}",
 		"clash malformed":    "proxies:\n  - {name: bad, type: trojan, server: example.com, port: [}\n",
-		"sing-box null":      `{"outbounds":[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},null]}`,
-		"sing-box no type":   `{"outbounds":[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},{"tag":"missing"}]}`,
-		"sing-box unknown":   `{"outbounds":[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},{"type":"future-proxy","tag":"unknown"}]}`,
-		"sing-box bad":       `{"outbounds":[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},{"type":"vless","server":"example.com","server_port":"bad"}]}`,
 		"sing-box transport": `{"outbounds":[{"type":"shadowsocks","server":"example.com","server_port":443,"method":"aes-128-gcm","password":"secret","transport":{"type":"ws"}}]}`,
 		"shadowtls detour":   `{"outbounds":[{"type":"shadowtls","tag":"stls","server":"example.com","server_port":443},{"type":"shadowsocks","server":"example.com","server_port":8388,"method":"aes-128-gcm","password":"secret","detour":"stls"}]}`,
-		"xray null":          `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]}},null]}`,
-		"xray no protocol":   `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]}},{"tag":"missing"}]}`,
-		"xray unknown":       `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]}},{"protocol":"future-proxy","tag":"unknown"}]}`,
-		"xray bad":           `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]}},{"protocol":"vless","settings":{"vnext":[{"address":"example.com","port":"bad","users":[{"id":"uuid"}]}]}}]}`,
 		"xray incompatible":  `{"outbounds":[{"protocol":"vless","settings":{"vnext":[{"address":"example.com","port":443,"users":[{"id":"uuid"}]}],"servers":[{"address":"ignored.example","port":443,"password":"secret"}]}}]}`,
 		"truncated json":     `{"outbounds":[{"type":"vless","server":"example.com"`,
 	} {
@@ -241,14 +232,14 @@ func TestSubscriptionRefresh(t *testing.T) {
 	if nodes := partial.Subscriptions[0].Nodes; len(nodes) != 2 || nodes[0].Name != "first" || nodes[1].Protocol != domain.SS || nodes[1].Server != "example.com" || nodes[1].Auth.Password != "pa%2Fss@word" {
 		t.Fatalf("mixed refresh did not save the supported node: %+v", nodes)
 	}
-	if warning := partial.Subscriptions[0].Warning; warning != "skipped nodes: 2 (invalid: 1, unsupported: 1)" {
+	if warning := partial.Subscriptions[0].Warning; warning != `skipped nodes: 2 (unsupported transport "quic": 1; unsupported: 1)` {
 		t.Fatalf("partial refresh did not persist a useful warning: %q", warning)
 	}
 	if snapshot, err := client.Snapshot(t.Context()); err != nil || snapshot.Subscriptions[0].Warning != partial.Subscriptions[0].Warning {
 		t.Fatalf("partial refresh warning is missing from IPC: %+v, %v", snapshot.Subscriptions, err)
 	}
 	body.Store("vless://uuid@example.com:443?type=quic")
-	if err := client.RefreshSubscription(t.Context(), added.SubscriptionID); err == nil || !strings.Contains(err.Error(), "skipped nodes: 1 (invalid: 1)") {
+	if err := client.RefreshSubscription(t.Context(), added.SubscriptionID); err == nil || !strings.Contains(err.Error(), `skipped nodes: 1 (unsupported transport "quic": 1)`) {
 		t.Fatalf("unusable-only refresh: %v", err)
 	}
 	unchanged, err := disk.Load()
@@ -262,6 +253,47 @@ func TestSubscriptionRefresh(t *testing.T) {
 	clean, err := disk.Load()
 	if err != nil || clean.Subscriptions[0].Warning != "" {
 		t.Fatalf("clean refresh kept the old warning: %+v, %v", clean.Subscriptions, err)
+	}
+	for name, content := range map[string]string{
+		"clash invalid":    "proxies:\n  - {name: valid, type: trojan, server: example.com, port: 443, password: secret}\n  - {name: bad, type: tuic, server: example.com, port: 443, password: secret}",
+		"clash fields":     "proxies:\n  - {type: trojan, server: example.com, port: 443, password: secret}\n  - {type: trojan, port: [secret]}",
+		"clash no type":    "proxies:\n  - {type: trojan, server: example.com, port: 443, password: secret}\n  - {name: bad}",
+		"sing-box fields":  `{"outbounds":[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},{"type":"trojan","server_port":"secret"}]}`,
+		"sing-box scalar":  `{"outbounds":[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},42]}`,
+		"sing-box array":   `[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},42]`,
+		"xray scalar":      `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]}},42]}`,
+		"sing-box null":    `{"outbounds":[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},null]}`,
+		"sing-box no type": `{"outbounds":[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},{}]}`,
+		"xray fields":      `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]}},{"protocol":"trojan","settings":{"servers":[{"port":"secret"}]}}]}`,
+		"xray null":        `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]}},null]}`,
+		"xray no protocol": `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]}},{}]}`,
+		"sing-box unknown": `{"outbounds":[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},{"type":"future-proxy","tag":"unknown"}]}`,
+		"xray unknown":     `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]}},{"protocol":"future-proxy","tag":"unknown"}]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			body.Store(content)
+			if err := client.RefreshSubscription(t.Context(), added.SubscriptionID); err != nil {
+				t.Fatalf("mixed refresh: %v", err)
+			}
+			after, err := disk.Load()
+			if err != nil || len(after.Subscriptions[0].Nodes) != 1 || !strings.Contains(after.Subscriptions[0].Warning, "skipped nodes: 1 (") || strings.Contains(after.Subscriptions[0].Warning, "secret") {
+				t.Fatalf("mixed refresh did not save the node and warning: %+v, %v", after.Subscriptions, err)
+			}
+			if strings.HasPrefix(name, "sing-box") {
+				body.Store(`{"outbounds":[{"type":"future-proxy"}]}`)
+			} else if strings.HasPrefix(name, "clash") {
+				body.Store("proxies:\n  - {type: trojan, server: example.com, port: 443}")
+			} else {
+				body.Store(`{"outbounds":[{"protocol":"future-proxy"}]}`)
+			}
+			if err := client.RefreshSubscription(t.Context(), added.SubscriptionID); err == nil {
+				t.Fatal("unsupported-only refresh succeeded")
+			}
+			unchanged, err := disk.Load()
+			if err != nil || !reflect.DeepEqual(unchanged.Subscriptions, after.Subscriptions) {
+				t.Fatalf("unsupported-only refresh changed saved nodes: %v", err)
+			}
+		})
 	}
 }
 

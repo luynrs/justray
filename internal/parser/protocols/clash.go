@@ -2,6 +2,7 @@ package protocols
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -82,38 +83,45 @@ type clashProxy struct {
 }
 
 // Clash/Mihomo "proxies:" list
-func ParseClash(raw []byte) ([]domain.Node, error) {
+func ParseClash(raw []byte) ([]domain.Node, map[string]int, error) {
 	var doc struct {
 		Proxies []yaml.Node `yaml:"proxies"`
 	}
 	if err := yaml.Unmarshal(raw, &doc); err != nil {
 		for line := range strings.Lines(string(raw)) {
 			if strings.HasPrefix(line, "proxies:") {
-				return nil, fmt.Errorf("clash: invalid YAML")
+				return nil, nil, fmt.Errorf("clash: invalid YAML")
 			}
 		}
-		return nil, ErrNotFormat
+		return nil, nil, ErrNotFormat
 	}
 	if doc.Proxies == nil {
-		return nil, ErrNotFormat
+		return nil, nil, ErrNotFormat
 	}
 
 	var nodes []domain.Node
+	skipped := make(map[string]int)
 	for _, raw := range doc.Proxies {
 		var p clashProxy
-		if err := raw.Decode(&p); err != nil {
-			return nil, fmt.Errorf("clash: invalid proxy fields")
+		if err := raw.Decode(&p); err != nil || p.Type == "" {
+			skipped["clash: invalid proxy fields"]++
+			continue
 		}
 		node, err := clashNode(p)
+		if errors.Is(err, errUnsupported) {
+			skipped["unsupported"]++
+			continue
+		}
 		if err != nil {
-			return nil, err
+			skipped[err.Error()]++
+			continue
 		}
 		nodes = append(nodes, node)
 	}
-	if len(nodes) == 0 {
-		return nil, fmt.Errorf("clash: no supported proxies")
+	if len(nodes) == 0 && len(skipped) == 0 {
+		return nil, nil, fmt.Errorf("clash: no supported proxies")
 	}
-	return nodes, nil
+	return nodes, skipped, nil
 }
 
 func clashNode(p clashProxy) (domain.Node, error) {
@@ -261,7 +269,7 @@ func clashNode(p clashProxy) (domain.Node, error) {
 		}
 
 	default:
-		return domain.Node{}, fmt.Errorf("clash: unsupported type %q", p.Type)
+		return domain.Node{}, errUnsupported
 	}
 	return n, nil
 }
