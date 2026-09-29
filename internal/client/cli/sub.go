@@ -119,17 +119,17 @@ func (a *app) subRefresh(cmd *cobra.Command, args []string) error {
 		stop := spin("Refreshing subscriptions")
 		err = a.client.RefreshSubscriptions(cmd.Context())
 		stop()
-		if err != nil {
-			return err
-		}
-		done("Refreshed all subscriptions")
-		if snap, err := a.client.Snapshot(cmd.Context()); err == nil {
+		if snap, snapErr := a.client.Snapshot(cmd.Context()); snapErr == nil {
 			for _, sub := range snap.Subscriptions {
 				if sub.Warning != "" {
 					out(style.Pending.Render("Warning: " + a.clean(sub.Name) + ": " + a.clean(sub.Warning)))
 				}
 			}
 		}
+		if err != nil {
+			return err
+		}
+		done("Refreshed all subscriptions")
 		return nil
 	}
 

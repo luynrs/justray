@@ -159,6 +159,9 @@ func (m Model) footer() string {
 	if m.err != "" {
 		errLine, _, _ := strings.Cut(m.err, "\n")
 		status += "   " + style.Err.Render(style.Sanitize(errLine, true))
+	} else if r, ok := m.at(); ok && r.Sub.Warning != "" {
+		warnLine, _, _ := strings.Cut(r.Sub.Warning, "\n")
+		status += "   " + style.Pending.Render(style.Sanitize(warnLine, true))
 	}
 
 	hints := m.hints(m.w)
