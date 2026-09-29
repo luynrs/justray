@@ -12,15 +12,15 @@ import (
 	"github.com/luynrs/justray/internal/parser/protocols"
 )
 
-func (c *Core) AddSubscription(ctx context.Context, rawURL string) (ipc.Sub, error) {
+func (c *Core) AddSubscription(ctx context.Context, rawURL string) (ipc.Subscription, error) {
 	sub, err := c.subs.PrepareAdd(ctx, rawURL)
 	if err != nil {
-		return ipc.Sub{}, err
+		return ipc.Subscription{}, err
 	}
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
 	if err := ctx.Err(); err != nil {
-		return ipc.Sub{}, err
+		return ipc.Subscription{}, err
 	}
 	next := c.current()
 	sub.Nodes = assignNodeIDs(sub.Nodes, nil)
@@ -36,7 +36,7 @@ func (c *Core) AddSubscription(ctx context.Context, rawURL string) (ipc.Sub, err
 		next.Subscriptions = append(next.Subscriptions, sub)
 	}
 	if err := c.commit(next); err != nil {
-		return ipc.Sub{}, err
+		return ipc.Subscription{}, err
 	}
 	c.publish()
 	return subView(sub, false), nil

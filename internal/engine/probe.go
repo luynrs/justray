@@ -67,7 +67,7 @@ func Probe(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath 
 			if err != nil {
 				ms = 0
 			}
-			onResult(n.ID, Result{Alive: err == nil, MS: ms})
+			onResult(n.ID, Result{Alive: err == nil, Duration: ms})
 		})
 	}
 	wg.Wait()

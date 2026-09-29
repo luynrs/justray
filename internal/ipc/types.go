@@ -8,60 +8,75 @@ import (
 	"github.com/luynrs/justray/internal/domain"
 )
 
-type Req struct {
-	Method string
-	Args   Args
+// Increment only for incompatible changes to the IPC contract.
+const ProtocolVersion = 1
+
+type Request struct {
+	ProtocolVersion int
+	Method          string
+	Arguments       Arguments
 }
 
 var ErrElevate = errors.New("granting permissions")
+var ErrVersionMismatch = errors.New("incompatible IPC protocol; stop the old daemon and start the updated daemon")
 
-type Args struct {
-	ID        string
-	Sub       string
-	URL       string
-	Dir       int
-	Tun       bool
-	Mode      *bool
-	Settings  domain.Settings
-	Autostart bool
-	Collapsed bool
+type Arguments struct {
+	NodeID         string
+	SubscriptionID string
+	URL            string
+	Direction      int
+	Tun            *bool
+	Settings       domain.Settings
+	Autostart      bool
+	Collapsed      bool
 }
 
-type Resp struct {
-	OK                bool
-	Result            json.RawMessage
-	Error             string
-	ElevationRequired *bool `json:",omitempty"`
+type Response struct {
+	ProtocolVersion int
+	Success         bool
+	Result          json.RawMessage
+	Error           *Error
 }
 
-type Sub struct {
-	ID          string
-	Name        string
-	Nodes       int
-	UpdatedAt   time.Time
-	Traffic     domain.Traffic
-	Refreshable bool
-	Refreshing  bool
-	Warning     string
+type Error struct {
+	Type    string
+	Message string
+}
+
+func (failure *Error) Error() string { return failure.Message }
+
+func (failure *Error) Is(target error) bool {
+	return target == ErrElevate && failure.Type == "elevation" || target == ErrVersionMismatch && failure.Type == "version_mismatch"
+}
+
+type Subscription struct {
+	SubscriptionID string
+	Name           string
+	NodeCount      int
+	UpdatedAt      time.Time
+	Traffic        Traffic
+	Refreshable    bool
+	Refreshing     bool
+	Warning        string
 }
 
 type Node struct {
-	ID       string
-	Name     string
-	Protocol string
-	Server   string
-	Port     int
-	Sub      string
+	NodeID         string
+	Name           string
+	Protocol       string
+	Server         string
+	Port           int
+	SubscriptionID string
 
 	// false until Probe has run
-	Probed  bool
-	Alive   bool
-	MS      int
-	Probing bool
+	Probed   bool
+	Alive    bool
+	Duration int // milliseconds
+	Probing  bool
 }
 
 func (n Node) Ref() domain.NodeRef {
-	return domain.NodeRef{SubscriptionID: n.Sub, NodeID: n.ID}
+	return domain.NodeRef{SubscriptionID: n.SubscriptionID, NodeID: n.NodeID}
 }
 
 type Status struct {
@@ -82,9 +97,16 @@ func (s Status) Uptime() time.Duration {
 
 type Snapshot struct {
 	Settings      domain.Settings
-	Subscriptions []Sub
+	Subscriptions []Subscription
 	Nodes         []Node
 	Status        Status
 	Selected      domain.NodeRef
 	Collapsed     []string
+}
+
+type Traffic struct {
+	UploadBytes   int64
+	DownloadBytes int64
+	TotalBytes    int64
+	ExpiresAt     time.Time
 }

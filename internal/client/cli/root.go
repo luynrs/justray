@@ -154,8 +154,8 @@ func (a *app) start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if a.daemon().Ping(ctx) == nil {
-		return nil
+	if err := a.daemon().Ping(ctx); !errors.Is(err, ipc.ErrNoDaemon) {
+		return err
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -176,7 +176,10 @@ func (a *app) connectDaemon(ctx context.Context) error {
 	}
 
 	a.client = ipc.NewClient(ipc.Socket(dir))
-	if a.client.Ping(ctx) != nil {
+	if err := a.client.Ping(ctx); err != nil {
+		if !errors.Is(err, ipc.ErrNoDaemon) {
+			return err
+		}
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -190,7 +193,7 @@ func (a *app) connectDaemon(ctx context.Context) error {
 			if errors.Is(err, context.Canceled) {
 				return err
 			}
-			return fmt.Errorf("daemon did not start, see %s", ipc.DaemonLog(dir))
+			return fmt.Errorf("daemon did not start: %w; see %s", err, ipc.DaemonLog(dir))
 		}
 	}
 	if snapshot, err := a.client.Snapshot(ctx); err == nil {
@@ -266,14 +269,16 @@ func wait(ctx context.Context, c *ipc.Client, timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	for delay := 5 * time.Millisecond; c.Ping(ctx) != nil; delay = min(delay*2, 100*time.Millisecond) {
+	for delay := 5 * time.Millisecond; ; delay = min(delay*2, 100*time.Millisecond) {
+		if err := c.Ping(ctx); err == nil || errors.Is(err, ipc.ErrVersionMismatch) {
+			return err
+		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-time.After(delay):
 		}
 	}
-	return nil
 }
 
 // daemon dials silently, for completions — no spawn, no error reporting

@@ -62,6 +62,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !msg.live {
 			m.live = false
 			m.busy = false
+			if msg.err != nil {
+				m.err, m.errAt = msg.err.Error(), time.Now()
+			}
 			return m, next(m.watch, m.updates)
 		}
 		initial := m.snapshot.Settings.Port == 0
@@ -81,10 +84,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case selectedOK:
 			for i, idx := range tree.Selectable(rows) {
 				row := rows[idx]
-				if selected.Kind == tree.Node && row.Kind == tree.Header && row.Sub.ID == selected.Sub.ID {
+				if selected.Kind == tree.Node && row.Kind == tree.Header && row.Sub.SubscriptionID == selected.Sub.SubscriptionID {
 					m.cursor = i
 				}
-				if row.Kind == selected.Kind && row.Sub.ID == selected.Sub.ID && (row.Kind != tree.Node || row.Node.Ref() == selected.Node.Ref()) {
+				if row.Kind == selected.Kind && row.Sub.SubscriptionID == selected.Sub.SubscriptionID && (row.Kind != tree.Node || row.Node.Ref() == selected.Node.Ref()) {
 					m.cursor = i
 					break
 				}
@@ -116,14 +119,14 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	k := msg.String()
 
 	switch {
-	case m.confirm.Sub.ID != "":
+	case m.confirm.Sub.SubscriptionID != "":
 		row := m.confirm
 		m.confirm = tree.Row{}
 		if k == "y" || k == "Y" {
 			if row.Kind == tree.Node && !row.Sub.Refreshable {
 				return m, m.actionCmd("mutation", m.start, func() error { return m.client.RemoveNode(m.watch, row.Node.Ref()) })
 			}
-			return m, m.actionCmd("mutation", m.start, func() error { return m.client.RemoveSub(m.watch, row.Sub.ID) })
+			return m, m.actionCmd("mutation", m.start, func() error { return m.client.RemoveSubscription(m.watch, row.Sub.SubscriptionID) })
 		}
 		return m, nil
 
@@ -139,7 +142,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			return m, m.actionCmd("mutation", m.start, func() error {
-				_, err := m.client.AddSub(m.watch, url)
+				_, err := m.client.AddSubscription(m.watch, url)
 				return err
 			})
 		}
@@ -203,7 +206,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.filter.CursorEnd()
 		return m, tea.Batch(m.filter.Focus(), textinput.Blink)
 	case "d":
-		if r, ok := m.at(); ok && r.Sub.ID != "" {
+		if r, ok := m.at(); ok && r.Sub.SubscriptionID != "" {
 			m.confirm = r
 		}
 	case "q":
@@ -218,7 +221,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	if m.editor.Focused() || m.confirm.Sub.ID != "" {
+	if m.editor.Focused() || m.confirm.Sub.SubscriptionID != "" {
 		return m, nil
 	}
 	mouse := msg.Mouse()

@@ -11,7 +11,7 @@ import (
 
 func (m Model) activate(r tree.Row) (tea.Model, tea.Cmd) {
 	if r.Kind == tree.Header {
-		id := r.Sub.ID
+		id := r.Sub.SubscriptionID
 		if m.client == nil {
 			return m, nil
 		}
@@ -35,7 +35,7 @@ func (m Model) collapse() (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	id := r.Sub.ID
+	id := r.Sub.SubscriptionID
 	var cmd tea.Cmd
 	if !slices.Contains(m.snapshot.Collapsed, id) {
 		if m.client != nil {
@@ -51,7 +51,7 @@ func (m Model) collapse() (tea.Model, tea.Cmd) {
 func (m *Model) toHeader(id string) {
 	rows := m.rows()
 	for i, idx := range tree.Selectable(rows) {
-		if rows[idx].Kind == tree.Header && rows[idx].Sub.ID == id {
+		if rows[idx].Kind == tree.Header && rows[idx].Sub.SubscriptionID == id {
 			m.cursor = i
 			return
 		}
@@ -63,7 +63,7 @@ func (m Model) expand() (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	id := r.Sub.ID
+	id := r.Sub.SubscriptionID
 	var cmd tea.Cmd
 	if slices.Contains(m.snapshot.Collapsed, id) {
 		if m.client != nil {
@@ -82,9 +82,9 @@ func (m Model) probe() (tea.Model, tea.Cmd) {
 		if r.Node.Probing {
 			return m, nil
 		}
-		return m, m.actionCmd("probe", m.start, func() error { return m.client.Probe(m.watch, r.Node.Sub, r.Node.ID) })
+		return m, m.actionCmd("probe", m.start, func() error { return m.client.Probe(m.watch, r.Node.SubscriptionID, r.Node.NodeID) })
 	}
-	return m, m.actionCmd("probe", m.start, func() error { return m.client.Probe(m.watch, r.Sub.ID, "") })
+	return m, m.actionCmd("probe", m.start, func() error { return m.client.Probe(m.watch, r.Sub.SubscriptionID, "") })
 }
 
 func (m Model) probeAll() (tea.Model, tea.Cmd) {
@@ -96,15 +96,15 @@ func (m Model) refresh() (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	id := r.Sub.ID
+	id := r.Sub.SubscriptionID
 	if !r.Sub.Refreshable {
 		return m, nil
 	}
-	return m, m.actionCmd("refresh", m.start, func() error { return m.client.Refresh(m.watch, id) })
+	return m, m.actionCmd("refresh", m.start, func() error { return m.client.RefreshSubscription(m.watch, id) })
 }
 
 func (m Model) refreshAll() (tea.Model, tea.Cmd) {
-	return m, m.actionCmd("refresh", m.start, func() error { return m.client.RefreshAll(m.watch) })
+	return m, m.actionCmd("refresh", m.start, func() error { return m.client.RefreshSubscriptions(m.watch) })
 }
 
 func (m Model) moveSub(dir int) (tea.Model, tea.Cmd) {
@@ -112,13 +112,13 @@ func (m Model) moveSub(dir int) (tea.Model, tea.Cmd) {
 	if !ok || r.Kind != tree.Header {
 		return m, nil
 	}
-	id := r.Sub.ID
-	i := slices.IndexFunc(m.snapshot.Subscriptions, func(sub ipc.Sub) bool { return sub.ID == id })
+	id := r.Sub.SubscriptionID
+	i := slices.IndexFunc(m.snapshot.Subscriptions, func(sub ipc.Subscription) bool { return sub.SubscriptionID == id })
 	j := i + dir
 	if i < 0 || j < 0 || j >= len(m.snapshot.Subscriptions) {
 		return m, nil
 	}
-	return m, m.actionCmd("mutation", m.start, func() error { return m.client.MoveSub(m.watch, id, dir) })
+	return m, m.actionCmd("mutation", m.start, func() error { return m.client.MoveSubscription(m.watch, id, dir) })
 }
 
 func (m Model) setTun(enable bool) (tea.Model, tea.Cmd) {

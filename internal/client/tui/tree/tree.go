@@ -18,14 +18,14 @@ const (
 
 type Row struct {
 	Kind Kind
-	Sub  ipc.Sub
+	Sub  ipc.Subscription
 	Node ipc.Node
 }
 
 func (r Row) Selectable() bool { return r.Kind == Header || r.Kind == Node }
 
 type Data struct {
-	Subs      []ipc.Sub
+	Subs      []ipc.Subscription
 	Nodes     []ipc.Node
 	Collapsed []string
 	Query     string
@@ -38,18 +38,18 @@ type Data struct {
 func (d Data) connected() bool { return d.Live && d.Status.Connected }
 
 type Group struct {
-	Sub   ipc.Sub
+	Sub   ipc.Subscription
 	Nodes []ipc.Node
 }
 
 func (d Data) Groups() []Group {
 	index := make(map[string][]ipc.Node, len(d.Subs))
 	for _, node := range d.Nodes {
-		index[node.Sub] = append(index[node.Sub], node)
+		index[node.SubscriptionID] = append(index[node.SubscriptionID], node)
 	}
 	groups := make([]Group, 0, len(d.Subs))
 	for _, sub := range d.Subs {
-		groups = append(groups, Group{Sub: sub, Nodes: index[sub.ID]})
+		groups = append(groups, Group{Sub: sub, Nodes: index[sub.SubscriptionID]})
 	}
 	return groups
 }
@@ -73,7 +73,7 @@ func (d Data) Rows() []Row {
 		if group.Sub.Refreshable {
 			rows = append(rows, Row{Kind: Meta, Sub: group.Sub})
 		}
-		collapsed := slices.Contains(d.Collapsed, group.Sub.ID)
+		collapsed := slices.Contains(d.Collapsed, group.Sub.SubscriptionID)
 		for _, n := range nodes {
 			if q != "" || !collapsed || (d.connected() && d.Status.NodeRef == n.Ref()) {
 				rows = append(rows, Row{Kind: Node, Sub: group.Sub, Node: n})

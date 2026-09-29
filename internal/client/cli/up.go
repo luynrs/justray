@@ -160,9 +160,9 @@ func (a *app) resolveNode(ctx context.Context, key, sub string) (ipc.Node, error
 	}
 	nodes := snapshot.Nodes
 	if sub != "" {
-		nodes = slices.DeleteFunc(nodes, func(n ipc.Node) bool { return n.Sub != sub })
+		nodes = slices.DeleteFunc(nodes, func(n ipc.Node) bool { return n.SubscriptionID != sub })
 	}
-	return match(key, "node", nodes, func(n ipc.Node) (string, string) { return n.ID, n.Name })
+	return match(key, "node", nodes, func(n ipc.Node) (string, string) { return n.NodeID, n.Name })
 }
 
 func (a *app) completeNode(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {

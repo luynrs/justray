@@ -23,6 +23,7 @@ const IdleTimeout = 60 * time.Second
 func NewClient(socket string) *Client { return &Client{socket: socket} }
 
 var ErrNoDaemon = errors.New("daemon is not running")
+var errUnversioned = errors.New("daemon does not report an IPC protocol version")
 
 func (c *Client) dial(ctx context.Context) (net.Conn, error) {
 	dialer := net.Dialer{Timeout: 3 * time.Second}
@@ -39,7 +40,43 @@ func (c *Client) dial(ctx context.Context) (net.Conn, error) {
 	return conn, nil
 }
 
-func call[T any](ctx context.Context, c *Client, method string, args Args) (T, error) {
+func receive[T any](decoder *json.Decoder) (T, error) {
+	var out T
+	var response struct {
+		ProtocolVersion int
+		Success         bool
+		Result          json.RawMessage
+		Error           json.RawMessage
+	}
+	if err := decoder.Decode(&response); err != nil {
+		return out, err
+	}
+	if response.ProtocolVersion == 0 {
+		return out, fmt.Errorf("%w: %w", ErrVersionMismatch, errUnversioned)
+	}
+	if response.ProtocolVersion != ProtocolVersion {
+		return out, fmt.Errorf("%w (client %d, daemon %d)", ErrVersionMismatch, ProtocolVersion, response.ProtocolVersion)
+	}
+	if !response.Success {
+		if len(response.Error) == 0 {
+			return out, errors.New("daemon returned an error without details")
+		}
+		var failure *Error
+		if err := json.Unmarshal(response.Error, &failure); err != nil {
+			return out, err
+		}
+		if failure == nil {
+			return out, errors.New("daemon returned an error without details")
+		}
+		return out, failure
+	}
+	if response.Result != nil {
+		return out, json.Unmarshal(response.Result, &out)
+	}
+	return out, nil
+}
+
+func call[T any](ctx context.Context, c *Client, method string, args Arguments) (T, error) {
 	var out T
 	timeout := 30 * time.Second
 	switch method {
@@ -49,7 +86,7 @@ func call[T any](ctx context.Context, c *Client, method string, args Args) (T, e
 		timeout = 3 * time.Second
 	case "Probe":
 		timeout = 5 * time.Minute
-	case "Refresh", "RefreshAll":
+	case "RefreshSubscription", "RefreshSubscriptions":
 		timeout = 0
 	}
 	if timeout > 0 {
@@ -65,77 +102,71 @@ func call[T any](ctx context.Context, c *Client, method string, args Args) (T, e
 	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
 	defer stop()
 
-	if err := json.NewEncoder(conn).Encode(Req{method, args}); err != nil {
+	if err := json.NewEncoder(conn).Encode(Request{ProtocolVersion: ProtocolVersion, Method: method, Arguments: args}); err != nil {
 		return out, cmp.Or(ctx.Err(), fmt.Errorf("%s: %w", method, err))
 	}
-	var resp Resp
-	if err := json.NewDecoder(conn).Decode(&resp); err != nil {
-		return out, cmp.Or(ctx.Err(), fmt.Errorf("%s: %w", method, err))
+	out, err = receive[T](json.NewDecoder(conn))
+	if method == "Shutdown" && errors.Is(err, errUnversioned) && ctx.Err() == nil {
+		err = killPeer(conn.(*net.UnixConn))
 	}
-	if !resp.OK {
-		// Older daemons send only the message during an in-place upgrade.
-		if resp.ElevationRequired != nil && *resp.ElevationRequired || resp.ElevationRequired == nil && resp.Error == ErrElevate.Error() {
-			return out, ErrElevate
-		}
-		return out, errors.New(resp.Error)
-	}
-	if resp.Result != nil {
-		return out, json.Unmarshal(resp.Result, &out)
-	}
-	return out, nil
+	return out, cmp.Or(ctx.Err(), err)
 }
 
 func (c *Client) Ping(ctx context.Context) error {
-	_, err := call[any](ctx, c, "Ping", Args{})
+	_, err := call[any](ctx, c, "Ping", Arguments{})
 	return err
 }
 func (c *Client) Snapshot(ctx context.Context) (Snapshot, error) {
-	return call[Snapshot](ctx, c, "Snapshot", Args{})
+	return call[Snapshot](ctx, c, "Snapshot", Arguments{})
 }
-func (c *Client) AddSub(ctx context.Context, url string) (Sub, error) {
-	return call[Sub](ctx, c, "AddSub", Args{URL: url})
+func (c *Client) AddSubscription(ctx context.Context, url string) (Subscription, error) {
+	return call[Subscription](ctx, c, "AddSubscription", Arguments{URL: url})
 }
-func (c *Client) RemoveSub(ctx context.Context, id string) error {
-	return c.command(ctx, "RemoveSub", Args{ID: id})
+func (c *Client) RemoveSubscription(ctx context.Context, id string) error {
+	return c.command(ctx, "RemoveSubscription", Arguments{SubscriptionID: id})
 }
 func (c *Client) RemoveNode(ctx context.Context, ref domain.NodeRef) error {
-	return c.command(ctx, "RemoveNode", Args{ID: ref.NodeID, Sub: ref.SubscriptionID})
+	return c.command(ctx, "RemoveNode", Arguments{NodeID: ref.NodeID, SubscriptionID: ref.SubscriptionID})
 }
-func (c *Client) MoveSub(ctx context.Context, id string, dir int) error {
-	return c.command(ctx, "MoveSub", Args{ID: id, Dir: dir})
+func (c *Client) MoveSubscription(ctx context.Context, id string, dir int) error {
+	return c.command(ctx, "MoveSubscription", Arguments{SubscriptionID: id, Direction: dir})
 }
-func (c *Client) RefreshAll(ctx context.Context) error { return c.command(ctx, "RefreshAll", Args{}) }
-func (c *Client) Refresh(ctx context.Context, id string) error {
-	return c.command(ctx, "Refresh", Args{ID: id})
+func (c *Client) RefreshSubscriptions(ctx context.Context) error {
+	return c.command(ctx, "RefreshSubscriptions", Arguments{})
+}
+func (c *Client) RefreshSubscription(ctx context.Context, id string) error {
+	return c.command(ctx, "RefreshSubscription", Arguments{SubscriptionID: id})
 }
 func (c *Client) Connect(ctx context.Context, ref domain.NodeRef, mode *bool) error {
-	return c.command(ctx, "Connect", Args{ID: ref.NodeID, Sub: ref.SubscriptionID, Mode: mode})
+	return c.command(ctx, "Connect", Arguments{NodeID: ref.NodeID, SubscriptionID: ref.SubscriptionID, Tun: mode})
 }
-func (c *Client) Disconnect(ctx context.Context) error { return c.command(ctx, "Disconnect", Args{}) }
+func (c *Client) Disconnect(ctx context.Context) error {
+	return c.command(ctx, "Disconnect", Arguments{})
+}
 
 func (c *Client) Probe(ctx context.Context, sub, id string) error {
-	return c.command(ctx, "Probe", Args{Sub: sub, ID: id})
+	return c.command(ctx, "Probe", Arguments{SubscriptionID: sub, NodeID: id})
 }
 
 func (c *Client) SetTun(ctx context.Context, enable bool) error {
-	return c.command(ctx, "SetTun", Args{Tun: enable})
+	return c.command(ctx, "SetTun", Arguments{Tun: new(enable)})
 }
 
 func (c *Client) SetSettings(ctx context.Context, s domain.Settings) error {
-	return c.command(ctx, "SetSettings", Args{Settings: s})
+	return c.command(ctx, "SetSettings", Arguments{Settings: s})
 }
 
 func (c *Client) SetAutostart(ctx context.Context, enabled bool) error {
-	return c.command(ctx, "SetAutostart", Args{Autostart: enabled})
+	return c.command(ctx, "SetAutostart", Arguments{Autostart: enabled})
 }
 
 func (c *Client) SetCollapsed(ctx context.Context, id string, collapsed bool) error {
-	return c.command(ctx, "SetCollapsed", Args{ID: id, Collapsed: collapsed})
+	return c.command(ctx, "SetCollapsed", Arguments{SubscriptionID: id, Collapsed: collapsed})
 }
 
-func (c *Client) Shutdown(ctx context.Context) error { return c.command(ctx, "Shutdown", Args{}) }
+func (c *Client) Shutdown(ctx context.Context) error { return c.command(ctx, "Shutdown", Arguments{}) }
 
-func (c *Client) command(ctx context.Context, method string, args Args) error {
+func (c *Client) command(ctx context.Context, method string, args Arguments) error {
 	_, err := call[struct{}](ctx, c, method, args)
 	return err
 }
@@ -149,13 +180,13 @@ func (c *Client) Watch(ctx context.Context, onUpdate func(Snapshot)) error {
 	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
 	defer stop()
 
-	if err := json.NewEncoder(conn).Encode(Req{Method: "Watch"}); err != nil {
+	if err := json.NewEncoder(conn).Encode(Request{ProtocolVersion: ProtocolVersion, Method: "Watch"}); err != nil {
 		return fmt.Errorf("watch: %w", err)
 	}
 	dec := json.NewDecoder(conn)
 	for {
-		var snap Snapshot
-		if err := dec.Decode(&snap); err != nil {
+		snap, err := receive[Snapshot](dec)
+		if err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}

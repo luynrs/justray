@@ -107,7 +107,7 @@ func (m Model) keys() [][2]string {
 	switch {
 	case m.dialog != nil:
 		return m.dialog.Hints()
-	case m.confirm.Sub.ID != "":
+	case m.confirm.Sub.SubscriptionID != "":
 		return [][2]string{{"y", "Delete"}, {"any", "Cancel"}}
 	case m.editor.Focused():
 		return [][2]string{{style.Enter(), "Add"}, {"esc", "Cancel"}}
@@ -163,7 +163,7 @@ func (m Model) footer() string {
 	}
 
 	hints := m.hints(m.w)
-	if m.confirm.Sub.ID != "" {
+	if m.confirm.Sub.SubscriptionID != "" {
 		name := m.confirm.Sub.Name
 		if m.confirm.Kind == tree.Node && !m.confirm.Sub.Refreshable {
 			name = m.confirm.Node.Name

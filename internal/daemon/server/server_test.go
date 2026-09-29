@@ -65,40 +65,65 @@ func TestIPCWatchLifecycle(t *testing.T) {
 	serveDone := make(chan error, 1)
 	go func() { serveDone <- server.Serve(listener) }()
 
-	watchConn, err := net.Dial("unix", listener.Addr().String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = watchConn.Close() }()
-	if err := json.NewEncoder(watchConn).Encode(ipc.Req{Method: "Watch"}); err != nil {
-		t.Fatal(err)
-	}
-	_ = watchConn.SetReadDeadline(time.Now().Add(3 * time.Second))
-	decoder := json.NewDecoder(watchConn)
+	client := ipc.NewClient(listener.Addr().String())
+	updates := make(chan ipc.Snapshot, 8)
+	watchDone := make(chan error, 1)
+	go func() { watchDone <- client.Watch(t.Context(), func(snapshot ipc.Snapshot) { updates <- snapshot }) }()
 	var snapshot ipc.Snapshot
-	if err := decoder.Decode(&snapshot); err != nil || snapshot.Settings.Port != domain.DefaultPort {
+	readSnapshot := func() error {
+		select {
+		case snapshot = <-updates:
+			return nil
+		case err := <-watchDone:
+			return err
+		case <-time.After(3 * time.Second):
+			return errors.New("watch did not deliver snapshot")
+		}
+	}
+	if err := readSnapshot(); err != nil || snapshot.Settings.Port != domain.DefaultPort {
 		t.Fatalf("initial snapshot: %+v, %v", snapshot, err)
 	}
 
-	client := ipc.NewClient(listener.Addr().String())
+	for _, ver := range []int{0, ipc.ProtocolVersion + 1} {
+		conn, err := net.Dial("unix", listener.Addr().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = conn.SetDeadline(time.Now().Add(time.Second))
+		err = json.NewEncoder(conn).Encode(ipc.Request{ProtocolVersion: ver, Method: "SetTun", Arguments: ipc.Arguments{Tun: new(true)}})
+		if err != nil {
+			_ = conn.Close()
+			t.Fatal(err)
+		}
+		var res ipc.Response
+		err = json.NewDecoder(conn).Decode(&res)
+		_ = conn.Close()
+		if err != nil || res.Success || res.ProtocolVersion != ipc.ProtocolVersion || res.Error == nil || !errors.Is(res.Error, ipc.ErrVersionMismatch) {
+			t.Fatalf("protocol %d: %+v, %v", ver, res, err)
+		}
+	}
+	if snap, err := client.Snapshot(t.Context()); err != nil || snap.Status.Tun {
+		t.Fatalf("rejected request changed state: %+v, %v", snap, err)
+	}
+
 	link := "vless://11111111-1111-1111-1111-111111111111@127.0.0.1:443?security=tls&type=xhttp&extra=" + url.QueryEscape(`{"serverMaxHeaderBytes":16384,"sessionIDPlacement":"query"}`)
-	added, err := client.AddSub(t.Context(), link)
-	if err != nil || added.ID == "" || added.Nodes != 1 {
+	added, err := client.AddSubscription(t.Context(), link)
+	if err != nil || added.SubscriptionID == "" || added.NodeCount != 1 {
 		t.Fatalf("added subscription: %+v, %v", added, err)
 	}
-	if err := decoder.Decode(&snapshot); err != nil || len(snapshot.Nodes) != 1 || snapshot.Nodes[0].Sub != added.ID {
+	if err := readSnapshot(); err != nil || len(snapshot.Nodes) != 1 || snapshot.Nodes[0].SubscriptionID != added.SubscriptionID {
 		t.Fatalf("subscription snapshot: %+v, %v", snapshot, err)
 	}
-	if _, err := client.AddSub(t.Context(), link); err != nil {
+	if _, err := client.AddSubscription(t.Context(), link); err != nil {
 		t.Fatal(err)
 	}
-	if err := decoder.Decode(&snapshot); err != nil || len(snapshot.Nodes) != 2 || snapshot.Nodes[0].ID == snapshot.Nodes[1].ID {
+	if err := readSnapshot(); err != nil || len(snapshot.Nodes) != 2 || snapshot.Nodes[0].NodeID == snapshot.Nodes[1].NodeID {
 		t.Fatalf("duplicate link snapshot: %+v, %v", snapshot, err)
 	}
 	if err := client.SetTun(t.Context(), true); err != nil {
 		t.Fatal(err)
 	}
-	if err := decoder.Decode(&snapshot); err != nil || !snapshot.Status.Tun {
+	if err := readSnapshot(); err != nil || !snapshot.Status.Tun {
 		t.Fatalf("TUN snapshot: %+v, %v", snapshot, err)
 	}
 	settings := snapshot.Settings
@@ -154,7 +179,7 @@ func TestSubscriptionRefresh(t *testing.T) {
 	}()
 
 	client := ipc.NewClient(listener.Addr().String())
-	added, err := client.AddSub(t.Context(), source.URL)
+	added, err := client.AddSubscription(t.Context(), source.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +208,7 @@ func TestSubscriptionRefresh(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			body.Store(content)
-			if err := client.Refresh(t.Context(), added.ID); err == nil || strings.Contains(err.Error(), "secret") {
+			if err := client.RefreshSubscription(t.Context(), added.SubscriptionID); err == nil || strings.Contains(err.Error(), "secret") {
 				t.Fatalf("refresh error: %v", err)
 			}
 			after, err := disk.Load()
@@ -193,7 +218,7 @@ func TestSubscriptionRefresh(t *testing.T) {
 		})
 	}
 	body.Store(second + "\n" + first)
-	if err := client.Refresh(t.Context(), added.ID); err != nil {
+	if err := client.RefreshSubscription(t.Context(), added.SubscriptionID); err != nil {
 		t.Fatal(err)
 	}
 	after, err := disk.Load()
@@ -206,7 +231,7 @@ func TestSubscriptionRefresh(t *testing.T) {
 	}
 	shadowsocks := "ss://" + base64.StdEncoding.EncodeToString([]byte("aes-256-gcm:pa%2Fss@word@example.com:8388")) + "#ss"
 	body.Store(base64.StdEncoding.EncodeToString([]byte(first + "\n" + shadowsocks + "\nv2rayn://hysteria2/opaque\nvless://uuid@example.com:443?type=quic")))
-	if err := client.Refresh(t.Context(), added.ID); err != nil {
+	if err := client.RefreshSubscription(t.Context(), added.SubscriptionID); err != nil {
 		t.Fatalf("mixed subscription refresh: %v", err)
 	}
 	partial, err := disk.Load()
@@ -223,7 +248,7 @@ func TestSubscriptionRefresh(t *testing.T) {
 		t.Fatalf("partial refresh warning is missing from IPC: %+v, %v", snapshot.Subscriptions, err)
 	}
 	body.Store("vless://uuid@example.com:443?type=quic")
-	if err := client.Refresh(t.Context(), added.ID); err == nil || !strings.Contains(err.Error(), "skipped nodes: 1 (invalid: 1)") {
+	if err := client.RefreshSubscription(t.Context(), added.SubscriptionID); err == nil || !strings.Contains(err.Error(), "skipped nodes: 1 (invalid: 1)") {
 		t.Fatalf("unusable-only refresh: %v", err)
 	}
 	unchanged, err := disk.Load()
@@ -231,7 +256,7 @@ func TestSubscriptionRefresh(t *testing.T) {
 		t.Fatalf("unusable-only refresh changed subscriptions: %v", err)
 	}
 	body.Store(first)
-	if err := client.Refresh(t.Context(), added.ID); err != nil {
+	if err := client.RefreshSubscription(t.Context(), added.SubscriptionID); err != nil {
 		t.Fatal(err)
 	}
 	clean, err := disk.Load()

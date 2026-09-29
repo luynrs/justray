@@ -27,6 +27,6 @@ func Rebuilds(x, y domain.Settings) bool {
 }
 
 type Result struct {
-	Alive bool
-	MS    int
+	Alive    bool
+	Duration int
 }

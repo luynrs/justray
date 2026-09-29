@@ -33,7 +33,7 @@ func (c *Core) publish() {
 
 func (c *Core) publishLocked() {
 	state := c.current()
-	subs := make([]ipc.Sub, len(state.Subscriptions))
+	subs := make([]ipc.Subscription, len(state.Subscriptions))
 	for i, sub := range state.Subscriptions {
 		subs[i] = subView(sub, c.refreshes[sub.ID] != nil)
 	}
@@ -83,16 +83,16 @@ func (c *Core) nodes(subscriptions []store.Subscription) []ipc.Node {
 			ref := domain.NodeRef{SubscriptionID: subscription.ID, NodeID: node.ID}
 			live[ref] = true
 			item := ipc.Node{
-				ID:       node.ID,
-				Name:     node.Name,
-				Protocol: string(node.Protocol),
-				Server:   node.Server,
-				Port:     node.Port,
-				Sub:      subscription.ID,
-				Probing:  c.probing[ref],
+				NodeID:         node.ID,
+				Name:           node.Name,
+				Protocol:       string(node.Protocol),
+				Server:         node.Server,
+				Port:           node.Port,
+				SubscriptionID: subscription.ID,
+				Probing:        c.probing[ref],
 			}
 			if result, ok := c.probes[ref]; ok {
-				item.Probed, item.Alive, item.MS = true, result.Alive, result.MS
+				item.Probed, item.Alive, item.Duration = true, result.Alive, result.Duration
 			}
 			out = append(out, item)
 		}
@@ -118,10 +118,10 @@ func cloneSnapshot(snapshot ipc.Snapshot) ipc.Snapshot {
 	return snapshot
 }
 
-func subView(sub store.Subscription, refreshing bool) ipc.Sub {
-	return ipc.Sub{
-		ID: sub.ID, Name: sub.Name, Nodes: len(sub.Nodes),
-		UpdatedAt: sub.UpdatedAt, Traffic: sub.Traffic,
+func subView(sub store.Subscription, refreshing bool) ipc.Subscription {
+	return ipc.Subscription{
+		SubscriptionID: sub.ID, Name: sub.Name, NodeCount: len(sub.Nodes),
+		UpdatedAt: sub.UpdatedAt, Traffic: ipc.Traffic(sub.Traffic),
 		Refreshable: sub.URL != "", Refreshing: refreshing, Warning: sub.Warning,
 	}
 }

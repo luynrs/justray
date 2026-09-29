@@ -130,7 +130,7 @@ func TestProbeResults(t *testing.T) {
 	}})
 	probe := func(_ context.Context, nodes []domain.Node, _ domain.Settings, _ string, onResult func(string, engine.Result)) error {
 		for _, node := range nodes {
-			onResult(node.ID, engine.Result{Alive: true, MS: 10})
+			onResult(node.ID, engine.Result{Alive: true, Duration: 10})
 		}
 		return nil
 	}
@@ -145,7 +145,7 @@ func TestProbeResults(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, node := range app.Snapshot().Nodes {
-		if !node.Probed || !node.Alive || node.MS != 10 {
+		if !node.Probed || !node.Alive || node.Duration != 10 {
 			t.Fatalf("probe result: %+v", node)
 		}
 	}
@@ -165,7 +165,7 @@ func TestSubscriptions(t *testing.T) {
 	if err := app.MoveSubscription("first", 1); err != nil {
 		t.Fatal(err)
 	}
-	if snapshot := <-updates; len(snapshot.Subscriptions) != 2 || snapshot.Subscriptions[0].ID != "second" {
+	if snapshot := <-updates; len(snapshot.Subscriptions) != 2 || snapshot.Subscriptions[0].SubscriptionID != "second" {
 		t.Fatalf("subscription order: %+v", snapshot.Subscriptions)
 	}
 	if err := app.RemoveSubscription("first"); err != nil {
@@ -179,7 +179,7 @@ func TestSubscriptions(t *testing.T) {
 		t.Fatal(err)
 	}
 	state, err := app.store.Load()
-	if err != nil || len(state.Subscriptions) != 2 || state.Subscriptions[0].ID != "second" || state.Subscriptions[1].ID != added.ID ||
+	if err != nil || len(state.Subscriptions) != 2 || state.Subscriptions[0].ID != "second" || state.Subscriptions[1].ID != added.SubscriptionID ||
 		len(state.Subscriptions[1].Nodes) != 1 || state.Active.NodeID != "" {
 		t.Fatalf("saved subscriptions: %+v, %v", state, err)
 	}

@@ -51,8 +51,8 @@ func TestMatch(t *testing.T) {
 func TestLookupNode(t *testing.T) {
 	a := &app{}
 	nodes := []ipc.Node{
-		{ID: "node1", Sub: "sub1", Name: "Node 1"},
-		{ID: "node2", Sub: "sub2", Name: "Node 2"},
+		{NodeID: "node1", SubscriptionID: "sub1", Name: "Node 1"},
+		{NodeID: "node2", SubscriptionID: "sub2", Name: "Node 2"},
 	}
 	if n := a.lookupNode(domain.NodeRef{SubscriptionID: "sub1", NodeID: "node1"}, nodes); n.Name != "Node 1" {
 		t.Fatalf("lookupNode = %+v, want Node 1", n)
@@ -60,7 +60,7 @@ func TestLookupNode(t *testing.T) {
 	if n := a.lookupNode(domain.NodeRef{SubscriptionID: "", NodeID: "node2"}, nodes); n.Name != "Node 2" {
 		t.Fatalf("lookupNode without sub = %+v, want Node 2", n)
 	}
-	if n := a.lookupNode(domain.NodeRef{SubscriptionID: "sub1", NodeID: "unknown"}, nodes); n.ID != "" {
+	if n := a.lookupNode(domain.NodeRef{SubscriptionID: "sub1", NodeID: "unknown"}, nodes); n.NodeID != "" {
 		t.Fatalf("lookupNode unknown = %+v, want empty", n)
 	}
 }

@@ -24,11 +24,21 @@ func (s *Server) handle(conn net.Conn) {
 			<-s.sem
 		}
 	}()
-	_ = conn.SetReadDeadline(time.Now().Add(ipc.IdleTimeout))
+	_ = conn.SetDeadline(time.Now().Add(ipc.IdleTimeout))
 
-	var req ipc.Req
+	var req ipc.Request
 	if err := json.NewDecoder(io.LimitReader(conn, 1<<20)).Decode(&req); err != nil { // max req size
-		reply(conn, nil, fmt.Errorf("bad request: %w", err))
+		if !errors.Is(err, io.EOF) {
+			reply(conn, nil, fmt.Errorf("bad request: %w", err))
+		}
+		return
+	}
+	if req.ProtocolVersion != ipc.ProtocolVersion {
+		reply(conn, nil, ipc.ErrVersionMismatch)
+		return
+	}
+	if req.Method == "Ping" {
+		reply(conn, "pong", nil)
 		return
 	}
 	if req.Method == "Watch" {
@@ -63,25 +73,23 @@ func (s *Server) handle(conn net.Conn) {
 	reply(conn, result, err)
 }
 
-func (s *Server) dispatch(ctx context.Context, req ipc.Req) (any, error) {
-	a := req.Args
+func (s *Server) dispatch(ctx context.Context, req ipc.Request) (any, error) {
+	a := req.Arguments
 	switch req.Method {
-	case "Ping":
-		return "pong", nil
 	case "Snapshot":
 		return s.core.Snapshot(), nil
-	case "AddSub":
+	case "AddSubscription":
 		return s.core.AddSubscription(ctx, a.URL)
-	case "RemoveSub":
-		return nil, s.core.RemoveSubscription(a.ID)
+	case "RemoveSubscription":
+		return nil, s.core.RemoveSubscription(a.SubscriptionID)
 	case "RemoveNode":
-		return nil, s.core.RemoveNode(domain.NodeRef{SubscriptionID: a.Sub, NodeID: a.ID})
-	case "MoveSub":
-		return nil, s.core.MoveSubscription(a.ID, a.Dir)
-	case "RefreshAll", "Refresh":
+		return nil, s.core.RemoveNode(domain.NodeRef{SubscriptionID: a.SubscriptionID, NodeID: a.NodeID})
+	case "MoveSubscription":
+		return nil, s.core.MoveSubscription(a.SubscriptionID, a.Direction)
+	case "RefreshSubscriptions", "RefreshSubscription":
 		var ids []string
-		if req.Method == "Refresh" {
-			ids = []string{a.ID}
+		if req.Method == "RefreshSubscription" {
+			ids = []string{a.SubscriptionID}
 		}
 		err := s.core.RefreshSubscriptions(ctx, ids...)
 		if err != nil {
@@ -89,19 +97,22 @@ func (s *Server) dispatch(ctx context.Context, req ipc.Req) (any, error) {
 		}
 		return nil, err
 	case "Probe":
-		return nil, s.core.Probe(ctx, a.Sub, a.ID)
+		return nil, s.core.Probe(ctx, a.SubscriptionID, a.NodeID)
 	case "Connect":
-		return nil, s.core.Connect(ctx, a.ID, a.Sub, a.Mode)
+		return nil, s.core.Connect(ctx, a.NodeID, a.SubscriptionID, a.Tun)
 	case "Disconnect":
 		return nil, s.core.Disconnect(ctx)
 	case "SetTun":
-		return nil, s.core.SetTun(ctx, a.Tun)
+		if a.Tun == nil {
+			return nil, errors.New("Tun is required")
+		}
+		return nil, s.core.SetTun(ctx, *a.Tun)
 	case "SetSettings":
 		return nil, s.core.SetSettings(ctx, a.Settings)
 	case "SetAutostart":
 		return nil, s.core.SetAutostart(ctx, a.Autostart)
 	case "SetCollapsed":
-		return nil, s.core.SetCollapsed(a.ID, a.Collapsed)
+		return nil, s.core.SetCollapsed(a.SubscriptionID, a.Collapsed)
 	}
 	return nil, fmt.Errorf("unknown method %q", req.Method)
 }
@@ -118,8 +129,7 @@ func (s *Server) watch(conn net.Conn) {
 		close(gone)
 	}()
 
-	enc := json.NewEncoder(conn)
-	if err := enc.Encode(initial); err != nil {
+	if err := reply(conn, initial, nil); err != nil {
 		return
 	}
 	for {
@@ -129,24 +139,27 @@ func (s *Server) watch(conn net.Conn) {
 		case <-gone:
 			return
 		case changed := <-ch:
-			if err := enc.Encode(changed); err != nil {
+			if err := reply(conn, changed, nil); err != nil {
 				return
 			}
 		}
 	}
 }
 
-func reply(conn net.Conn, result any, err error) {
-	resp := ipc.Resp{OK: true}
+func reply(conn net.Conn, result any, err error) error {
+	resp := ipc.Response{ProtocolVersion: ipc.ProtocolVersion, Success: true}
 	if err == nil {
-		var raw []byte
-		raw, err = json.Marshal(result)
-		resp.Result = raw
+		resp.Result, err = json.Marshal(result)
 	}
 	if err != nil {
-		resp.OK, resp.Error = false, err.Error()
-		required := errors.Is(err, ipc.ErrElevate)
-		resp.ElevationRequired = &required
+		resp.Success = false
+		resp.Error = &ipc.Error{Type: "failure", Message: err.Error()}
+		switch {
+		case errors.Is(err, ipc.ErrElevate):
+			resp.Error.Type = "elevation"
+		case errors.Is(err, ipc.ErrVersionMismatch):
+			resp.Error.Type = "version_mismatch"
+		}
 	}
-	_ = json.NewEncoder(conn).Encode(resp)
+	return json.NewEncoder(conn).Encode(resp)
 }

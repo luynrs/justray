@@ -62,8 +62,8 @@ func TestSnapshotAfterReconnect(t *testing.T) {
 	model := New(nil, nil)
 	defer model.stop()
 	first := ipc.Snapshot{
-		Nodes:         []ipc.Node{{ID: "old"}},
-		Subscriptions: []ipc.Sub{{ID: "old-sub"}},
+		Nodes:         []ipc.Node{{NodeID: "old"}},
+		Subscriptions: []ipc.Subscription{{SubscriptionID: "old-sub"}},
 		Selected:      domain.NodeRef{NodeID: "old"},
 		Status:        ipc.Status{Connected: true},
 	}
@@ -75,7 +75,7 @@ func TestSnapshotAfterReconnect(t *testing.T) {
 	if model.live || !strings.Contains(model.footer(), "disconnected") {
 		t.Fatal("lost daemon is still live or not disconnected")
 	}
-	restarted := ipc.Snapshot{Nodes: []ipc.Node{{ID: "new"}}}
+	restarted := ipc.Snapshot{Nodes: []ipc.Node{{NodeID: "new"}}}
 	updated, _ = model.Update(pushed{live: true, snapshot: restarted})
 	model = updated.(Model)
 	if !model.live || !reflect.DeepEqual(model.snapshot, restarted) {
@@ -88,9 +88,9 @@ func TestCollapseFollowsDaemonSnapshot(t *testing.T) {
 	defer model.stop()
 	model.w, model.h = 80, 24
 	snapshot := ipc.Snapshot{
-		Settings:      domain.Settings{Port: 10808},
-		Subscriptions: []ipc.Sub{{ID: "sub", Name: "Subscription"}},
-		Nodes:         []ipc.Node{{ID: "node", Sub: "sub", Name: "visible-node"}},
+		Settings:      domain.Settings{Connection: domain.Connection{Port: 10808}},
+		Subscriptions: []ipc.Subscription{{SubscriptionID: "sub", Name: "Subscription"}},
+		Nodes:         []ipc.Node{{NodeID: "node", SubscriptionID: "sub", Name: "visible-node"}},
 	}
 	updated, _ := model.Update(pushed{live: true, snapshot: snapshot})
 	model = updated.(Model)
@@ -114,15 +114,15 @@ func TestCollapseFollowsDaemonSnapshot(t *testing.T) {
 	if !strings.Contains(model.tree(), "visible-node") {
 		t.Fatal("daemon expansion was not applied")
 	}
-	snapshot.Subscriptions = append(snapshot.Subscriptions, ipc.Sub{ID: "other", Name: "Other"})
-	snapshot.Nodes = append(snapshot.Nodes, ipc.Node{ID: "other-node", Sub: "other", Name: "other-node"})
+	snapshot.Subscriptions = append(snapshot.Subscriptions, ipc.Subscription{SubscriptionID: "other", Name: "Other"})
+	snapshot.Nodes = append(snapshot.Nodes, ipc.Node{NodeID: "other-node", SubscriptionID: "other", Name: "other-node"})
 	updated, _ = model.Update(pushed{live: true, snapshot: snapshot})
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	model = updated.(Model)
 	snapshot.Collapsed = []string{"sub"}
 	updated, _ = model.Update(pushed{live: true, snapshot: snapshot})
-	if row, _ := updated.(Model).at(); row.Sub.ID != "sub" {
+	if row, _ := updated.(Model).at(); row.Sub.SubscriptionID != "sub" {
 		t.Fatal("remote collapse moved selection to another subscription")
 	}
 }
