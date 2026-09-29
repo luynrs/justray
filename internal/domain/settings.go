@@ -156,7 +156,7 @@ func canon(list *[]string) error {
 func disjoint(a, b []string) error {
 	for _, x := range a {
 		if slices.Contains(b, x) {
-			return fmt.Errorf("%q cannot be in both direct and proxy", x)
+			return fmt.Errorf("rule %q is defined in both direct and proxy", x)
 		}
 	}
 	return nil
@@ -197,16 +197,16 @@ func ParseRule(raw string) (string, error) {
 		return p.String(), nil
 	}
 	if host, _, found := strings.Cut(strings.ReplaceAll(rule, `\`, "/"), "/"); found && isAddr(host) {
-		return "", fmt.Errorf("%q is not a network, a domain or a program", raw)
+		return "", fmt.Errorf("invalid routing rule %q", raw)
 	}
 	isDrive := len(rule) >= 3 && ((rule[0] >= 'a' && rule[0] <= 'z') || (rule[0] >= 'A' && rule[0] <= 'Z')) && rule[1] == ':' && (rule[2] == '\\' || rule[2] == '/')
 	if strings.Contains(rule, ":") && !isDrive {
-		return "", fmt.Errorf("%q is not a network, a domain or a program", raw)
+		return "", fmt.Errorf("invalid routing rule %q", raw)
 	}
 	star, keyword := strings.HasPrefix(rule, "*"), strings.HasSuffix(rule, "*")
 	rule = strings.Trim(rule, "*.")
 	if rule == "" || strings.Contains(rule, "://") || strings.ContainsAny(rule, "\t\n\r@?#*") {
-		return "", fmt.Errorf("%q is not a network, a domain or a program", raw)
+		return "", fmt.Errorf("invalid routing rule %q", raw)
 	}
 	if !strings.ContainsAny(rule, `/\`) && (star || keyword || (!strings.Contains(rule, " ") && !strings.HasSuffix(strings.ToLower(rule), ".exe") && strings.Contains(rule, "."))) {
 		rule = strings.ToLower(rule)
@@ -266,7 +266,7 @@ func parsePrefix(raw string) (netip.Prefix, error) {
 	}
 	a, err := netip.ParseAddr(raw)
 	if err != nil {
-		return netip.Prefix{}, fmt.Errorf("%q is not an ip or a cidr", raw)
+		return netip.Prefix{}, fmt.Errorf("invalid IP or CIDR %q", raw)
 	}
 	return netip.PrefixFrom(a, a.BitLen()), nil
 }

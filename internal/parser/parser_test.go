@@ -409,7 +409,7 @@ func TestParseClashFingerprints(t *testing.T) {
 		"  - {name: stls, type: shadow-tls, server: example.com, port: 443, password: p, server_name: cloud.example}\n" +
 		"  - {name: wg, type: wg, server: example.com, port: 51820, private-key: priv, public-key: pub, address: 10.0.0.2/32}\n"
 	nodes, warning, err := ParseSubscription([]byte(yaml))
-	if err != nil || len(nodes) != 2 || nodes[0].Protocol != domain.Shadow || nodes[1].Protocol != domain.WG || warning != "skipped nodes: 2 (TLS certificate verification is disabled: 2)" {
+	if err != nil || len(nodes) != 2 || nodes[0].Protocol != domain.Shadow || nodes[1].Protocol != domain.WG || warning != "skipped nodes: 2 (insecure TLS is not supported: 2)" {
 		t.Fatalf("unexpected nodes: %v, err=%v", nodes, err)
 	}
 }

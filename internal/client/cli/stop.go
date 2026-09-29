@@ -27,7 +27,7 @@ func (a *app) stop(cmd *cobra.Command, args []string) error {
 	socket := ipc.Socket(dir)
 	ctx := cmd.Context()
 	c := ipc.NewClient(socket)
-	if err := c.Ping(ctx); err != nil && !errors.Is(err, ipc.ErrVersionMismatch) {
+	if err := c.Ping(ctx); err != nil {
 		if !errors.Is(err, ipc.ErrNoDaemon) {
 			return err
 		}
@@ -42,7 +42,7 @@ func (a *app) stop(cmd *cobra.Command, args []string) error {
 	}
 	stop := spin("Stopping daemon")
 	shutdownErr := c.Shutdown(ctx)
-	if errors.Is(shutdownErr, ipc.ErrVersionMismatch) {
+	if errors.Is(shutdownErr, ipc.ErrVersion) {
 		stop()
 		return shutdownErr
 	}

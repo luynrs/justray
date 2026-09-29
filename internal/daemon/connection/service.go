@@ -101,7 +101,7 @@ func (s *Service) apply(ctx context.Context, n domain.Node, ref domain.NodeRef, 
 		return err
 	}
 	if n.TLS != nil && n.TLS.Insecure {
-		return errors.New("insecure TLS node is not allowed")
+		return errors.New("insecure TLS is not supported")
 	}
 
 	previous := s.Status()

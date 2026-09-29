@@ -123,10 +123,10 @@ func parseSub(body []byte) ([]domain.Node, string, error) {
 
 func validateNode(node domain.Node) error {
 	if node.TLS != nil && node.TLS.Insecure {
-		return errors.New("TLS certificate verification is disabled")
+		return errors.New("insecure TLS is not supported")
 	}
 	if node.Server == "" || !domain.ValidPort(node.Port) {
-		return errors.New("missing server or valid port")
+		return errors.New("missing host or valid port")
 	}
 	switch node.Protocol {
 	case domain.VLess, domain.VMess, domain.TUIC:

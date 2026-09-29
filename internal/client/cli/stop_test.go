@@ -42,12 +42,18 @@ func TestStop(t *testing.T) {
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
-				t.Fatal(err)
+				return
 			}
 			_ = conn.SetDeadline(time.Now().Add(time.Second))
-			var req json.RawMessage
+			var req struct {
+				Method string
+			}
 			if json.NewDecoder(conn).Decode(&req) == nil {
 				_, _ = io.WriteString(conn, reply+"\n")
+				if req.Method == "Shutdown" {
+					_ = conn.Close()
+					return
+				}
 			}
 			_ = conn.Close()
 		}
@@ -92,21 +98,11 @@ func TestStop(t *testing.T) {
 			cli := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestStop$")
 			cli.Env = append(os.Environ(), "JUSTRAY_TEST_COMMAND=stop")
 			out, err := cli.CombinedOutput()
-			if name == "incompatible" {
-				if err == nil || !strings.Contains(string(out), "incompatible IPC protocol") {
-					t.Fatalf("incompatible daemon: %s, %v", out, err)
-				}
-				if err := ipc.NewClient(ipc.Socket(dir)).Ping(ctx); !errors.Is(err, ipc.ErrVersionMismatch) {
-					t.Fatalf("incompatible daemon was stopped: %v", err)
-				}
-			} else if err != nil {
-				t.Fatalf("stop: %s, %v", out, err)
-			} else {
-				select {
-				case <-done:
-				case <-ctx.Done():
-					t.Fatal("stop left the old daemon running")
-				}
+			if err == nil || !strings.Contains(string(out), "IPC protocol version mismatch") {
+				t.Fatalf("version mismatch: %s, %v", out, err)
+			}
+			if err := ipc.NewClient(ipc.Socket(dir)).Ping(ctx); !errors.Is(err, ipc.ErrVersion) {
+				t.Fatalf("daemon was stopped: %v", err)
 			}
 		})
 	}

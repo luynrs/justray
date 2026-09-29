@@ -23,7 +23,6 @@ const IdleTimeout = 60 * time.Second
 func NewClient(socket string) *Client { return &Client{socket: socket} }
 
 var ErrNoDaemon = errors.New("daemon is not running")
-var errUnversioned = errors.New("daemon does not report an IPC protocol version")
 
 func (c *Client) dial(ctx context.Context) (net.Conn, error) {
 	dialer := net.Dialer{Timeout: 3 * time.Second}
@@ -51,22 +50,22 @@ func receive[T any](decoder *json.Decoder) (T, error) {
 	if err := decoder.Decode(&response); err != nil {
 		return out, err
 	}
-	if response.ProtocolVersion == 0 {
-		return out, fmt.Errorf("%w: %w", ErrVersionMismatch, errUnversioned)
-	}
 	if response.ProtocolVersion != ProtocolVersion {
-		return out, fmt.Errorf("%w (client %d, daemon %d)", ErrVersionMismatch, ProtocolVersion, response.ProtocolVersion)
+		if response.ProtocolVersion == 0 {
+			return out, fmt.Errorf("%w: daemon is unversioned; stop the old daemon before starting the new one", ErrVersion)
+		}
+		return out, fmt.Errorf("%w (client %d, daemon %d)", ErrVersion, ProtocolVersion, response.ProtocolVersion)
 	}
 	if !response.Success {
 		if len(response.Error) == 0 {
-			return out, errors.New("daemon returned an error without details")
+			return out, errors.New("daemon returned an empty error")
 		}
 		var failure *Error
 		if err := json.Unmarshal(response.Error, &failure); err != nil {
 			return out, err
 		}
 		if failure == nil {
-			return out, errors.New("daemon returned an error without details")
+			return out, errors.New("daemon returned an empty error")
 		}
 		return out, failure
 	}
@@ -106,9 +105,6 @@ func call[T any](ctx context.Context, c *Client, method string, args Arguments) 
 		return out, cmp.Or(ctx.Err(), fmt.Errorf("%s: %w", method, err))
 	}
 	out, err = receive[T](json.NewDecoder(conn))
-	if method == "Shutdown" && errors.Is(err, errUnversioned) && ctx.Err() == nil {
-		err = killPeer(conn.(*net.UnixConn))
-	}
 	return out, cmp.Or(ctx.Err(), err)
 }
 

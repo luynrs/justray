@@ -34,7 +34,7 @@ func (s *Server) handle(conn net.Conn) {
 		return
 	}
 	if req.ProtocolVersion != ipc.ProtocolVersion {
-		reply(conn, nil, ipc.ErrVersionMismatch)
+		reply(conn, nil, ipc.ErrVersion)
 		return
 	}
 	if req.Method == "Ping" {
@@ -157,7 +157,7 @@ func reply(conn net.Conn, result any, err error) error {
 		switch {
 		case errors.Is(err, ipc.ErrElevate):
 			resp.Error.Type = "elevation"
-		case errors.Is(err, ipc.ErrVersionMismatch):
+		case errors.Is(err, ipc.ErrVersion):
 			resp.Error.Type = "version_mismatch"
 		}
 	}

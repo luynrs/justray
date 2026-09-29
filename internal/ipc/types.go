@@ -17,8 +17,8 @@ type Request struct {
 	Arguments       Arguments
 }
 
-var ErrElevate = errors.New("granting permissions")
-var ErrVersionMismatch = errors.New("incompatible IPC protocol; stop the old daemon and start the updated daemon")
+var ErrElevate = errors.New("elevation required")
+var ErrVersion = errors.New("IPC protocol version mismatch")
 
 type Arguments struct {
 	NodeID         string
@@ -46,7 +46,7 @@ type Error struct {
 func (failure *Error) Error() string { return failure.Message }
 
 func (failure *Error) Is(target error) bool {
-	return target == ErrElevate && failure.Type == "elevation" || target == ErrVersionMismatch && failure.Type == "version_mismatch"
+	return target == ErrElevate && failure.Type == "elevation" || target == ErrVersion && failure.Type == "version_mismatch"
 }
 
 type Subscription struct {

@@ -43,7 +43,7 @@ func watch(ctx context.Context, c *ipc.Client, ch chan<- pushed) tea.Cmd {
 				case <-ctx.Done():
 				}
 			})
-			if !errors.Is(err, ipc.ErrVersionMismatch) {
+			if !errors.Is(err, ipc.ErrVersion) {
 				err = nil
 			}
 			select {

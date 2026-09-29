@@ -97,7 +97,7 @@ func TestIPCWatchLifecycle(t *testing.T) {
 		var res ipc.Response
 		err = json.NewDecoder(conn).Decode(&res)
 		_ = conn.Close()
-		if err != nil || res.Success || res.ProtocolVersion != ipc.ProtocolVersion || res.Error == nil || !errors.Is(res.Error, ipc.ErrVersionMismatch) {
+		if err != nil || res.Success || res.ProtocolVersion != ipc.ProtocolVersion || res.Error == nil || !errors.Is(res.Error, ipc.ErrVersion) {
 			t.Fatalf("protocol %d: %+v, %v", ver, res, err)
 		}
 	}
@@ -392,7 +392,7 @@ func TestSwitch(t *testing.T) {
 			t.Fatalf("state=%+v snapshot=%+v", state, snapshot)
 		}
 	}
-	failure := errors.New("granting permissions")
+	failure := errors.New("elevation required")
 	_, stop := start(failure, failure)
 	if err := client.Connect(t.Context(), a, nil); err != nil {
 		t.Fatal(err)

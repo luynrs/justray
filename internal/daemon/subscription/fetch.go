@@ -35,7 +35,7 @@ func (s *Service) fetch(ctx context.Context, rawURL string) ([]domain.Node, stri
 				return fmt.Errorf("subscription redirect must use http or https")
 			}
 			if via[len(via)-1].URL.Scheme == "https" && r.URL.Scheme == "http" {
-				return fmt.Errorf("subscription redirect must not downgrade to http")
+				return fmt.Errorf("insecure redirect from HTTPS to HTTP")
 			}
 			if len(via) >= 10 {
 				return fmt.Errorf("stopped after 10 redirects")
@@ -61,7 +61,7 @@ func (s *Service) fetch(ctx context.Context, rawURL string) ([]domain.Node, stri
 	case resp.Header.Get("X-Hwid-Max-Devices-Reached") == "true":
 		return nil, "", none, "", fmt.Errorf("device limit reached")
 	case resp.Header.Get("X-Hwid-Not-Supported") == "true":
-		return nil, "", none, "", fmt.Errorf("this subscription requires a device id")
+		return nil, "", none, "", fmt.Errorf("subscription requires device ID")
 	}
 
 	const maxBody = 10 << 20
@@ -70,7 +70,7 @@ func (s *Service) fetch(ctx context.Context, rawURL string) ([]domain.Node, stri
 		return nil, "", none, "", err
 	}
 	if len(body) > maxBody {
-		return nil, "", none, "", fmt.Errorf("subscription response exceeded maximum size (10MB)")
+		return nil, "", none, "", fmt.Errorf("subscription response exceeds 10MB limit")
 	}
 	nodes, warning, err := parser.ParseSubscription(body)
 	if err != nil {

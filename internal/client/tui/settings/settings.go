@@ -472,10 +472,10 @@ func (f field) apply(s *domain.Settings, in string) error {
 
 func conflict(s *domain.Settings, target *[]string, rule string) error {
 	if target == &s.Direct && slices.Contains(s.Proxy, rule) {
-		return fmt.Errorf("%q already in proxy", rule)
+		return fmt.Errorf("rule %q already exists in proxy", rule)
 	}
 	if target == &s.Proxy && slices.Contains(s.Direct, rule) {
-		return fmt.Errorf("%q already in direct", rule)
+		return fmt.Errorf("rule %q already exists in direct", rule)
 	}
 	return nil
 }
@@ -531,7 +531,7 @@ func parseHours(in string) (int, error) {
 	}
 	v, err := strconv.Atoi(in)
 	if err != nil || v < 0 {
-		return 0, fmt.Errorf("%q is not a number of hours", in)
+		return 0, fmt.Errorf("expected integer hours, got %q", in)
 	}
 	return v, nil
 }

@@ -243,7 +243,7 @@ func justrayd() (string, error) {
 			return p, nil
 		}
 	}
-	return "", fmt.Errorf("daemon not in PATH or next to client")
+	return "", fmt.Errorf("justrayd binary not found")
 }
 
 func exeName(name string) string {
@@ -270,7 +270,7 @@ func wait(ctx context.Context, c *ipc.Client, timeout time.Duration) error {
 	defer cancel()
 
 	for delay := 5 * time.Millisecond; ; delay = min(delay*2, 100*time.Millisecond) {
-		if err := c.Ping(ctx); err == nil || errors.Is(err, ipc.ErrVersionMismatch) {
+		if err := c.Ping(ctx); err == nil || errors.Is(err, ipc.ErrVersion) {
 			return err
 		}
 		select {
