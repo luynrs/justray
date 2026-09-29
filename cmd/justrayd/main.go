@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"runtime"
 	"runtime/debug"
 	"strings"
 	"syscall"
@@ -137,6 +138,9 @@ func main() {
 			return
 		}
 		if err := elevate.Restart(dir); err != nil {
+			if runtime.GOOS == "darwin" {
+				logger.Fatalf("elevation failed (%v)", err)
+			}
 			logger.Printf("elevation failed (%v, continuing unprivileged)", err)
 			continue
 		}

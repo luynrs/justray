@@ -152,7 +152,7 @@ func (m Model) footer() string {
 		}
 		status = iconStyle.Render(icon) + " " + style.Sanitize(m.snapshot.Status.NodeName, m.emoji()) + " " + style.Dim.Render(style.Sep()) + " " + style.Uptime(m.snapshot.Status.Uptime())
 	case m.busy:
-		status = style.Pending.Render(m.spin.View()) + " " + style.Dim.Render("connecting")
+		status = style.Pending.Render(icon) + " " + style.Dim.Render("connecting")
 	default:
 		status = style.Dim.Render(icon) + " " + style.Dim.Render("disconnected")
 	}

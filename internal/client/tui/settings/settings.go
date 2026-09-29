@@ -495,11 +495,6 @@ func (s *Settings) dirty() bool {
 // move skips list headings
 func (s *Settings) move(delta int) {
 	rows := s.rows()
-	if len(rows) == 0 {
-		s.cursor = 0
-		return
-	}
-
 	i := min(max(s.cursor+delta, 0), len(rows)-1)
 	step := max(min(delta, 1), -1)
 	if step == 0 {

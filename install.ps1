@@ -156,8 +156,13 @@ try {
 	New-Item -ItemType Directory -Force -Path $dir | Out-Null
 
 	$daemonPath = [IO.Path]::GetFullPath((Join-Path $dir "justrayd.exe"))
-	$running = @(Get-Process justrayd -ErrorAction SilentlyContinue | Where-Object {
-		try { $_.Path -eq $daemonPath } catch { $false }
+	$running = @(Get-CimInstance Win32_Process -Filter "Name = 'justrayd.exe'" | Where-Object {
+		if (-not $_.ExecutablePath) {
+			throw "Cannot determine justrayd's location. Stop it before updating."
+		}
+		$_.ExecutablePath -eq $daemonPath
+	} | ForEach-Object {
+		Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue
 	})
 	$restart = $running.Count -gt 0
 	if ($restart) {

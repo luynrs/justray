@@ -208,6 +208,9 @@ func ParseRule(raw string) (string, error) {
 	if rule == "" || strings.Contains(rule, "://") || strings.ContainsAny(rule, "\t\n\r@?#*") {
 		return "", fmt.Errorf("%q is not a network, a domain or a program", raw)
 	}
+	if !strings.ContainsAny(rule, `/\`) && (star || keyword || (!strings.Contains(rule, " ") && !strings.HasSuffix(strings.ToLower(rule), ".exe") && strings.Contains(rule, "."))) {
+		rule = strings.ToLower(rule)
+	}
 	switch {
 	case star && keyword:
 		return "*" + rule + "*", nil
