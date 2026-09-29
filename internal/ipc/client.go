@@ -160,7 +160,7 @@ func (c *Client) SetAutostart(ctx context.Context, enabled bool) error {
 	return c.command(ctx, "SetAutostart", Arguments{Autostart: enabled})
 }
 
-func (c *Client) SetCollapsed(ctx context.Context, id string, collapsed bool) error {
+func (c *Client) SetCollapsed(ctx context.Context, id string, collapsed *bool) error {
 	return c.command(ctx, "SetCollapsed", Arguments{SubscriptionID: id, Collapsed: collapsed})
 }
 

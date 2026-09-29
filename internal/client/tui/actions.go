@@ -15,7 +15,7 @@ func (m Model) activate(r tree.Row) (tea.Model, tea.Cmd) {
 		if m.client == nil {
 			return m, nil
 		}
-		return m, m.actionCmd("collapse", nil, func() error { return m.client.SetCollapsed(m.watch, id, !slices.Contains(m.snapshot.Collapsed, id)) })
+		return m, m.actionCmd("collapse", nil, func() error { return m.client.SetCollapsed(m.watch, id, nil) })
 	}
 	if m.busy {
 		return m, nil
@@ -37,10 +37,8 @@ func (m Model) collapse() (tea.Model, tea.Cmd) {
 	}
 	id := r.Sub.SubscriptionID
 	var cmd tea.Cmd
-	if !slices.Contains(m.snapshot.Collapsed, id) {
-		if m.client != nil {
-			cmd = m.actionCmd("collapse", nil, func() error { return m.client.SetCollapsed(m.watch, id, true) })
-		}
+	if m.client != nil {
+		cmd = m.actionCmd("collapse", nil, func() error { return m.client.SetCollapsed(m.watch, id, new(true)) })
 	}
 	if r.Kind == tree.Node {
 		m.toHeader(id)
@@ -65,10 +63,8 @@ func (m Model) expand() (tea.Model, tea.Cmd) {
 	}
 	id := r.Sub.SubscriptionID
 	var cmd tea.Cmd
-	if slices.Contains(m.snapshot.Collapsed, id) {
-		if m.client != nil {
-			cmd = m.actionCmd("collapse", nil, func() error { return m.client.SetCollapsed(m.watch, id, false) })
-		}
+	if m.client != nil {
+		cmd = m.actionCmd("collapse", nil, func() error { return m.client.SetCollapsed(m.watch, id, new(false)) })
 	}
 	return m, cmd
 }

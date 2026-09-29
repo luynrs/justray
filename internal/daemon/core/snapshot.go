@@ -14,25 +14,26 @@ func (c *Core) Snapshot() ipc.Snapshot {
 
 func (c *Core) Watch() (ipc.Snapshot, <-chan ipc.Snapshot, func()) {
 	ch := make(chan ipc.Snapshot, 1)
-	c.pubMu.Lock()
+	c.stMu.Lock()
 	c.watchers[ch] = struct{}{}
 	initial := c.Snapshot()
-	c.pubMu.Unlock()
+	c.stMu.Unlock()
 	return initial, ch, func() {
-		c.pubMu.Lock()
+		c.stMu.Lock()
 		delete(c.watchers, ch)
-		c.pubMu.Unlock()
+		c.stMu.Unlock()
 	}
 }
 
 func (c *Core) publish() {
-	c.pubMu.Lock()
-	defer c.pubMu.Unlock()
+	c.stMu.Lock()
+	defer c.stMu.Unlock()
 	c.publishLocked()
 }
 
+// Caller holds stMu.
 func (c *Core) publishLocked() {
-	state := c.current()
+	state := c.state
 	subs := make([]ipc.Subscription, len(state.Subscriptions))
 	for i, sub := range state.Subscriptions {
 		subs[i] = subView(sub, c.refreshes[sub.ID] != nil)
@@ -42,12 +43,12 @@ func (c *Core) publishLocked() {
 		selected = state.Last
 	}
 	snapshot := &ipc.Snapshot{
-		Settings:      state.Settings,
+		Settings:      cloneSettings(state.Settings),
 		Subscriptions: subs,
 		Nodes:         c.nodes(state.Subscriptions),
 		Status:        c.status(state),
 		Selected:      selected,
-		Collapsed:     state.Collapsed,
+		Collapsed:     slices.Clone(state.Collapsed),
 	}
 	c.snapshot.Store(snapshot)
 	for ch := range c.watchers {
@@ -72,10 +73,8 @@ func (c *Core) status(state store.PersistentState) ipc.Status {
 	return status
 }
 
+// Caller holds stMu.
 func (c *Core) nodes(subscriptions []store.Subscription) []ipc.Node {
-	c.probeMu.Lock()
-	defer c.probeMu.Unlock()
-
 	live := map[domain.NodeRef]bool{}
 	out := []ipc.Node{}
 	for _, subscription := range subscriptions {

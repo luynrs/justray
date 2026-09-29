@@ -80,9 +80,9 @@ func (c *Core) refresh(ctx context.Context, sub store.Subscription) (err error) 
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	c.pubMu.Lock()
+	c.stMu.Lock()
 	if call := c.refreshes[sub.ID]; call != nil {
-		c.pubMu.Unlock()
+		c.stMu.Unlock()
 		select {
 		case <-call.done:
 			return call.err
@@ -93,14 +93,14 @@ func (c *Core) refresh(ctx context.Context, sub store.Subscription) (err error) 
 	call := &refreshCall{done: make(chan struct{})}
 	c.refreshes[sub.ID] = call
 	c.publishLocked()
-	c.pubMu.Unlock()
+	c.stMu.Unlock()
 	defer func() {
-		c.pubMu.Lock()
+		c.stMu.Lock()
 		call.err = err
 		delete(c.refreshes, sub.ID)
 		c.publishLocked()
 		close(call.done)
-		c.pubMu.Unlock()
+		c.stMu.Unlock()
 	}()
 
 	sub, err = c.subs.Refresh(ctx, sub)

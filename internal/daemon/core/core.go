@@ -16,11 +16,11 @@ import (
 )
 
 type Core struct {
+	// Lock order: opMu before stMu; no disk or engine I/O under stMu.
 	opMu    sync.Mutex
-	stateMu sync.RWMutex
+	stMu    sync.Mutex
 	store   store.Disk
 	state   store.PersistentState
-	probeMu sync.Mutex
 	probes  map[domain.NodeRef]engine.Result
 	probing map[domain.NodeRef]bool
 	conn    *connection.Service
@@ -30,7 +30,6 @@ type Core struct {
 
 	snapshot atomic.Pointer[ipc.Snapshot]
 	watchers map[chan ipc.Snapshot]struct{}
-	pubMu    sync.Mutex
 }
 
 func New(st store.Disk, conn *connection.Service, subs *subscription.Service) (*Core, error) {
@@ -66,8 +65,8 @@ func (c *Core) Shutdown() {
 }
 
 func (c *Core) current() store.PersistentState {
-	c.stateMu.RLock()
-	defer c.stateMu.RUnlock()
+	c.stMu.Lock()
+	defer c.stMu.Unlock()
 	state := c.state
 	state.Subscriptions = slices.Clone(state.Subscriptions)
 	state.Collapsed = slices.Clone(state.Collapsed)
@@ -79,8 +78,8 @@ func (c *Core) commit(state store.PersistentState) error {
 	if err := c.store.SaveState(state); err != nil {
 		return err
 	}
-	c.stateMu.Lock()
+	c.stMu.Lock()
 	c.state = state
-	c.stateMu.Unlock()
+	c.stMu.Unlock()
 	return nil
 }

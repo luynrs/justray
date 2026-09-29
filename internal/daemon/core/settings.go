@@ -27,9 +27,9 @@ func (c *Core) SetSettings(ctx context.Context, settings domain.Settings) error 
 	if err := c.store.SaveConfig(next.Settings); err != nil {
 		return err
 	}
-	c.stateMu.Lock()
+	c.stMu.Lock()
 	c.state.Settings = settings
-	c.stateMu.Unlock()
+	c.stMu.Unlock()
 	applyErr := c.apply(ctx, next, c.conn.Status().Tun)
 	c.publish()
 	return applyErr
@@ -51,13 +51,13 @@ func (c *Core) SetAutostart(ctx context.Context, enabled bool) error {
 		}
 		actual = autostart.Enabled()
 	}
-	c.stateMu.Lock()
+	c.stMu.Lock()
 	if actual {
 		c.state.Settings.Autostart = "on"
 	} else {
 		c.state.Settings.Autostart = "off"
 	}
-	c.stateMu.Unlock()
+	c.stMu.Unlock()
 	c.publish()
 	if err == nil && actual != enabled {
 		return errors.New("autostart state did not change")
@@ -65,17 +65,18 @@ func (c *Core) SetAutostart(ctx context.Context, enabled bool) error {
 	return err
 }
 
-func (c *Core) SetCollapsed(id string, collapsed bool) error {
+func (c *Core) SetCollapsed(id string, collapsed *bool) error {
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
 	next := c.current()
-	if slices.Contains(next.Collapsed, id) == collapsed {
+	index := slices.Index(next.Collapsed, id)
+	if collapsed != nil && (index >= 0) == *collapsed {
 		return nil
 	}
-	if collapsed {
+	if index < 0 {
 		next.Collapsed = append(next.Collapsed, id)
 	} else {
-		next.Collapsed = slices.DeleteFunc(next.Collapsed, func(s string) bool { return s == id })
+		next.Collapsed = slices.Delete(next.Collapsed, index, index+1)
 	}
 	if err := c.commit(next); err != nil {
 		return err

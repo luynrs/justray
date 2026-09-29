@@ -28,7 +28,7 @@ type Arguments struct {
 	Tun            *bool
 	Settings       domain.Settings
 	Autostart      bool
-	Collapsed      bool
+	Collapsed      *bool // nil toggles the current state
 }
 
 type Response struct {

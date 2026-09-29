@@ -138,7 +138,7 @@ func TestRefreshOrdering(t *testing.T) {
 		t.Fatal("refresh did not start")
 	}
 	mutated := make(chan error, 1)
-	go func() { mutated <- app.SetCollapsed("b", true) }()
+	go func() { mutated <- app.SetCollapsed("b", new(true)) }()
 	select {
 	case err := <-mutated:
 		if err != nil {

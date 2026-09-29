@@ -21,7 +21,7 @@ func (c *Core) Probe(ctx context.Context, sub, id string) error {
 		return err
 	}
 
-	c.probeMu.Lock()
+	c.stMu.Lock()
 	var targets []domain.Node
 	pending := make(map[string][]domain.NodeRef)
 	for i, ref := range refs {
@@ -33,7 +33,7 @@ func (c *Core) Probe(ctx context.Context, sub, id string) error {
 			pending[ref.NodeID] = append(pending[ref.NodeID], ref)
 		}
 	}
-	c.probeMu.Unlock()
+	c.stMu.Unlock()
 
 	if len(targets) == 0 {
 		return nil
@@ -62,24 +62,24 @@ func (c *Core) Probe(ctx context.Context, sub, id string) error {
 	defer func() {
 		close(done)
 		<-flushed
-		c.probeMu.Lock()
+		c.stMu.Lock()
 		for _, refs := range pending {
 			for _, ref := range refs {
 				delete(c.probing, ref)
 			}
 		}
-		c.probeMu.Unlock()
-		c.publish()
+		c.publishLocked()
+		c.stMu.Unlock()
 	}()
 
 	onResult := func(nodeID string, res engine.Result) {
-		c.probeMu.Lock()
+		c.stMu.Lock()
 		for _, ref := range pending[nodeID] {
 			c.probes[ref] = res
 			delete(c.probing, ref)
 		}
 		delete(pending, nodeID)
-		c.probeMu.Unlock()
+		c.stMu.Unlock()
 
 		dirty.Store(true)
 	}

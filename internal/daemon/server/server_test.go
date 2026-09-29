@@ -83,7 +83,6 @@ func TestIPCWatchLifecycle(t *testing.T) {
 	if err := readSnapshot(); err != nil || snapshot.Settings.Port != domain.DefaultPort {
 		t.Fatalf("initial snapshot: %+v, %v", snapshot, err)
 	}
-
 	for _, ver := range []int{0, ipc.ProtocolVersion + 1} {
 		conn, err := net.Dial("unix", listener.Addr().String())
 		if err != nil {
@@ -113,6 +112,14 @@ func TestIPCWatchLifecycle(t *testing.T) {
 	}
 	if err := readSnapshot(); err != nil || len(snapshot.Nodes) != 1 || snapshot.Nodes[0].SubscriptionID != added.SubscriptionID {
 		t.Fatalf("subscription snapshot: %+v, %v", snapshot, err)
+	}
+	for _, count := range []int{1, 0} {
+		if err := client.SetCollapsed(t.Context(), added.SubscriptionID, nil); err != nil {
+			t.Fatal(err)
+		}
+		if err := readSnapshot(); err != nil || len(snapshot.Collapsed) != count {
+			t.Fatalf("collapse toggle: %v, %v", snapshot.Collapsed, err)
+		}
 	}
 	if _, err := client.AddSubscription(t.Context(), link); err != nil {
 		t.Fatal(err)
@@ -150,9 +157,19 @@ func TestIPCWatchLifecycle(t *testing.T) {
 
 func TestSubscriptionRefresh(t *testing.T) {
 	var body atomic.Value
+	var slow atomic.Bool
+	started, release := make(chan struct{}, 1), make(chan struct{})
 	first, second := "trojan://secret@example.com:443#first", "trojan://secret@example.com:443#second"
 	body.Store(first + "\n" + second)
-	source := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+	source := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, req *http.Request) {
+		if slow.Load() {
+			started <- struct{}{}
+			select {
+			case <-release:
+			case <-req.Context().Done():
+				return
+			}
+		}
 		_, _ = io.WriteString(response, body.Load().(string))
 	}))
 	defer source.Close()
@@ -294,6 +311,29 @@ func TestSubscriptionRefresh(t *testing.T) {
 				t.Fatalf("unsupported-only refresh changed saved nodes: %v", err)
 			}
 		})
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	body.Store(first)
+	slow.Store(true)
+	done := make(chan error, 1)
+	go func() { done <- client.RefreshSubscription(ctx, added.SubscriptionID) }()
+	select {
+	case <-started:
+	case <-ctx.Done():
+		t.Fatal("refresh did not start")
+	}
+	if err := client.SetCollapsed(ctx, added.SubscriptionID, new(true)); err != nil {
+		t.Fatalf("mutation blocked on refresh: %v", err)
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	snap, err := client.Snapshot(ctx)
+	if err != nil || len(snap.Nodes) != 1 || snap.Nodes[0].Name != "first" || snap.Subscriptions[0].Refreshing ||
+		len(snap.Collapsed) != 1 || snap.Collapsed[0] != added.SubscriptionID {
+		t.Fatalf("refresh lost a concurrent change: %+v, %v", snap, err)
 	}
 }
 
