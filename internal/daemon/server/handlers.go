@@ -30,16 +30,16 @@ func (s *Server) handle(conn net.Conn) {
 	var req ipc.Request
 	if err := json.NewDecoder(io.LimitReader(conn, 1<<20)).Decode(&req); err != nil { // max req size
 		if !errors.Is(err, io.EOF) {
-			reply(conn, nil, fmt.Errorf("bad request: %w", err))
+			_ = reply(conn, nil, fmt.Errorf("bad request: %w", err))
 		}
 		return
 	}
 	if req.Version != version.Version {
-		reply(conn, nil, ipc.ErrVersion)
+		_ = reply(conn, nil, ipc.ErrVersion)
 		return
 	}
 	if req.Method == "Ping" {
-		reply(conn, "pong", nil)
+		_ = reply(conn, "pong", nil)
 		return
 	}
 	if req.Method == "Watch" {
@@ -55,7 +55,7 @@ func (s *Server) handle(conn net.Conn) {
 		return
 	}
 	if req.Method == "Shutdown" {
-		reply(conn, nil, nil)
+		_ = reply(conn, nil, nil)
 		select {
 		case s.stop <- struct{}{}:
 		default:
@@ -71,7 +71,7 @@ func (s *Server) handle(conn net.Conn) {
 	}()
 	result, err := s.dispatch(ctx, req)
 	_ = conn.SetDeadline(time.Now().Add(ipc.IdleTimeout))
-	reply(conn, result, err)
+	_ = reply(conn, result, err)
 }
 
 func (s *Server) dispatch(ctx context.Context, req ipc.Request) (any, error) {
@@ -82,11 +82,11 @@ func (s *Server) dispatch(ctx context.Context, req ipc.Request) (any, error) {
 	case "AddSubscription":
 		return s.core.AddSubscription(ctx, a.URL)
 	case "RemoveSubscription":
-		return nil, s.core.RemoveSubscription(a.SubscriptionID)
+		return nil, s.core.RemoveSubscription(ctx, a.SubscriptionID)
 	case "RemoveNode":
-		return nil, s.core.RemoveNode(domain.NodeRef{SubscriptionID: a.SubscriptionID, NodeID: a.NodeID})
+		return nil, s.core.RemoveNode(ctx, domain.NodeRef{SubscriptionID: a.SubscriptionID, NodeID: a.NodeID})
 	case "MoveSubscription":
-		return nil, s.core.MoveSubscription(a.SubscriptionID, a.Direction)
+		return nil, s.core.MoveSubscription(ctx, a.SubscriptionID, a.Direction)
 	case "RefreshSubscriptions", "RefreshSubscription":
 		var ids []string
 		if req.Method == "RefreshSubscription" {
@@ -105,7 +105,7 @@ func (s *Server) dispatch(ctx context.Context, req ipc.Request) (any, error) {
 		return nil, s.core.Disconnect(ctx)
 	case "SetTun":
 		if a.Tun == nil {
-			return nil, errors.New("Tun is required")
+			return nil, errors.New("tun is required")
 		}
 		return nil, s.core.SetTun(ctx, *a.Tun)
 	case "SetSettings":
@@ -113,7 +113,7 @@ func (s *Server) dispatch(ctx context.Context, req ipc.Request) (any, error) {
 	case "SetAutostart":
 		return nil, s.core.SetAutostart(ctx, a.Autostart)
 	case "SetCollapsed":
-		return nil, s.core.SetCollapsed(a.SubscriptionID, a.Collapsed)
+		return nil, s.core.SetCollapsed(ctx, a.SubscriptionID, a.Collapsed)
 	}
 	return nil, fmt.Errorf("unknown method %q", req.Method)
 }

@@ -74,7 +74,7 @@ func (c *Core) Disconnect(ctx context.Context) error {
 	if err := c.commit(next); err != nil {
 		return err
 	}
-	applyErr := c.conn.Disconnect(ctx)
+	applyErr := c.conn.Disconnect(context.WithoutCancel(ctx))
 	c.publish()
 	return applyErr
 }

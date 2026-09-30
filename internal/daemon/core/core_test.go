@@ -34,7 +34,10 @@ func (fake *fakeEngine) Running() bool { return !fake.stopped }
 func testCore(t *testing.T, instance engine.Engine, state store.PersistentState) *Core {
 	t.Helper()
 	disk := store.Disk{Dir: t.TempDir()}
-	if err := disk.Save(state); err != nil {
+	if err := disk.SaveState(state); err != nil {
+		t.Fatal(err)
+	}
+	if err := disk.SaveConfig(state.Settings); err != nil {
 		t.Fatal(err)
 	}
 	logger := log.New(io.Discard, "", 0)
@@ -162,13 +165,13 @@ func TestSubscriptions(t *testing.T) {
 	}
 	_, updates, cancel := app.Watch()
 	defer cancel()
-	if err := app.MoveSubscription("first", 1); err != nil {
+	if err := app.MoveSubscription(t.Context(), "first", 1); err != nil {
 		t.Fatal(err)
 	}
 	if snapshot := <-updates; len(snapshot.Subscriptions) != 2 || snapshot.Subscriptions[0].SubscriptionID != "second" {
 		t.Fatalf("subscription order: %+v", snapshot.Subscriptions)
 	}
-	if err := app.RemoveSubscription("first"); err != nil {
+	if err := app.RemoveSubscription(t.Context(), "first"); err != nil {
 		t.Fatal(err)
 	}
 	if snapshot := <-updates; snapshot.Status.Connected || snapshot.Selected.NodeID != "" || !engine.stopped {

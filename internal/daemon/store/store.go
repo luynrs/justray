@@ -6,12 +6,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"slices"
 	"time"
 
 	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/ipc"
-	"github.com/luynrs/justray/internal/parser"
 )
 
 type Subscription struct {
@@ -25,13 +23,13 @@ type Subscription struct {
 }
 
 type PersistentState struct {
-	Subscriptions []Subscription
-	Active        domain.NodeRef
-	Last          domain.NodeRef
-	Tun           bool
-	Pending       *Pending
-	Settings      domain.Settings
-	Collapsed     []string
+	Subscriptions []Subscription  `json:"subscriptions"`
+	Active        domain.NodeRef  `json:"active,omitzero"`
+	Last          domain.NodeRef  `json:"last,omitzero"`
+	Tun           bool            `json:"tun,omitempty"`
+	Pending       *Pending        `json:"pending,omitempty"`
+	Settings      domain.Settings `json:"-"`
+	Collapsed     []string        `json:"collapsed,omitempty"`
 }
 
 type Pending struct {
@@ -41,17 +39,6 @@ type Pending struct {
 
 // Disk reads and writes the daemon's persistent state.
 type Disk struct{ Dir string }
-
-type stateFile struct {
-	Subscriptions []Subscription `json:"subscriptions"`
-	Active        string         `json:"active,omitempty"`
-	ActiveSub     string         `json:"active_subscription,omitempty"`
-	Last          string         `json:"last,omitempty"`
-	LastSub       string         `json:"last_subscription,omitempty"`
-	Tun           bool           `json:"tun,omitempty"`
-	Pending       *Pending       `json:"pending,omitempty"`
-	Collapsed     []string       `json:"collapsed,omitempty"`
-}
 
 func (d Disk) Load() (PersistentState, error) {
 	state := PersistentState{
@@ -70,38 +57,11 @@ func (d Disk) Load() (PersistentState, error) {
 	}
 
 	if stateErr == nil {
-		var sf stateFile
-		if err := json.Unmarshal(stateData, &sf); err != nil {
+		if err := json.Unmarshal(stateData, &state); err != nil {
 			return state, err
 		}
-		state.Active = domain.NodeRef{SubscriptionID: sf.ActiveSub, NodeID: sf.Active}
-		state.Last = domain.NodeRef{SubscriptionID: sf.LastSub, NodeID: sf.Last}
-		state.Tun = sf.Tun
-		state.Pending = sf.Pending
-		state.Collapsed = sf.Collapsed
-		if sf.Subscriptions != nil {
-			state.Subscriptions = sf.Subscriptions
-		}
-		for _, sub := range slices.Clone(state.Subscriptions) {
-			if !parser.IsLink(sub.URL) {
-				continue
-			}
-			index := slices.IndexFunc(state.Subscriptions, func(current Subscription) bool { return current.ID == "default" })
-			if index < 0 {
-				index = slices.IndexFunc(state.Subscriptions, func(current Subscription) bool { return current.ID == sub.ID })
-				state.Subscriptions[index] = Subscription{ID: "default", Name: "Default"}
-			}
-			for _, node := range sub.Nodes {
-				if !slices.ContainsFunc(state.Subscriptions[index].Nodes, func(current domain.Node) bool { return current.ID == node.ID }) {
-					state.Subscriptions[index].Nodes = append(state.Subscriptions[index].Nodes, node)
-				}
-			}
-			for _, ref := range []*domain.NodeRef{&state.Active, &state.Last} {
-				if ref.SubscriptionID == sub.ID || ref.SubscriptionID == "" && slices.ContainsFunc(sub.Nodes, func(node domain.Node) bool { return node.ID == ref.NodeID }) {
-					ref.SubscriptionID = "default"
-				}
-			}
-			state.Subscriptions = slices.DeleteFunc(state.Subscriptions, func(current Subscription) bool { return current.ID == sub.ID && current.ID != "default" })
+		if state.Subscriptions == nil {
+			state.Subscriptions = []Subscription{}
 		}
 	} else if !os.IsNotExist(stateErr) {
 		return state, stateErr
@@ -110,28 +70,11 @@ func (d Disk) Load() (PersistentState, error) {
 	return state, nil
 }
 
-func (d Disk) Save(state PersistentState) error {
-	if err := d.SaveState(state); err != nil {
-		return err
-	}
-	return d.SaveConfig(state.Settings)
-}
-
 func (d Disk) SaveState(state PersistentState) error {
 	if state.Subscriptions == nil {
 		state.Subscriptions = []Subscription{}
 	}
-	sf := stateFile{
-		Subscriptions: state.Subscriptions,
-		Active:        state.Active.NodeID,
-		ActiveSub:     state.Active.SubscriptionID,
-		Last:          state.Last.NodeID,
-		LastSub:       state.Last.SubscriptionID,
-		Tun:           state.Tun,
-		Pending:       state.Pending,
-		Collapsed:     state.Collapsed,
-	}
-	stateData, err := json.MarshalIndent(sf, "", "  ")
+	stateData, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
 		return err
 	}

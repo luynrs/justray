@@ -32,7 +32,10 @@ func TestRoundtrip(t *testing.T) {
 		},
 		Collapsed: []string{"a"},
 	}
-	if err := disk.Save(state); err != nil {
+	if err := disk.SaveState(state); err != nil {
+		t.Fatal(err)
+	}
+	if err := disk.SaveConfig(state.Settings); err != nil {
 		t.Fatal(err)
 	}
 	rawState, err := os.ReadFile(ipc.State(disk.Dir))

@@ -21,9 +21,9 @@ const (
 )
 
 var dnsStrategy = map[string]option.DomainStrategy{
-	"auto": option.DomainStrategy(C.DomainStrategyPreferIPv4),
-	"ipv4": option.DomainStrategy(C.DomainStrategyIPv4Only),
-	"ipv6": option.DomainStrategy(C.DomainStrategyIPv6Only),
+	"ipv4":  option.DomainStrategy(C.DomainStrategyIPv4Only),
+	"ipv6":  option.DomainStrategy(C.DomainStrategyIPv6Only),
+	"mixed": option.DomainStrategy(C.DomainStrategyPreferIPv4),
 }
 
 func Build(n domain.Node, s domain.Settings, logPath string, tun bool) (*option.Options, error) {

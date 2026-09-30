@@ -23,7 +23,7 @@ func TestRebuilds(t *testing.T) {
 	} {
 		changed := settings
 		change(&changed)
-		if !Rebuilds(settings, changed) {
+		if !Rebuilds(settings, changed, true) {
 			t.Errorf("%s change did not restart the engine", name)
 		}
 	}
@@ -34,7 +34,7 @@ func TestRebuilds(t *testing.T) {
 	} {
 		changed := settings
 		change(&changed)
-		if Rebuilds(settings, changed) {
+		if Rebuilds(settings, changed, true) {
 			t.Errorf("%s change restarted the engine", name)
 		}
 	}

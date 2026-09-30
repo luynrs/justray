@@ -81,9 +81,12 @@ func assignNodeIDs(nodes, previous []domain.Node) []domain.Node {
 	return nodes
 }
 
-func (c *Core) RemoveSubscription(id string) error {
+func (c *Core) RemoveSubscription(ctx context.Context, id string) error {
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	next := c.current()
 	count := len(next.Subscriptions)
 	next.Subscriptions = slices.DeleteFunc(next.Subscriptions, func(s store.Subscription) bool {
@@ -106,15 +109,18 @@ func (c *Core) RemoveSubscription(id string) error {
 	}
 	var cleanupErr error
 	if c.conn.Status().NodeRef.SubscriptionID == id {
-		cleanupErr = c.conn.Disconnect(context.Background())
+		cleanupErr = c.conn.Disconnect(context.WithoutCancel(ctx))
 	}
 	c.publish()
 	return cleanupErr
 }
 
-func (c *Core) RemoveNode(ref domain.NodeRef) error {
+func (c *Core) RemoveNode(ctx context.Context, ref domain.NodeRef) error {
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	next := c.current()
 	i := slices.IndexFunc(next.Subscriptions, func(sub store.Subscription) bool {
 		return (ref.SubscriptionID == "" || sub.ID == ref.SubscriptionID) && sub.URL == "" &&
@@ -136,15 +142,18 @@ func (c *Core) RemoveNode(ref domain.NodeRef) error {
 	}
 	var cleanupErr error
 	if c.conn.Status().NodeRef == ref {
-		cleanupErr = c.conn.Disconnect(context.Background())
+		cleanupErr = c.conn.Disconnect(context.WithoutCancel(ctx))
 	}
 	c.publish()
 	return cleanupErr
 }
 
-func (c *Core) MoveSubscription(id string, dir int) error {
+func (c *Core) MoveSubscription(ctx context.Context, id string, dir int) error {
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	next := c.current()
 	i := slices.IndexFunc(next.Subscriptions, func(sub store.Subscription) bool { return sub.ID == id })
 	if i < 0 {

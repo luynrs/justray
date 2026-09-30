@@ -28,7 +28,7 @@ const (
 var (
 	LogLevels  = []string{"error", "warn", "info", "debug"}
 	TunStacks  = []string{"gvisor", "system", "mixed"}
-	IPVersions = []string{"auto", "ipv4", "ipv6"}
+	IPVersions = []string{"ipv4", "ipv6", "mixed"}
 	Modes      = []string{ProxyAll, DirectAll}
 	Toggle     = []string{"on", "off"}
 )
@@ -83,7 +83,7 @@ func (s Settings) Normalize() (Settings, error) {
 		num("refresh interval", &s.RefreshEvery, 0, 0, 24*30),
 		one("log level", &s.LogLevel, DefaultLogLevel, LogLevels),
 		one("stack", &s.TunStack, DefaultTunStack, TunStacks),
-		one("ip version", &s.IPVersion, "auto", IPVersions),
+		one("ip version", &s.IPVersion, "mixed", IPVersions),
 		one("mode", &s.Mode, ProxyAll, Modes),
 		one("strict route", &s.TunStrict, "on", Toggle),
 		one("dns hijack", &s.DNSHijack, "on", Toggle),
@@ -247,7 +247,6 @@ func SplitRules(list []string) (cidrs, domains, keywords, names, paths []string)
 			domains = append(domains, lower)
 		default:
 			names = append(names, rule)
-			domains = append(domains, lower)
 		}
 	}
 	return cidrs, domains, keywords, names, paths

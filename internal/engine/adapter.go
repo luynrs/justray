@@ -43,7 +43,7 @@ func (e *Box) Apply(ctx context.Context, spec SessionSpec) error {
 	nodeChanged := e.node.ID != spec.Node.ID
 	tunChanged := spec.Tun != e.tun
 
-	if Rebuilds(e.settings, spec.Settings) || (nodeChanged && tunChanged) {
+	if Rebuilds(e.settings, spec.Settings, spec.Tun) || (nodeChanged && tunChanged) {
 		if err := e.Stop(); err != nil {
 			return err
 		}
@@ -63,7 +63,6 @@ func (e *Box) Apply(ctx context.Context, spec SessionSpec) error {
 			return err
 		}
 	}
-	e.settings = spec.Settings
 	return nil
 }
 

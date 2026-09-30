@@ -352,7 +352,7 @@ func TestSubscriptionRefresh(t *testing.T) {
 func TestSwitch(t *testing.T) {
 	directory := t.TempDir()
 	disk := store.Disk{Dir: directory}
-	if err := disk.Save(store.PersistentState{Subscriptions: []store.Subscription{{ID: "sub", Nodes: []domain.Node{
+	if err := disk.SaveState(store.PersistentState{Subscriptions: []store.Subscription{{ID: "sub", Nodes: []domain.Node{
 		{ID: "a", Name: "A", Server: "a.example"}, {ID: "b", Name: "B", Server: "b.example"},
 	}}}}); err != nil {
 		t.Fatal(err)

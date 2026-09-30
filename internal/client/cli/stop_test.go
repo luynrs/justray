@@ -37,7 +37,7 @@ func TestStop(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer unlock()
-		defer ln.Close()
+		defer func() { _ = ln.Close() }()
 		fmt.Println("ready")
 		for {
 			conn, err := ln.Accept()
@@ -67,7 +67,7 @@ func TestStop(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer os.RemoveAll(dir)
+			defer func() { _ = os.RemoveAll(dir) }()
 			for _, key := range []string{"HOME", "XDG_CONFIG_HOME", "APPDATA"} {
 				t.Setenv(key, dir)
 			}

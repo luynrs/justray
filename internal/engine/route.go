@@ -19,7 +19,7 @@ var (
 	toProxy  = option.RuleAction{Action: C.RuleActionTypeRoute, RouteOptions: option.RouteActionOptions{Outbound: Tag}}
 )
 
-func match(list []string, action option.RuleAction, inbound []string) []option.Rule {
+func match(list []string, action option.RuleAction) []option.Rule {
 	cidrs, domains, keywords, names, paths := domain.SplitRules(list)
 
 	var out []option.Rule
@@ -27,7 +27,6 @@ func match(list []string, action option.RuleAction, inbound []string) []option.R
 		{ProcessName: names}, {ProcessPath: paths},
 		{IPCIDR: cidrs}, {DomainSuffix: domains}, {DomainKeyword: keywords},
 	} {
-		m.Inbound = inbound
 		if len(m.ProcessName)+len(m.ProcessPath)+len(m.IPCIDR)+len(m.DomainSuffix)+len(m.DomainKeyword) == 0 {
 			continue
 		}
@@ -40,13 +39,7 @@ func match(list []string, action option.RuleAction, inbound []string) []option.R
 }
 
 func rules(s domain.Settings) []option.Rule {
-	out := []option.Rule{{
-		Type: C.RuleTypeDefault,
-		DefaultOptions: option.DefaultRule{
-			RawDefaultRule: option.RawDefaultRule{Inbound: []string{"mixed-in"}},
-			RuleAction:     toProxy,
-		},
-	}}
+	var out []option.Rule
 
 	if s.DNSHijack == "on" {
 		out = append(out, option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{
@@ -54,25 +47,24 @@ func rules(s domain.Settings) []option.Rule {
 			RuleAction:     option.RuleAction{Action: C.RuleActionTypeHijackDNS},
 		}})
 	}
-	if s.IPVersion == "auto" && final(s) == Tag {
-		out = append(out, option.Rule{
-			Type: C.RuleTypeLogical,
-			LogicalOptions: option.LogicalRule{
-				RawLogicalRule: option.RawLogicalRule{
-					Mode: C.LogicalTypeAnd,
-					Rules: []option.Rule{
-						{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{RawDefaultRule: option.RawDefaultRule{IPVersion: 6}}},
-						{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{RawDefaultRule: option.RawDefaultRule{IPIsPrivate: true, Invert: true}}},
-					},
-				},
-				RuleAction: reject,
-			},
-		})
+	resolveInbounds := []string{"tun-in"}
+	if s.BypassLocal == "on" {
+		resolveInbounds = nil
 	}
-
+	for _, list := range [][]string{s.Direct, s.Proxy, s.Block} {
+		for _, rule := range list {
+			if _, err := netip.ParsePrefix(rule); err == nil {
+				resolveInbounds = nil
+				break
+			}
+		}
+	}
 	out = append(out,
 		option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{RuleAction: option.RuleAction{Action: C.RuleActionTypeSniff}}},
-		option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{RuleAction: option.RuleAction{Action: C.RuleActionTypeResolve}}},
+		option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{
+			RawDefaultRule: option.RawDefaultRule{Inbound: resolveInbounds},
+			RuleAction:     option.RuleAction{Action: C.RuleActionTypeResolve},
+		}},
 	)
 	if s.BlockQUIC == "on" {
 		out = append(out, option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{
@@ -82,7 +74,9 @@ func rules(s domain.Settings) []option.Rule {
 	}
 
 	// Block > ex. Direct/Proxy > Mode
-	out = append(out, match(s.Block, reject, nil)...)
+	out = append(out, match(s.Block, reject)...)
+	out = append(out, match(s.Direct, toDirect)...)
+	out = append(out, match(s.Proxy, toProxy)...)
 
 	if s.BypassLocal == "on" {
 		out = append(out, option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{
@@ -90,9 +84,7 @@ func rules(s domain.Settings) []option.Rule {
 			RuleAction:     toDirect,
 		}})
 	}
-
-	out = append(out, match(s.Direct, toDirect, []string{"tun-in"})...)
-	return append(out, match(s.Proxy, toProxy, []string{"tun-in"})...)
+	return out
 }
 
 func TunInbound(s domain.Settings) option.Inbound {

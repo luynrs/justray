@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 
 	"github.com/luynrs/justray/internal/domain"
@@ -19,20 +20,36 @@ func (c *Core) SetSettings(ctx context.Context, settings domain.Settings) error 
 	if err != nil {
 		return err
 	}
-	next := c.current()
-	if settings.Autostart != next.Settings.Autostart {
+	previous := c.current()
+	if settings.Autostart != previous.Settings.Autostart {
 		return errors.New("autostart must be changed separately")
 	}
-	next.Settings = settings
-	if err := c.store.SaveConfig(next.Settings); err != nil {
+	status := c.conn.Status()
+	var node domain.Node
+	if status.Connected {
+		node, _, err = find(previous.Subscriptions, status.NodeRef)
+		if err != nil {
+			return err
+		}
+		err = c.conn.Apply(ctx, node, status.NodeRef, settings, status.Tun)
+	}
+	if err == nil {
+		err = c.store.SaveConfig(settings)
+	}
+	if err != nil {
+		if status.Connected {
+			if rollbackErr := c.conn.Apply(context.WithoutCancel(ctx), node, status.NodeRef, previous.Settings, status.Tun); rollbackErr != nil {
+				err = errors.Join(err, fmt.Errorf("restore settings: %w", rollbackErr))
+			}
+		}
+		c.publish()
 		return err
 	}
 	c.stMu.Lock()
 	c.state.Settings = settings
 	c.stMu.Unlock()
-	applyErr := c.apply(ctx, next, c.conn.Status().Tun)
 	c.publish()
-	return applyErr
+	return nil
 }
 
 func (c *Core) SetAutostart(ctx context.Context, enabled bool) error {
@@ -65,9 +82,12 @@ func (c *Core) SetAutostart(ctx context.Context, enabled bool) error {
 	return err
 }
 
-func (c *Core) SetCollapsed(id string, collapsed *bool) error {
+func (c *Core) SetCollapsed(ctx context.Context, id string, collapsed *bool) error {
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	next := c.current()
 	index := slices.Index(next.Collapsed, id)
 	if collapsed != nil && (index >= 0) == *collapsed {
