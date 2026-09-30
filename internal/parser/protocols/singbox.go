@@ -76,12 +76,33 @@ type singboxTLSConfig struct {
 }
 
 type singboxTransportConfig struct {
-	Type        string            `json:"type"`
-	Path        string            `json:"path"`
-	Headers     map[string]string `json:"headers"`
-	Host        stringOrSlice     `json:"host"`
-	ServiceName string            `json:"service_name"`
-	Mode        string            `json:"mode"`
+	Type        string                   `json:"type"`
+	Path        string                   `json:"path"`
+	Headers     map[string]stringOrSlice `json:"headers"`
+	Host        stringOrSlice            `json:"host"`
+	ServiceName string                   `json:"service_name"`
+	Mode        string                   `json:"mode"`
+	Extra       string                   `json:"-"`
+}
+
+func (transport *singboxTransportConfig) UnmarshalJSON(data []byte) error {
+	type config singboxTransportConfig
+	if err := json.Unmarshal(data, (*config)(transport)); err != nil {
+		return err
+	}
+	if strings.EqualFold(transport.Type, "xhttp") || strings.EqualFold(transport.Type, "splithttp") {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(data, &fields); err != nil {
+			return err
+		}
+		delete(fields, "type")
+		if len(transport.Host) > 0 {
+			fields["host"], _ = json.Marshal(transport.Host[0])
+		}
+		data, _ = json.Marshal(fields)
+		transport.Extra = string(data)
+	}
+	return nil
 }
 
 var singboxProtos = map[string]domain.Proto{
@@ -243,11 +264,18 @@ func singboxTransport(t *singboxTransportConfig) domain.Transport {
 		return domain.Transport{Network: "tcp"}
 	}
 	network := cmp.Or(strings.ToLower(t.Type), "tcp")
+	if network == "xhttp" || network == "splithttp" {
+		return domain.Transport{Network: "xhttp", Extra: t.Extra}
+	}
 	var host string
 	if len(t.Host) > 0 {
 		host = t.Host[0]
 	} else {
-		host = cmp.Or(t.Headers["Host"], t.Headers["host"])
+		for name, values := range t.Headers {
+			if strings.EqualFold(name, "Host") && len(values) > 0 {
+				host = values[0]
+			}
+		}
 	}
 	return domain.Transport{Network: network, Path: t.Path, Host: host, ServiceName: t.ServiceName, Mode: t.Mode}
 }

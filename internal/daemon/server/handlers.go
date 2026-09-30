@@ -11,6 +11,7 @@ import (
 
 	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/ipc"
+	"github.com/luynrs/justray/internal/version"
 )
 
 func (s *Server) handle(conn net.Conn) {
@@ -33,7 +34,7 @@ func (s *Server) handle(conn net.Conn) {
 		}
 		return
 	}
-	if req.ProtocolVersion != ipc.ProtocolVersion {
+	if req.Version != version.Version {
 		reply(conn, nil, ipc.ErrVersion)
 		return
 	}
@@ -147,7 +148,7 @@ func (s *Server) watch(conn net.Conn) {
 }
 
 func reply(conn net.Conn, result any, err error) error {
-	resp := ipc.Response{ProtocolVersion: ipc.ProtocolVersion, Success: true}
+	resp := ipc.Response{Version: version.Version, Success: true}
 	if err == nil {
 		resp.Result, err = json.Marshal(result)
 	}

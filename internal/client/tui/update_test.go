@@ -47,7 +47,7 @@ func TestSettingsWaitForSnapshot(t *testing.T) {
 	if !model.snapshot.Settings.Equal(original) {
 		t.Fatal("closing the dialog applied unconfirmed settings")
 	}
-	updated, _ := model.Update(completed{op: "settings", err: errors.New("disk write failed")})
+	updated, _ := model.Update(completed{err: errors.New("disk write failed")})
 	model = updated.(Model)
 	if !model.snapshot.Settings.Equal(original) || model.err == "" {
 		t.Fatal("failed save changed confirmed settings or lost the error")

@@ -24,6 +24,8 @@
 - **Lightweight:** ~50 MB RAM on Linux/macOS and ~100 MB on Windows
 - **Cross-platform:** runs in modern terminals on Linux, macOS 13+, and Windows 1803+, including native PowerShell and WSL
 
+XHTTP supports `auto`, `packet-up`, `stream-up`, `stream-one` and XMUX. The embedded sing-box-lx engine does not support separate download connections (`downloadSettings`) or query parameters in the XHTTP path. Those nodes are skipped with a warning when importing a subscription.
+
 ### Installation
 
 Using package manager:

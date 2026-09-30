@@ -11,8 +11,8 @@ import (
 )
 
 type completed struct {
-	op  string
-	err error
+	connection bool
+	err        error
 }
 
 type pushed struct {
@@ -21,14 +21,14 @@ type pushed struct {
 	err      error
 }
 
-func (m Model) actionCmd(op string, start func(context.Context) error, fn func() error) tea.Cmd {
+func (m Model) actionCmd(connection bool, start func(context.Context) error, fn func() error) tea.Cmd {
 	return func() tea.Msg {
 		if start != nil {
 			if err := start(m.watch); err != nil {
-				return completed{op: op, err: err}
+				return completed{connection: connection, err: err}
 			}
 		}
-		return completed{op: op, err: fn()}
+		return completed{connection: connection, err: fn()}
 	}
 }
 

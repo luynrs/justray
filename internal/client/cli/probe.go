@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -114,10 +116,12 @@ func (a *app) completeProbe(cmd *cobra.Command, args []string, toComplete string
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 	c := a.daemon()
-	if c == nil || c.Ping(cmd.Context()) != nil {
+	if c == nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	snap, err := c.Snapshot(cmd.Context())
+	ctx, cancel := context.WithTimeout(cmd.Context(), time.Second)
+	defer cancel()
+	snap, err := c.Snapshot(ctx)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}

@@ -27,6 +27,7 @@ import (
 	"github.com/luynrs/justray/internal/engine"
 	"github.com/luynrs/justray/internal/ipc"
 	"github.com/luynrs/justray/internal/platform/elevate"
+	"github.com/luynrs/justray/internal/version"
 )
 
 type switchEngine struct {
@@ -83,13 +84,13 @@ func TestIPCWatchLifecycle(t *testing.T) {
 	if err := readSnapshot(); err != nil || snapshot.Settings.Port != domain.DefaultPort {
 		t.Fatalf("initial snapshot: %+v, %v", snapshot, err)
 	}
-	for _, ver := range []int{0, ipc.ProtocolVersion + 1} {
+	for _, ver := range []string{"", version.Version + "-other"} {
 		conn, err := net.Dial("unix", listener.Addr().String())
 		if err != nil {
 			t.Fatal(err)
 		}
 		_ = conn.SetDeadline(time.Now().Add(time.Second))
-		err = json.NewEncoder(conn).Encode(ipc.Request{ProtocolVersion: ver, Method: "SetTun", Arguments: ipc.Arguments{Tun: new(true)}})
+		err = json.NewEncoder(conn).Encode(ipc.Request{Version: ver, Method: "SetTun", Arguments: ipc.Arguments{Tun: new(true)}})
 		if err != nil {
 			_ = conn.Close()
 			t.Fatal(err)
@@ -97,8 +98,8 @@ func TestIPCWatchLifecycle(t *testing.T) {
 		var res ipc.Response
 		err = json.NewDecoder(conn).Decode(&res)
 		_ = conn.Close()
-		if err != nil || res.Success || res.ProtocolVersion != ipc.ProtocolVersion || res.Error == nil || !errors.Is(res.Error, ipc.ErrVersion) {
-			t.Fatalf("protocol %d: %+v, %v", ver, res, err)
+		if err != nil || res.Success || res.Version != version.Version || res.Error == nil || !errors.Is(res.Error, ipc.ErrVersion) {
+			t.Fatalf("version %q: %+v, %v", ver, res, err)
 		}
 	}
 	if snap, err := client.Snapshot(t.Context()); err != nil || snap.Status.Tun {
@@ -208,11 +209,19 @@ func TestSubscriptionRefresh(t *testing.T) {
 		t.Fatalf("duplicate links were merged or given the same ID: %d nodes", len(nodes))
 	}
 	for name, content := range map[string]string{
-		"clash malformed":    "proxies:\n  - {name: bad, type: trojan, server: example.com, port: [}\n",
-		"sing-box transport": `{"outbounds":[{"type":"shadowsocks","server":"example.com","server_port":443,"method":"aes-128-gcm","password":"secret","transport":{"type":"ws"}}]}`,
-		"shadowtls detour":   `{"outbounds":[{"type":"shadowtls","tag":"stls","server":"example.com","server_port":443},{"type":"shadowsocks","server":"example.com","server_port":8388,"method":"aes-128-gcm","password":"secret","detour":"stls"}]}`,
-		"xray incompatible":  `{"outbounds":[{"protocol":"vless","settings":{"vnext":[{"address":"example.com","port":443,"users":[{"id":"uuid"}]}],"servers":[{"address":"ignored.example","port":443,"password":"secret"}]}}]}`,
-		"truncated json":     `{"outbounds":[{"type":"vless","server":"example.com"`,
+		"clash malformed":      "proxies:\n  - {name: bad, type: trojan, server: example.com, port: [}\n",
+		"sing-box transport":   `{"outbounds":[{"type":"shadowsocks","server":"example.com","server_port":443,"method":"aes-128-gcm","password":"secret","transport":{"type":"ws"}}]}`,
+		"shadowtls detour":     `{"outbounds":[{"type":"shadowtls","tag":"stls","server":"example.com","server_port":443},{"type":"shadowsocks","server":"example.com","server_port":8388,"method":"aes-128-gcm","password":"secret","detour":"stls"}]}`,
+		"xray incompatible":    `{"outbounds":[{"protocol":"vless","settings":{"vnext":[{"address":"example.com","port":443,"users":[{"id":"uuid"}]}],"servers":[{"address":"ignored.example","port":443,"password":"secret"}]}}]}`,
+		"truncated json":       `{"outbounds":[{"type":"vless","server":"example.com"`,
+		"xhttp download":       `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]},"streamSettings":{"network":"xhttp","xhttpSettings":{"extra":{"downloadSettings":{"address":"download.example"}}}}}]}`,
+		"xhttp clash download": "proxies:\n  - {type: trojan, server: example.com, port: 443, password: secret, network: xhttp, xhttp-opts: {download-settings: {server: download.example}}}",
+		"xhttp mode":           `{"outbounds":[{"type":"vless","server":"example.com","server_port":443,"uuid":"uuid","transport":{"type":"xhttp","mode":"invalid"}}]}`,
+		"xhttp padding":        `{"outbounds":[{"type":"vless","server":"example.com","server_port":443,"uuid":"uuid","transport":{"type":"xhttp","x_padding_bytes":"-1"}}]}`,
+		"xhttp placement":      `{"outbounds":[{"type":"vless","server":"example.com","server_port":443,"uuid":"uuid","transport":{"type":"xhttp","session_placement":"body"}}]}`,
+		"xhttp xmux":           `{"outbounds":[{"type":"vless","server":"example.com","server_port":443,"uuid":"uuid","transport":{"type":"xhttp","xmux":{"max_connections":2,"max_concurrency":2}}}]}`,
+		"xhttp range":          `{"outbounds":[{"type":"vless","server":"example.com","server_port":443,"uuid":"uuid","transport":{"type":"xhttp","sc_max_each_post_bytes":1.5}}]}`,
+		"xhttp path query":     `{"outbounds":[{"type":"vless","server":"example.com","server_port":443,"uuid":"uuid","transport":{"type":"xhttp","path":"/edge/?token=value"}}]}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			body.Store(content)
@@ -272,20 +281,23 @@ func TestSubscriptionRefresh(t *testing.T) {
 		t.Fatalf("clean refresh kept the old warning: %+v, %v", clean.Subscriptions, err)
 	}
 	for name, content := range map[string]string{
-		"clash invalid":    "proxies:\n  - {name: valid, type: trojan, server: example.com, port: 443, password: secret}\n  - {name: bad, type: tuic, server: example.com, port: 443, password: secret}",
-		"clash fields":     "proxies:\n  - {type: trojan, server: example.com, port: 443, password: secret}\n  - {type: trojan, port: [secret]}",
-		"clash no type":    "proxies:\n  - {type: trojan, server: example.com, port: 443, password: secret}\n  - {name: bad}",
-		"sing-box fields":  `{"outbounds":[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},{"type":"trojan","server_port":"secret"}]}`,
-		"sing-box scalar":  `{"outbounds":[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},42]}`,
-		"sing-box array":   `[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},42]`,
-		"xray scalar":      `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]}},42]}`,
-		"sing-box null":    `{"outbounds":[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},null]}`,
-		"sing-box no type": `{"outbounds":[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},{}]}`,
-		"xray fields":      `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]}},{"protocol":"trojan","settings":{"servers":[{"port":"secret"}]}}]}`,
-		"xray null":        `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]}},null]}`,
-		"xray no protocol": `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]}},{}]}`,
-		"sing-box unknown": `{"outbounds":[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},{"type":"future-proxy","tag":"unknown"}]}`,
-		"xray unknown":     `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]}},{"protocol":"future-proxy","tag":"unknown"}]}`,
+		"clash invalid":           "proxies:\n  - {name: valid, type: trojan, server: example.com, port: 443, password: secret}\n  - {name: bad, type: tuic, server: example.com, port: 443, password: secret}",
+		"xray xhttp defaults":     `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]},"streamSettings":{"network":"xhttp","xhttpSettings":null}},{"protocol":"future-proxy"}]}`,
+		"sing-box xhttp defaults": `{"outbounds":[{"type":"vless","server":"example.com","server_port":443,"uuid":"uuid","transport":{"type":"xhttp","extra":null}},{"type":"future-proxy"}]}`,
+		"vmess xhttp defaults":    "vmess://" + base64.StdEncoding.EncodeToString([]byte(`{"add":"example.com","port":443,"id":"uuid","net":"xhttp","type":"none","extra":null}`)) + "\nfuture://unsupported",
+		"clash fields":            "proxies:\n  - {type: trojan, server: example.com, port: 443, password: secret}\n  - {type: trojan, port: [secret]}",
+		"clash no type":           "proxies:\n  - {type: trojan, server: example.com, port: 443, password: secret}\n  - {name: bad}",
+		"sing-box fields":         `{"outbounds":[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},{"type":"trojan","server_port":"secret"}]}`,
+		"sing-box scalar":         `{"outbounds":[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},42]}`,
+		"sing-box array":          `[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},42]`,
+		"xray scalar":             `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]}},42]}`,
+		"sing-box null":           `{"outbounds":[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},null]}`,
+		"sing-box no type":        `{"outbounds":[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},{}]}`,
+		"xray fields":             `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]}},{"protocol":"trojan","settings":{"servers":[{"port":"secret"}]}}]}`,
+		"xray null":               `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]}},null]}`,
+		"xray no protocol":        `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]}},{}]}`,
+		"sing-box unknown":        `{"outbounds":[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},{"type":"future-proxy","tag":"unknown"}]}`,
+		"xray unknown":            `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]}},{"protocol":"future-proxy","tag":"unknown"}]}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			body.Store(content)

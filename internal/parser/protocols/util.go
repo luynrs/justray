@@ -174,8 +174,14 @@ func transport(q url.Values) domain.Transport {
 		ServiceName: svc,
 		Mode:        cmp.Or(q.Get("mode"), q.Get("headerType")),
 	}
-	if net == "xhttp" {
-		t.Extra = q.Get("extra")
+	if net == "xhttp" || net == "splithttp" {
+		t.Network, t.Host, t.Mode, t.Extra = "xhttp", q.Get("host"), q.Get("mode"), q.Get("extra")
+		if t.Mode == "" {
+			switch q.Get("headerType") {
+			case "auto", "packet-up", "stream-up", "stream-one":
+				t.Mode = q.Get("headerType")
+			}
+		}
 	}
 	return t
 }

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/luynrs/justray/internal/domain"
+	"github.com/luynrs/justray/internal/version"
 )
 
 type Client struct {
@@ -42,19 +43,19 @@ func (c *Client) dial(ctx context.Context) (net.Conn, error) {
 func receive[T any](decoder *json.Decoder) (T, error) {
 	var out T
 	var response struct {
-		ProtocolVersion int
-		Success         bool
-		Result          json.RawMessage
-		Error           json.RawMessage
+		Version string
+		Success bool
+		Result  json.RawMessage
+		Error   json.RawMessage
 	}
 	if err := decoder.Decode(&response); err != nil {
 		return out, err
 	}
-	if response.ProtocolVersion != ProtocolVersion {
-		if response.ProtocolVersion == 0 {
+	if response.Version != version.Version {
+		if response.Version == "" {
 			return out, fmt.Errorf("%w: daemon is unversioned; stop the old daemon before starting the new one", ErrVersion)
 		}
-		return out, fmt.Errorf("%w (client %d, daemon %d)", ErrVersion, ProtocolVersion, response.ProtocolVersion)
+		return out, fmt.Errorf("%w (client %s, daemon %s); restart the daemon", ErrVersion, version.Version, response.Version)
 	}
 	if !response.Success {
 		if len(response.Error) == 0 {
@@ -101,7 +102,7 @@ func call[T any](ctx context.Context, c *Client, method string, args Arguments) 
 	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
 	defer stop()
 
-	if err := json.NewEncoder(conn).Encode(Request{ProtocolVersion: ProtocolVersion, Method: method, Arguments: args}); err != nil {
+	if err := json.NewEncoder(conn).Encode(Request{Version: version.Version, Method: method, Arguments: args}); err != nil {
 		return out, cmp.Or(ctx.Err(), fmt.Errorf("%s: %w", method, err))
 	}
 	out, err = receive[T](json.NewDecoder(conn))
@@ -176,7 +177,7 @@ func (c *Client) Watch(ctx context.Context, onUpdate func(Snapshot)) error {
 	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
 	defer stop()
 
-	if err := json.NewEncoder(conn).Encode(Request{ProtocolVersion: ProtocolVersion, Method: "Watch"}); err != nil {
+	if err := json.NewEncoder(conn).Encode(Request{Version: version.Version, Method: "Watch"}); err != nil {
 		return fmt.Errorf("watch: %w", err)
 	}
 	dec := json.NewDecoder(conn)

@@ -8,17 +8,14 @@ import (
 	"github.com/luynrs/justray/internal/domain"
 )
 
-// Increment only for incompatible changes to the IPC contract.
-const ProtocolVersion = 1
-
 type Request struct {
-	ProtocolVersion int
-	Method          string
-	Arguments       Arguments
+	Version   string
+	Method    string
+	Arguments Arguments
 }
 
 var ErrElevate = errors.New("elevation required")
-var ErrVersion = errors.New("IPC protocol version mismatch")
+var ErrVersion = errors.New("client and daemon version mismatch")
 
 type Arguments struct {
 	NodeID         string
@@ -32,10 +29,10 @@ type Arguments struct {
 }
 
 type Response struct {
-	ProtocolVersion int
-	Success         bool
-	Result          json.RawMessage
-	Error           *Error
+	Version string
+	Success bool
+	Result  json.RawMessage
+	Error   *Error
 }
 
 type Error struct {

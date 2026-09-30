@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"time"
 
 	"charm.land/lipgloss/v2"
 	"github.com/spf13/cobra"
@@ -238,10 +239,12 @@ func (a *app) completeSub(cmd *cobra.Command, args []string, toComplete string) 
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 	c := a.daemon()
-	if c == nil || c.Ping(cmd.Context()) != nil {
+	if c == nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	snapshot, err := c.Snapshot(cmd.Context())
+	ctx, cancel := context.WithTimeout(cmd.Context(), time.Second)
+	defer cancel()
+	snapshot, err := c.Snapshot(ctx)
 	if err == nil && cmd == subRefreshCmd {
 		snapshot.Subscriptions = slices.DeleteFunc(snapshot.Subscriptions, func(s ipc.Subscription) bool { return !s.Refreshable })
 	}

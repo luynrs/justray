@@ -60,7 +60,7 @@ func TestStop(t *testing.T) {
 	}
 	for name, reply := range map[string]string{
 		"old":          `{"OK":true,"Result":"pong","Error":""}`,
-		"incompatible": `{"ProtocolVersion":999,"Success":true,"Result":"pong"}`,
+		"incompatible": `{"Version":"999.0.0","Success":true,"Result":"pong"}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir, err := os.MkdirTemp("", "jr-")
@@ -98,8 +98,11 @@ func TestStop(t *testing.T) {
 			cli := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestStop$")
 			cli.Env = append(os.Environ(), "JUSTRAY_TEST_COMMAND=stop")
 			out, err := cli.CombinedOutput()
-			if err == nil || !strings.Contains(string(out), "IPC protocol version mismatch") {
+			if err == nil || !strings.Contains(string(out), "client and daemon version mismatch") {
 				t.Fatalf("version mismatch: %s, %v", out, err)
+			}
+			if name == "incompatible" && !strings.Contains(string(out), "999.0.0") {
+				t.Fatalf("daemon version missing: %s", out)
 			}
 			if err := ipc.NewClient(ipc.Socket(dir)).Ping(ctx); !errors.Is(err, ipc.ErrVersion) {
 				t.Fatalf("daemon was stopped: %v", err)

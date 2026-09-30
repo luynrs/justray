@@ -50,7 +50,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case completed:
-		if msg.op == "connection" {
+		if msg.connection {
 			m.busy = false
 		}
 		if msg.err != nil {
@@ -134,9 +134,9 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.confirm = tree.Row{}
 		if k == "y" || k == "Y" {
 			if row.Kind == tree.Node && !row.Sub.Refreshable {
-				return m, m.actionCmd("mutation", m.start, func() error { return m.client.RemoveNode(m.watch, row.Node.Ref()) })
+				return m, m.actionCmd(false, m.start, func() error { return m.client.RemoveNode(m.watch, row.Node.Ref()) })
 			}
-			return m, m.actionCmd("mutation", m.start, func() error { return m.client.RemoveSubscription(m.watch, row.Sub.SubscriptionID) })
+			return m, m.actionCmd(false, m.start, func() error { return m.client.RemoveSubscription(m.watch, row.Sub.SubscriptionID) })
 		}
 		return m, nil
 
@@ -151,7 +151,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			if url == "" {
 				return m, nil
 			}
-			return m, m.actionCmd("mutation", m.start, func() error {
+			return m, m.actionCmd(false, m.start, func() error {
 				_, err := m.client.AddSubscription(m.watch, url)
 				return err
 			})
@@ -305,7 +305,7 @@ func (m Model) closeSettings() (Model, tea.Cmd) {
 	old := m.snapshot.Settings
 	otherSettings := next
 	otherSettings.Autostart = old.Autostart
-	return m, m.actionCmd("settings", m.start, func() error {
+	return m, m.actionCmd(false, m.start, func() error {
 		if next.Autostart != old.Autostart {
 			if err := m.client.SetAutostart(m.watch, next.Autostart == "on"); err != nil {
 				return err

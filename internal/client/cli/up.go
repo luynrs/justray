@@ -170,9 +170,11 @@ func (a *app) completeNode(cmd *cobra.Command, args []string, toComplete string)
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 	c := a.daemon()
-	if c == nil || c.Ping(cmd.Context()) != nil {
+	if c == nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	snapshot, err := c.Snapshot(cmd.Context())
+	ctx, cancel := context.WithTimeout(cmd.Context(), time.Second)
+	defer cancel()
+	snapshot, err := c.Snapshot(ctx)
 	return completeNames(snapshot.Nodes, err, func(n ipc.Node) string { return n.Name })
 }

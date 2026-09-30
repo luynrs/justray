@@ -2,6 +2,7 @@ package protocols
 
 import (
 	"cmp"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -65,12 +66,7 @@ type clashProxy struct {
 		ServiceName      string `yaml:"grpc-service-name"`
 		ServiceNameKebab string `yaml:"service-name"`
 	} `yaml:"grpc-opts"`
-	XHTTPOpts *struct {
-		Path    string            `yaml:"path"`
-		Host    string            `yaml:"host"`
-		Headers map[string]string `yaml:"headers"`
-		Mode    string            `yaml:"mode"`
-	} `yaml:"xhttp-opts"`
+	XHTTPOpts   xhttpYAML `yaml:"xhttp-opts"`
 	RealityOpts *struct {
 		PublicKey      string `yaml:"public-key"`
 		PublicKeyCamel string `yaml:"publicKey"`
@@ -80,6 +76,18 @@ type clashProxy struct {
 		ShortIDSnake   string `yaml:"short_id"`
 		Fingerprint    string `yaml:"fingerprint"`
 	} `yaml:"reality-opts"`
+}
+
+type xhttpYAML string
+
+func (settings *xhttpYAML) UnmarshalYAML(node *yaml.Node) error {
+	var fields map[string]any
+	if err := node.Decode(&fields); err != nil {
+		return err
+	}
+	data, err := json.Marshal(fields)
+	*settings = xhttpYAML(data)
+	return err
 }
 
 // Clash/Mihomo "proxies:" list
@@ -335,12 +343,8 @@ func clashTransport(p clashProxy) domain.Transport {
 		if p.GRPCOpts != nil {
 			t.ServiceName = cmp.Or(p.GRPCOpts.ServiceName, p.GRPCOpts.ServiceNameKebab)
 		}
-	case "xhttp":
-		if p.XHTTPOpts != nil {
-			t.Path = p.XHTTPOpts.Path
-			t.Host = cmp.Or(p.XHTTPOpts.Host, p.XHTTPOpts.Headers["Host"], p.XHTTPOpts.Headers["host"])
-			t.Mode = p.XHTTPOpts.Mode
-		}
+	case "xhttp", "splithttp":
+		t.Network, t.Extra = "xhttp", string(p.XHTTPOpts)
 	}
 	return t
 }

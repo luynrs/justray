@@ -108,7 +108,7 @@ require (
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
 
-replace github.com/sagernet/sing-box => github.com/Leadaxe/sing-box-lx v1.14.2-lx.5
+replace github.com/sagernet/sing-box => github.com/Leadaxe/sing-box-lx v1.14.2-lx.6
 
 replace github.com/sagernet/wireguard-go => github.com/Leadaxe/wireguard-go-awg2-lx v0.0.0-20260924131658-d0568ce278d0
 
