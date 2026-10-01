@@ -435,7 +435,7 @@ func TestSwitch(t *testing.T) {
 	}
 	select {
 	case <-app.RestartRequested():
-	default:
+	case <-time.After(time.Second):
 		t.Fatal("daemon did not request elevation")
 	}
 	stop()

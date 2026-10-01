@@ -174,8 +174,6 @@ func (a *app) subList(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	a.emoji = snapshot.Settings.Emoji == "on"
-	style.TTY = style.DetectTTY(snapshot.Settings.ForceTTY)
 	subs := snapshot.Subscriptions
 	if jsonOut, _ := cmd.Flags().GetBool("json"); jsonOut {
 		type nodeOut struct {

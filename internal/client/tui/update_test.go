@@ -18,7 +18,7 @@ import (
 func TestActionStartFailure(t *testing.T) {
 	model := New(ipc.NewClient("missing-daemon.sock"), func(context.Context) error {
 		return errors.New("launcher failed")
-	})
+	}, nil)
 	defer model.stop()
 	updated, command := model.Update(tea.KeyPressMsg{Code: 'm'})
 	updated, _ = updated.Update(command())
@@ -31,7 +31,7 @@ func TestActionStartFailure(t *testing.T) {
 
 func TestSettingsSnapshot(t *testing.T) {
 	original, _ := (domain.Settings{}).Normalize()
-	model := New(nil, nil)
+	model := New(nil, nil, nil)
 	defer model.stop()
 	model.snapshot.Settings = original
 	model.dialog = settings.New(original, topLines)
@@ -59,7 +59,7 @@ func TestSettingsSnapshot(t *testing.T) {
 }
 
 func TestReconnectSnapshot(t *testing.T) {
-	model := New(nil, nil)
+	model := New(nil, nil, nil)
 	defer model.stop()
 	first := ipc.Snapshot{
 		Nodes:         []ipc.Node{{NodeID: "old"}},
@@ -84,7 +84,7 @@ func TestReconnectSnapshot(t *testing.T) {
 }
 
 func TestCollapseSnapshot(t *testing.T) {
-	model := New(nil, nil)
+	model := New(nil, nil, nil)
 	defer model.stop()
 	model.w, model.h = 80, 24
 	snapshot := ipc.Snapshot{
@@ -128,7 +128,7 @@ func TestCollapseSnapshot(t *testing.T) {
 }
 
 func TestRoutingSettings(t *testing.T) {
-	model := New(nil, nil)
+	model := New(nil, nil, nil)
 	defer model.stop()
 	model.snapshot.Settings, _ = (domain.Settings{}).Normalize()
 	for _, key := range []tea.KeyPressMsg{{Code: 'o'}, {Code: tea.KeyTab}, {Code: tea.KeyTab},

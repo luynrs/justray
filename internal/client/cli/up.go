@@ -107,34 +107,7 @@ func (a *app) runOp(ctx context.Context, text string, op func() error, ref domai
 		tun := true
 		want = &tun
 	}
-	return awaitElevate(ctx, a.client, ref, want, 30*time.Second)
-}
-
-func awaitElevate(ctx context.Context, client *ipc.Client, ref domain.NodeRef, want *bool, timeout time.Duration) (ipc.Snapshot, error) {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	pending := false
-	for delay := 5 * time.Millisecond; ; delay = min(delay*2, 500*time.Millisecond) {
-		snapshot, err := client.Snapshot(ctx)
-		st := snapshot.Status
-		switch {
-		case err != nil: // daemon mid exec-restart
-			pending = true
-		case st.Connected && st.NodeRef == ref && (want == nil || st.Tun == *want):
-			return snapshot, nil
-		case pending:
-			return snapshot, errors.New("daemon restarted without requested connection")
-		}
-		select {
-		case <-ctx.Done():
-			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-				return ipc.Snapshot{}, errors.New("timed out waiting for elevation")
-			}
-			return ipc.Snapshot{}, ctx.Err()
-		case <-time.After(delay):
-		}
-	}
+	return a.client.AwaitConnection(ctx, ref, want, 30*time.Second)
 }
 
 func (a *app) switchMode(ctx context.Context, st ipc.Status, tun bool) error {

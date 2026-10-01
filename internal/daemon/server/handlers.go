@@ -71,7 +71,9 @@ func (s *Server) handle(conn net.Conn) {
 	}()
 	result, err := s.dispatch(ctx, req)
 	_ = conn.SetDeadline(time.Now().Add(ipc.IdleTimeout))
-	_ = reply(conn, result, err)
+	if reply(conn, result, err) == nil {
+		s.core.RequestRestart(err)
+	}
 }
 
 func (s *Server) dispatch(ctx context.Context, req ipc.Request) (any, error) {

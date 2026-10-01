@@ -114,6 +114,32 @@ func (c *Client) Ping(ctx context.Context) error {
 func (c *Client) Snapshot(ctx context.Context) (Snapshot, error) {
 	return call[Snapshot](ctx, c, "Snapshot", Arguments{})
 }
+
+func (c *Client) AwaitConnection(ctx context.Context, ref domain.NodeRef, want *bool, timeout time.Duration) (Snapshot, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	pending := false
+	for delay := 5 * time.Millisecond; ; delay = min(delay*2, 500*time.Millisecond) {
+		snapshot, err := c.Snapshot(ctx)
+		status := snapshot.Status
+		switch {
+		case err != nil:
+			pending = true
+		case status.Connected && status.NodeRef == ref && (want == nil || status.Tun == *want):
+			return snapshot, nil
+		case pending:
+			return snapshot, errors.New("daemon restarted without requested connection")
+		}
+		select {
+		case <-ctx.Done():
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				return Snapshot{}, errors.New("timed out waiting for elevation")
+			}
+			return Snapshot{}, ctx.Err()
+		case <-time.After(delay):
+		}
+	}
+}
 func (c *Client) AddSubscription(ctx context.Context, url string) (Subscription, error) {
 	return call[Subscription](ctx, c, "AddSubscription", Arguments{URL: url})
 }

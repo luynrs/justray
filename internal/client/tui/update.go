@@ -59,11 +59,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case restored:
+		if m.restore != nil {
+			m.restore = nil
+			if msg.err != nil && m.watch.Err() == nil {
+				m.err, m.errAt = "Could not restore connection: "+msg.err.Error(), time.Now()
+			}
+		}
+		return m, nil
+
 	case pushed:
 		if !msg.live {
 			m.live = false
-			m.busy = false
-			if msg.err != nil {
+			if msg.err != nil && m.restore == nil && !m.busy {
 				m.err, m.errAt = msg.err.Error(), time.Now()
 			}
 			return m, next(m.watch, m.updates)
@@ -133,7 +141,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		row := m.confirm
 		m.confirm = tree.Row{}
 		if (k == "y" || k == "Y") && row.Removable() {
-			return m, m.actionCmd(false, m.start, func() error { return m.client.RemoveNode(m.watch, row.Node.Ref()) })
+			return m, m.actionCmd(false, m.start(false), func() error { return m.client.RemoveNode(m.watch, row.Node.Ref()) })
 		}
 		return m, nil
 
@@ -148,7 +156,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			if url == "" {
 				return m, nil
 			}
-			return m, m.actionCmd(false, m.start, func() error {
+			return m, m.actionCmd(false, m.start(false), func() error {
 				_, err := m.client.AddSubscription(m.watch, url)
 				return err
 			})
@@ -206,6 +214,9 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.editor.SetValue("")
 		return m, tea.Batch(m.editor.Focus(), textinput.Blink)
 	case "o":
+		if m.snapshot.Settings.Port == 0 {
+			return m, nil
+		}
 		m.dialog = settings.New(m.snapshot.Settings, topLines)
 		m.syncTTY()
 		return m, nil
@@ -302,7 +313,7 @@ func (m Model) closeSettings() (Model, tea.Cmd) {
 	old := m.snapshot.Settings
 	otherSettings := next
 	otherSettings.Autostart = old.Autostart
-	return m, m.actionCmd(false, m.start, func() error {
+	return m, m.actionCmd(false, m.start(false), func() error {
 		if next.Autostart != old.Autostart {
 			if err := m.client.SetAutostart(m.watch, next.Autostart == "on"); err != nil {
 				return err

@@ -38,6 +38,23 @@ func (c *Core) Restore() error {
 
 func (c *Core) RestartRequested() <-chan struct{} { return c.conn.RestartRequested() }
 
+type elevationRequest struct{ *store.Pending }
+
+func (*elevationRequest) Error() string { return ipc.ErrElevate.Error() }
+func (*elevationRequest) Unwrap() error { return ipc.ErrElevate }
+
+func (c *Core) RequestRestart(err error) {
+	request, ok := err.(*elevationRequest)
+	if !ok {
+		return
+	}
+	c.opMu.Lock()
+	defer c.opMu.Unlock()
+	if c.current().Pending == request.Pending {
+		c.conn.RequestRestart()
+	}
+}
+
 func (c *Core) Connect(ctx context.Context, nodeID, subscriptionID string, mode *bool) error {
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
@@ -105,6 +122,9 @@ func (c *Core) SetTun(ctx context.Context, enable bool) error {
 }
 
 func (c *Core) finishConnection(ctx context.Context, previous, next store.PersistentState, before ipc.Status, err error) error {
+	if cancellation := ctx.Err(); cancellation != nil {
+		err = cancellation
+	}
 	switch {
 	case err == nil:
 		if saveErr := c.commit(next); saveErr != nil {
@@ -115,7 +135,7 @@ func (c *Core) finishConnection(ctx context.Context, previous, next store.Persis
 		if saveErr := c.commit(previous); saveErr != nil {
 			err = errors.Join(saveErr, c.restoreLive(ctx, previous, before))
 		} else {
-			c.conn.RequestRestart()
+			err = &elevationRequest{previous.Pending}
 		}
 	default:
 		saveErr := c.commit(previous)
@@ -150,11 +170,7 @@ func (c *Core) apply(ctx context.Context, state store.PersistentState, tun bool)
 	if err != nil {
 		return err
 	}
-	err = c.conn.Apply(ctx, node, ref, state.Settings, tun)
-	if errors.Is(err, ipc.ErrElevate) {
-		c.conn.RequestRestart()
-	}
-	return err
+	return c.conn.Apply(ctx, node, ref, state.Settings, tun)
 }
 
 func find(subs []store.Subscription, query domain.NodeRef) (domain.Node, domain.NodeRef, error) {

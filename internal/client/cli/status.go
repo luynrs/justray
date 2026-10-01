@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 
 	"github.com/spf13/cobra"
-
-	"github.com/luynrs/justray/internal/client/tui/style"
 )
 
 var statusCmd = &cobra.Command{
@@ -24,8 +22,6 @@ func (a *app) status(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	a.emoji = snapshot.Settings.Emoji == "on"
-	style.TTY = style.DetectTTY(snapshot.Settings.ForceTTY)
 	st := snapshot.Status
 
 	if jsonOut, _ := cmd.Flags().GetBool("json"); jsonOut {

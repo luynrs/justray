@@ -42,7 +42,8 @@ type Model struct {
 	watch   context.Context
 	stop    context.CancelFunc
 	busy    bool
-	start   func(context.Context) error
+	start   func(manual bool) func() error
+	restore tea.Cmd
 
 	err   string
 	errAt time.Time
@@ -51,8 +52,9 @@ type Model struct {
 	quitting bool
 }
 
-func New(c *ipc.Client, start func(context.Context) error) Model {
+func New(c *ipc.Client, start, restore func(context.Context) error) Model {
 	watch, stop := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(watch)
 	editor := textinput.New()
 	editor.Prompt = "Add:  "
 	editor.Placeholder = "subscription URL, or a vless://, vmess://, trojan://, ss://, etc. link"
@@ -68,14 +70,30 @@ func New(c *ipc.Client, start func(context.Context) error) Model {
 		updates: make(chan pushed),
 		watch:   watch,
 		stop:    stop,
-		start:   start,
+		start: func(manual bool) func() error {
+			if manual {
+				cancel()
+			}
+			if start == nil {
+				return nil
+			}
+			return func() error { return start(watch) }
+		},
+	}
+	if restore != nil {
+		m.restore = func() tea.Msg {
+			defer cancel()
+			return restored{err: restore(ctx)}
+		}
+	} else {
+		cancel()
 	}
 	m.syncTTY()
 	return m
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(watch(m.watch, m.client, m.updates), next(m.watch, m.updates), tickCmd(), m.spin.Tick)
+	return tea.Batch(watch(m.watch, m.client, m.updates), next(m.watch, m.updates), tickCmd(), m.spin.Tick, m.restore)
 }
 
 func (m *Model) syncTTY() {
@@ -129,10 +147,11 @@ func (m *Model) clamp() {
 
 func (m Model) quit() (tea.Model, tea.Cmd) {
 	m.quitting = true
+	m.stop()
 	return m, tea.Quit
 }
 
-func Run(c *ipc.Client, start func(context.Context) error) error {
+func Run(c *ipc.Client, start, restore func(context.Context) error) error {
 	defer log.SetOutput(log.Writer())
 	defer log.SetPrefix(log.Prefix())
 	defer log.SetFlags(log.Flags())
@@ -148,7 +167,7 @@ func Run(c *ipc.Client, start func(context.Context) error) error {
 		}
 	}
 
-	m := New(c, start)
+	m := New(c, start, restore)
 	defer m.stop()
 	_, err := tea.NewProgram(m).Run()
 	return err

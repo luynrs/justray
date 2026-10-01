@@ -143,7 +143,7 @@ func (m Model) footer() string {
 	if m.connected() {
 		icon = style.Dot(true)
 	}
-	if m.busy {
+	if m.busy || m.restore != nil {
 		icon = m.spin.View()
 	}
 
@@ -155,6 +155,8 @@ func (m Model) footer() string {
 			iconStyle = style.Pending
 		}
 		status = iconStyle.Render(icon) + " " + style.Sanitize(m.snapshot.Status.NodeName, m.emoji()) + " " + style.Dim.Render(style.Sep()) + " " + style.Uptime(m.snapshot.Status.Uptime())
+	case m.restore != nil:
+		status = style.Pending.Render(icon) + " " + style.Dim.Render("restoring connection")
 	case m.busy:
 		status = style.Pending.Render(icon) + " " + style.Dim.Render("connecting")
 	default:

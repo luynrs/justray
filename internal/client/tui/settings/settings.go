@@ -204,15 +204,11 @@ func New(s domain.Settings, top int) *Settings {
 	styles.Focused.Placeholder = style.Dim
 	input.SetStyles(styles)
 	input.CharLimit = 2048
-	orig := s
-	orig.Direct = slices.Clone(s.Direct)
-	orig.Proxy = slices.Clone(s.Proxy)
-	orig.Block = slices.Clone(s.Block)
 	cur := s
 	cur.Direct = slices.Clone(s.Direct)
 	cur.Proxy = slices.Clone(s.Proxy)
 	cur.Block = slices.Clone(s.Block)
-	res := &Settings{top: top, cur: cur, orig: orig, input: input}
+	res := &Settings{top: top, cur: cur, orig: s, input: input}
 	res.move(0)
 	return res
 }

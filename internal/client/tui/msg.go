@@ -15,16 +15,18 @@ type completed struct {
 	err        error
 }
 
+type restored struct{ err error }
+
 type pushed struct {
 	snapshot ipc.Snapshot
 	live     bool
 	err      error
 }
 
-func (m Model) actionCmd(connection bool, start func(context.Context) error, fn func() error) tea.Cmd {
+func (m Model) actionCmd(connection bool, start, fn func() error) tea.Cmd {
 	return func() tea.Msg {
 		if start != nil {
-			if err := start(m.watch); err != nil {
+			if err := start(); err != nil {
 				return completed{connection: connection, err: err}
 			}
 		}
