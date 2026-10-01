@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -89,7 +90,11 @@ func TestStop(t *testing.T) {
 		"incompatible": "real",
 	} {
 		t.Run(name, func(t *testing.T) {
-			dir, err := os.MkdirTemp("", "jr-")
+			base := ""
+			if runtime.GOOS != "windows" {
+				base = "/tmp"
+			}
+			dir, err := os.MkdirTemp(base, "jr-")
 			if err != nil {
 				t.Fatal(err)
 			}
