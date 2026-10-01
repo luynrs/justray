@@ -74,6 +74,7 @@ func proxy(n domain.Node, tag string, transportOptions *option.V2RayTransportOpt
 			ServerOptions:               server(n),
 			UUID:                        n.Auth.UUID,
 			Security:                    cmp.Or(n.Auth.Method, "auto"),
+			AlterId:                     n.Auth.AlterID,
 			PacketEncoding:              packetEncoding(n),
 			OutboundTLSOptionsContainer: option.OutboundTLSOptionsContainer{TLS: tls},
 			Transport:                   transportOptions,

@@ -45,6 +45,7 @@ type xrayUser struct {
 	Password string `json:"password"`
 	Flow     string `json:"flow"`
 	Security string `json:"security"`
+	AlterID  int    `json:"alterId"`
 }
 
 type xrayStreamSettings struct {
@@ -165,7 +166,7 @@ func ParseXray(raw []byte) ([]domain.Node, map[string]int, error) {
 					node := domain.Node{Name: name, Server: next.Address, Port: next.Port}
 					switch proto {
 					case "vmess":
-						node.Protocol, node.Auth = domain.VMess, domain.Auth{UUID: user.ID, Method: cmp.Or(user.Security, "auto")}
+						node.Protocol, node.Auth = domain.VMess, domain.Auth{UUID: user.ID, AlterID: user.AlterID, Method: cmp.Or(user.Security, "auto")}
 					case "vless":
 						node.Protocol, node.Auth = domain.VLess, domain.Auth{UUID: user.ID, Flow: user.Flow}
 					case "trojan":

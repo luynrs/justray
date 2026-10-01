@@ -15,7 +15,7 @@ import (
 	"github.com/luynrs/justray/internal/ipc"
 )
 
-func TestActionReportsDaemonStartFailure(t *testing.T) {
+func TestActionStartFailure(t *testing.T) {
 	model := New(ipc.NewClient("missing-daemon.sock"), func(context.Context) error {
 		return errors.New("launcher failed")
 	})
@@ -29,7 +29,7 @@ func TestActionReportsDaemonStartFailure(t *testing.T) {
 	}
 }
 
-func TestSettingsWaitForSnapshot(t *testing.T) {
+func TestSettingsSnapshot(t *testing.T) {
 	original, _ := (domain.Settings{}).Normalize()
 	model := New(nil, nil)
 	defer model.stop()
@@ -58,7 +58,7 @@ func TestSettingsWaitForSnapshot(t *testing.T) {
 	}
 }
 
-func TestSnapshotAfterReconnect(t *testing.T) {
+func TestReconnectSnapshot(t *testing.T) {
 	model := New(nil, nil)
 	defer model.stop()
 	first := ipc.Snapshot{
@@ -83,7 +83,7 @@ func TestSnapshotAfterReconnect(t *testing.T) {
 	}
 }
 
-func TestCollapseFollowsDaemonSnapshot(t *testing.T) {
+func TestCollapseSnapshot(t *testing.T) {
 	model := New(nil, nil)
 	defer model.stop()
 	model.w, model.h = 80, 24
@@ -127,7 +127,7 @@ func TestCollapseFollowsDaemonSnapshot(t *testing.T) {
 	}
 }
 
-func TestRoutingRuleThroughSettings(t *testing.T) {
+func TestRoutingSettings(t *testing.T) {
 	model := New(nil, nil)
 	defer model.stop()
 	model.snapshot.Settings, _ = (domain.Settings{}).Normalize()

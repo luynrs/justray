@@ -26,6 +26,9 @@ func (a *app) down(cmd *cobra.Command, args []string) error {
 	}
 	st := snapshot.Status
 	if !st.Connected {
+		if err := a.client.Disconnect(cmd.Context()); err != nil {
+			return err
+		}
 		done("Already disconnected")
 		return nil
 	}

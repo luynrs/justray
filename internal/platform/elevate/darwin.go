@@ -13,6 +13,8 @@ import (
 
 const helper = "/Library/PrivilegedHelperTools/justrayd"
 
+func Executable(source, _ string) string { return source }
+
 func Needed(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "operation not permitted") && os.Geteuid() != 0
 }

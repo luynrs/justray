@@ -132,11 +132,8 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case m.confirm.Sub.SubscriptionID != "":
 		row := m.confirm
 		m.confirm = tree.Row{}
-		if k == "y" || k == "Y" {
-			if row.Kind == tree.Node && !row.Sub.Refreshable {
-				return m, m.actionCmd(false, m.start, func() error { return m.client.RemoveNode(m.watch, row.Node.Ref()) })
-			}
-			return m, m.actionCmd(false, m.start, func() error { return m.client.RemoveSubscription(m.watch, row.Sub.SubscriptionID) })
+		if (k == "y" || k == "Y") && row.Removable() {
+			return m, m.actionCmd(false, m.start, func() error { return m.client.RemoveNode(m.watch, row.Node.Ref()) })
 		}
 		return m, nil
 
@@ -216,7 +213,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.filter.CursorEnd()
 		return m, tea.Batch(m.filter.Focus(), textinput.Blink)
 	case "d":
-		if r, ok := m.at(); ok && r.Sub.SubscriptionID != "" {
+		if r, ok := m.at(); ok && r.Removable() {
 			m.confirm = r
 		}
 	case "q":

@@ -19,8 +19,11 @@ import (
 	"github.com/luynrs/justray/internal/client/cli/detach"
 	"github.com/luynrs/justray/internal/client/tui"
 	"github.com/luynrs/justray/internal/client/tui/style"
+	"github.com/luynrs/justray/internal/daemon/store"
 	"github.com/luynrs/justray/internal/ipc"
 	"github.com/luynrs/justray/internal/logger"
+	"github.com/luynrs/justray/internal/platform/elevate"
+	"github.com/luynrs/justray/internal/platform/lock"
 	"github.com/luynrs/justray/internal/version"
 )
 
@@ -92,15 +95,7 @@ func Execute() error {
 				return nil
 			}
 		}
-		if cmd == statusCmd || cmd == subListCmd || cmd == downCmd {
-			dir, err := ipc.Dir()
-			if err != nil {
-				return err
-			}
-			a.client = ipc.NewClient(ipc.Socket(dir))
-			return nil
-		}
-		return a.connectDaemon(cmd.Context())
+		return a.connectDaemon(cmd.Context(), cmd != statusCmd && cmd != subListCmd && cmd != downCmd, cmd != downCmd)
 	}
 	rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		return tui.Run(a.client, a.start)
@@ -150,45 +145,76 @@ func setHelpText(c *cobra.Command) {
 }
 
 func (a *app) start(ctx context.Context) error {
-	dir, err := ipc.Dir()
-	if err != nil {
-		return err
-	}
-	if err := a.daemon().Ping(ctx); !errors.Is(err, ipc.ErrNoDaemon) {
-		return err
-	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if err := spawn(dir); err != nil {
-		return err
-	}
-	return wait(ctx, a.daemon(), 10*time.Second)
+	return a.connectDaemon(ctx, true, true)
 }
 
-func (a *app) connectDaemon(ctx context.Context) error {
+func (a *app) connectDaemon(ctx context.Context, startMissing, restore bool) error {
 	dir, err := ipc.Dir()
 	if err != nil {
 		return fmt.Errorf("resolve config dir: %w", err)
+	}
+	a.client = ipc.NewClient(ipc.Socket(dir))
+	if !startMissing {
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			return ctx.Err()
+		}
 	}
 	if err := ipc.EnsureDir(dir); err != nil {
 		return fmt.Errorf("create config dir: %w", err)
 	}
 
-	a.client = ipc.NewClient(ipc.Socket(dir))
-	if err := a.client.Ping(ctx); err != nil {
-		if !errors.Is(err, ipc.ErrNoDaemon) {
+	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
+	for delay := 5 * time.Millisecond; ; delay = min(delay*2, 100*time.Millisecond) {
+		if err := ctx.Err(); err != nil {
 			return err
+		}
+		unlock, err := lock.File(ipc.Socket(dir) + ".client.lock")
+		if err == nil {
+			defer unlock()
+			break
+		}
+		if !errors.Is(err, lock.ErrLocked) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(delay):
+		}
+	}
+	pingErr := a.client.Ping(ctx)
+	replacing := errors.Is(pingErr, ipc.ErrVersion)
+	if pingErr != nil {
+		if !replacing && !errors.Is(pingErr, ipc.ErrNoDaemon) {
+			return pingErr
+		}
+		if !startMissing && !replacing {
+			return nil
+		}
+		bin, err := justrayd(ctx)
+		if err != nil {
+			return err
+		}
+		if replacing {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			var finish context.CancelFunc
+			ctx, finish = context.WithTimeout(context.WithoutCancel(ctx), 45*time.Second)
+			defer finish()
+			shutdownErr := a.client.Shutdown(ctx)
+			if err := waitStopped(ctx, ipc.Socket(dir), 6*time.Second); err != nil {
+				return fmt.Errorf("restart background service: %w", errors.Join(shutdownErr, err))
+			}
 		}
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := spawn(dir); err != nil {
-			return fmt.Errorf("start daemon: %w", err)
+		if err := spawn(elevate.Executable(bin, dir), dir); err != nil {
+			return fmt.Errorf("start background service: %w", err)
 		}
-		stop := spin("Starting daemon")
 		err = wait(ctx, a.client, 10*time.Second)
-		stop()
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				return err
@@ -196,18 +222,34 @@ func (a *app) connectDaemon(ctx context.Context) error {
 			return fmt.Errorf("daemon did not start: %w; see %s", err, ipc.DaemonLog(dir))
 		}
 	}
-	if snapshot, err := a.client.Snapshot(ctx); err == nil {
-		a.emoji = snapshot.Settings.Emoji == "on"
-		style.TTY = style.DetectTTY(snapshot.Settings.ForceTTY)
+	snapshot, err := a.client.Snapshot(ctx)
+	if errors.Is(err, ipc.ErrNoDaemon) && !startMissing {
+		return nil
 	}
-	return ctx.Err()
-}
-
-func spawn(dir string) error {
-	bin, err := justrayd()
 	if err != nil {
 		return err
 	}
+	if restore && !snapshot.Status.Connected {
+		state, err := (store.Disk{Dir: dir}).Load()
+		if err != nil {
+			return fmt.Errorf("restore connection: %w", err)
+		}
+		if state.Active.NodeID != "" {
+			err := a.client.Connect(ctx, state.Active, &state.Tun)
+			if errors.Is(err, ipc.ErrElevate) {
+				_, err = awaitElevate(ctx, a.client, state.Active, &state.Tun, 30*time.Second)
+			}
+			if err != nil {
+				return fmt.Errorf("restore connection: %w", err)
+			}
+		}
+	}
+	a.emoji = snapshot.Settings.Emoji == "on"
+	style.TTY = style.DetectTTY(snapshot.Settings.ForceTTY)
+	return ctx.Err()
+}
+
+func spawn(bin, dir string) error {
 	devNull, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
 	if err != nil {
 		return err
@@ -230,20 +272,32 @@ func spawn(dir string) error {
 	return nil
 }
 
-func justrayd() (string, error) {
-	if bin, err := exec.LookPath(exeName("justrayd")); err == nil {
-		return bin, nil
+func justrayd(ctx context.Context) (string, error) {
+	bin := nextToSelf("justrayd")
+	if bin == "" {
+		bin, _ = exec.LookPath(exeName("justrayd"))
 	}
-	if bin := nextToSelf("justrayd"); bin != "" {
-		return bin, nil
-	}
-	if dir, err := ipc.Dir(); err == nil {
-		p := filepath.Join(dir, "elevated", exeName("justrayd"))
-		if _, err := os.Stat(p); err == nil {
-			return p, nil
+	if bin == "" {
+		if dir, err := ipc.Dir(); err == nil {
+			bin = filepath.Join(dir, "elevated", exeName("justrayd"))
+			if _, err := os.Stat(bin); err != nil {
+				bin = ""
+			}
 		}
 	}
-	return "", fmt.Errorf("justrayd binary not found")
+	if bin == "" {
+		return "", errors.New("background service is missing; reinstall justray")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, bin, "--version").Output()
+	if err != nil || strings.TrimSpace(string(output)) != "justrayd "+version.String() {
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		return "", errors.New("background service does not match this installation; reinstall justray")
+	}
+	return bin, nil
 }
 
 func exeName(name string) string {

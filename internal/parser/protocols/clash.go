@@ -18,6 +18,7 @@ type clashProxy struct {
 	Server              string   `yaml:"server"`
 	Port                int      `yaml:"port"`
 	UUID                string   `yaml:"uuid"`
+	AlterID             int      `yaml:"alterId"`
 	Password            string   `yaml:"password"`
 	Cipher              string   `yaml:"cipher"`
 	Network             string   `yaml:"network"`
@@ -168,7 +169,7 @@ func clashNode(p clashProxy) (domain.Node, error) {
 
 	case "vmess":
 		n.Protocol = domain.VMess
-		n.Auth = domain.Auth{UUID: p.UUID, Method: strings.ToLower(cmp.Or(p.Cipher, "auto"))}
+		n.Auth = domain.Auth{UUID: p.UUID, AlterID: p.AlterID, Method: strings.ToLower(cmp.Or(p.Cipher, "auto"))}
 		n.Transport = clashTransport(p)
 		n.PacketEncoding = p.PacketEncoding
 		if p.TLS {

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,9 +15,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/luynrs/justray/internal/daemon/connection"
+	"github.com/luynrs/justray/internal/daemon/core"
 	"github.com/luynrs/justray/internal/daemon/server"
+	"github.com/luynrs/justray/internal/daemon/store"
+	"github.com/luynrs/justray/internal/daemon/subscription"
+	"github.com/luynrs/justray/internal/engine"
 	"github.com/luynrs/justray/internal/ipc"
 	"github.com/luynrs/justray/internal/platform/lock"
+	"github.com/luynrs/justray/internal/version"
 )
 
 func TestStop(t *testing.T) {
@@ -38,6 +45,25 @@ func TestStop(t *testing.T) {
 		}
 		defer unlock()
 		defer func() { _ = ln.Close() }()
+		if reply == "real" {
+			version.Version = "999.0.0"
+			logger := log.New(io.Discard, "", 0)
+			app, err := core.New(store.Disk{Dir: dir}, connection.New(t.Context(), dir, engine.New, engine.Probe, logger), subscription.New(t.Context(), logger))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer app.Shutdown()
+			daemon := server.New(t.Context(), logger, app)
+			done := make(chan error, 1)
+			go func() { done <- daemon.Serve(ln) }()
+			fmt.Println("ready")
+			<-daemon.ShutdownRequested()
+			daemon.Shutdown()
+			if err := <-done; err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
 		fmt.Println("ready")
 		for {
 			conn, err := ln.Accept()
@@ -60,7 +86,7 @@ func TestStop(t *testing.T) {
 	}
 	for name, reply := range map[string]string{
 		"old":          `{"OK":true,"Result":"pong","Error":""}`,
-		"incompatible": `{"Version":"999.0.0","Success":true,"Result":"pong"}`,
+		"incompatible": "real",
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir, err := os.MkdirTemp("", "jr-")
@@ -98,14 +124,16 @@ func TestStop(t *testing.T) {
 			cli := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestStop$")
 			cli.Env = append(os.Environ(), "JUSTRAY_TEST_COMMAND=stop")
 			out, err := cli.CombinedOutput()
-			if err == nil || !strings.Contains(string(out), "client and daemon version mismatch") {
-				t.Fatalf("version mismatch: %s, %v", out, err)
+			if err != nil || !strings.Contains(string(out), "Daemon stopped") {
+				t.Fatalf("stop failed: %s, %v", out, err)
 			}
-			if name == "incompatible" && !strings.Contains(string(out), "999.0.0") {
-				t.Fatalf("daemon version missing: %s", out)
+			select {
+			case <-done:
+			case <-ctx.Done():
+				t.Fatal("daemon did not exit after stop")
 			}
-			if err := ipc.NewClient(ipc.Socket(dir)).Ping(ctx); !errors.Is(err, ipc.ErrVersion) {
-				t.Fatalf("daemon was stopped: %v", err)
+			if err := ipc.NewClient(ipc.Socket(dir)).Ping(ctx); !errors.Is(err, ipc.ErrNoDaemon) {
+				t.Fatalf("daemon still responds: %v", err)
 			}
 		})
 	}

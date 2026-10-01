@@ -34,12 +34,20 @@ func (s *Server) handle(conn net.Conn) {
 		}
 		return
 	}
-	if req.Version != version.Version {
-		_ = reply(conn, nil, ipc.ErrVersion)
-		return
-	}
 	if req.Method == "Ping" {
 		_ = reply(conn, "pong", nil)
+		return
+	}
+	if req.Method == "Shutdown" {
+		_ = reply(conn, nil, nil)
+		select {
+		case s.stop <- struct{}{}:
+		default:
+		}
+		return
+	}
+	if req.Version != version.Version {
+		_ = reply(conn, nil, ipc.ErrVersion)
 		return
 	}
 	if req.Method == "Watch" {
@@ -52,14 +60,6 @@ func (s *Server) handle(conn net.Conn) {
 		<-s.sem
 		semHeld = false
 		s.watch(conn)
-		return
-	}
-	if req.Method == "Shutdown" {
-		_ = reply(conn, nil, nil)
-		select {
-		case s.stop <- struct{}{}:
-		default:
-		}
 		return
 	}
 	_ = conn.SetDeadline(time.Time{})

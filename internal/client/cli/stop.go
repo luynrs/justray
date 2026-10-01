@@ -28,24 +28,22 @@ func (a *app) stop(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
 	c := ipc.NewClient(socket)
 	if err := c.Ping(ctx); err != nil {
-		if !errors.Is(err, ipc.ErrNoDaemon) {
+		if !errors.Is(err, ipc.ErrNoDaemon) && !errors.Is(err, ipc.ErrVersion) {
 			return err
 		}
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := waitStopped(ctx, socket, 6*time.Second); err != nil {
-			return err
+		if errors.Is(err, ipc.ErrNoDaemon) {
+			if err := waitStopped(ctx, socket, 6*time.Second); err != nil {
+				return err
+			}
+			done("Daemon is not running")
+			return nil
 		}
-		done("Daemon is not running")
-		return nil
 	}
 	stop := spin("Stopping daemon")
 	shutdownErr := c.Shutdown(ctx)
-	if errors.Is(shutdownErr, ipc.ErrVersion) {
-		stop()
-		return shutdownErr
-	}
 	err = waitStopped(ctx, socket, 6*time.Second)
 	stop()
 	if err != nil {

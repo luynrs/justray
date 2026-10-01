@@ -51,7 +51,7 @@ func (instance *switchEngine) Apply(_ context.Context, spec engine.SessionSpec) 
 func (instance *switchEngine) Stop() error   { instance.running = false; return nil }
 func (instance *switchEngine) Running() bool { return instance.running }
 
-func TestIPCWatchLifecycle(t *testing.T) {
+func TestWatchLifecycle(t *testing.T) {
 	directory := t.TempDir()
 	listener, err := net.Listen("unix", filepath.Join(directory, "daemon.sock"))
 	if err != nil {

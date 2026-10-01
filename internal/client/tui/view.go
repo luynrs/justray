@@ -113,10 +113,14 @@ func (m Model) keys() [][2]string {
 	case m.editor.Focused():
 		return [][2]string{{style.Enter(), "Add"}, {"esc", "Cancel"}}
 	}
-	return [][2]string{
+	keys := [][2]string{
 		{style.Move(), "Move"}, {style.Fold(), "Fold"}, {style.Enter(), "Toggle"}, {"t/T", "Ping"}, {"r/R", "Refresh"},
-		{"m", "Mode"}, {"/", "Filter"}, {"a", "Add"}, {"d", "Delete"}, {"o", "Settings"}, {"q", "Quit"},
+		{"m", "Mode"}, {"/", "Filter"}, {"a", "Add"},
 	}
+	if row, ok := m.at(); ok && row.Removable() {
+		keys = append(keys, [2]string{"d", "Delete"})
+	}
+	return append(keys, [2]string{"o", "Settings"}, [2]string{"q", "Quit"})
 }
 
 func (m Model) hints(maxW int) string {
@@ -166,11 +170,7 @@ func (m Model) footer() string {
 
 	hints := m.hints(m.w)
 	if m.confirm.Sub.SubscriptionID != "" {
-		name := m.confirm.Sub.Name
-		if m.confirm.Kind == tree.Node && !m.confirm.Sub.Refreshable {
-			name = m.confirm.Node.Name
-		}
-		q := style.Err.Render(style.Sanitize("Delete "+name+"?", true))
+		q := style.Err.Render(style.Sanitize("Delete "+m.confirm.Node.Name+"?", true))
 		hints = q + "  " + m.hints(max(m.w-lipgloss.Width(q)-2, 0))
 	}
 

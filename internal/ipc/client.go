@@ -52,10 +52,8 @@ func receive[T any](decoder *json.Decoder) (T, error) {
 		return out, err
 	}
 	if response.Version != version.Version {
-		if response.Version == "" {
-			return out, fmt.Errorf("%w: daemon is unversioned; stop the old daemon before starting the new one", ErrVersion)
-		}
-		return out, fmt.Errorf("%w (client %s, daemon %s); restart the daemon", ErrVersion, version.Version, response.Version)
+		daemonVersion := cmp.Or(response.Version, "unversioned")
+		return out, fmt.Errorf("%w (client %s, daemon %s); restart the daemon", ErrVersion, version.Version, daemonVersion)
 	}
 	if !response.Success {
 		if len(response.Error) == 0 {

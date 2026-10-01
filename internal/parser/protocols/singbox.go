@@ -22,6 +22,7 @@ type singboxOutbound struct {
 	UUID           string        `json:"uuid"`
 	Password       string        `json:"password"`
 	Security       string        `json:"security"`
+	AlterID        int           `json:"alter_id"`
 	Flow           string        `json:"flow"`
 	PacketEncoding string        `json:"packet_encoding"`
 	Method         string        `json:"method"`
@@ -194,7 +195,7 @@ func parseSingBoxOutbound(ob singboxOutbound, stlsByTag map[string]singboxOutbou
 	case domain.VLess:
 		n.Auth = domain.Auth{UUID: ob.UUID, Flow: ob.Flow}
 	case domain.VMess:
-		n.Auth = domain.Auth{UUID: ob.UUID, Method: cmp.Or(ob.Security, "auto")}
+		n.Auth = domain.Auth{UUID: ob.UUID, AlterID: ob.AlterID, Method: cmp.Or(ob.Security, "auto")}
 	case domain.Trojan:
 		n.Auth = domain.Auth{Password: ob.Password}
 		if n.TLS == nil {

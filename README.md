@@ -19,12 +19,10 @@
 ### Features
 
 - **Modern protocols:** VMess, VLESS, Trojan, WireGuard, Shadowsocks, Hysteria 1/2, TUIC, AnyTLS, SOCKS5, and more
-- **Flexible:** import subscriptions from raw links or Clash/Mihomo YAML, with automatic refresh and a wide range of settings
+- **Flexible:** import subscriptions from raw links or Clash/Mihomo YAML, sing-box or Xray json, with automatic refresh and a wide range of settings
 - **Headless:** the daemon and embedded sing-box core run independently from the TUI, keeping connections alive after you detach
-- **Lightweight:** ~50 MB RAM on Linux/macOS and ~100 MB on Windows
+- **Lightweight:** ~50 MB RAM on Linux/macOS and ~100 MB on Windows 
 - **Cross-platform:** runs in modern terminals on Linux, macOS 13+, and Windows 1803+, including native PowerShell and WSL
-
-XHTTP supports `auto`, `packet-up`, `stream-up`, `stream-one` and XMUX. The embedded sing-box-lx engine does not support separate download connections (`downloadSettings`) or query parameters in the XHTTP path. Those nodes are skipped with a warning when importing a subscription.
 
 ### Installation
 
@@ -114,7 +112,7 @@ Package manager and script installations also provide `jray` as a short alias fo
 | `←/→`, `h/l` | Fold / expand group       | `Enter`       | Toggle group / connect |
 | `t` / `T`    | Ping selected / Ping all  | `r` / `R`     | Refresh selected / all |
 | `m`          | Switch mode (PROXY / TUN) | `/`           | Filter nodes           |
-| `a`          | Add subscription / node   | `d`           | Delete subscription    |
+| `a`          | Add subscription / node   | `d`           | Delete node in Default |
 | `o`          | Settings menu             | `Esc`         | Back / cancel input    |
 | `Tab`        | Switch active panel       | `q`, `Ctrl+C` | Detach / exit TUI      |
 
