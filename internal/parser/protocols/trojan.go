@@ -2,7 +2,6 @@ package protocols
 
 import (
 	"cmp"
-	"fmt"
 	"strings"
 
 	"github.com/luynrs/justray/internal/domain"
@@ -15,9 +14,6 @@ func ParseTrojan(uri string) (domain.Node, error) {
 	}
 	q := u.Query()
 	pw := cmp.Or(userPassword(u), q.Get("password"), q.Get("auth"))
-	if pw == "" {
-		return domain.Node{}, fmt.Errorf("trojan: missing password")
-	}
 	n := domain.Node{
 		Name:      cmp.Or(u.Fragment, host),
 		Protocol:  domain.Trojan,

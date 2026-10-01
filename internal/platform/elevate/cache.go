@@ -8,6 +8,14 @@ import (
 	"path/filepath"
 )
 
+func Executable(source, dir string) string {
+	target := filepath.Join(dir, "elevated", "justrayd")
+	if sum, err := hashFile(source); err == nil && hasNetAdmin(target) && verified(target, sum) {
+		return target
+	}
+	return source
+}
+
 func cachedCopy(dir string) (string, error) {
 	self, err := os.Executable()
 	if err != nil {

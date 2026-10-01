@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -13,6 +14,41 @@ import (
 
 	"github.com/luynrs/justray/internal/domain"
 )
+
+var ErrNotFormat = errors.New("unrecognized subscription format")
+var errUnsupported = errors.New("unsupported protocol")
+
+func hasOutboundField(raw []byte, field string) bool {
+	var items []json.RawMessage
+	if json.Unmarshal(raw, &items) != nil {
+		items = []json.RawMessage{raw}
+	}
+	for _, entry := range items {
+		var item map[string]json.RawMessage
+		if json.Unmarshal(entry, &item) != nil {
+			continue
+		}
+		if _, ok := item[field]; ok {
+			return true
+		}
+		for _, key := range []string{"outbounds", "endpoints"} {
+			var outbounds []json.RawMessage
+			if json.Unmarshal(item[key], &outbounds) != nil {
+				continue
+			}
+			for _, entry := range outbounds {
+				var outbound map[string]json.RawMessage
+				if json.Unmarshal(entry, &outbound) != nil {
+					continue
+				}
+				if _, ok := outbound[field]; ok {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
 
 func Unbase64(s string) ([]byte, error) {
 	if strings.Contains(s, "%") {
@@ -66,9 +102,6 @@ func hostPort(hp string) (string, int, error) {
 	port, err := strconv.Atoi(p)
 	if err != nil {
 		return "", 0, fmt.Errorf("bad port %q", p)
-	}
-	if !domain.ValidPort(port) {
-		return "", 0, fmt.Errorf("port %d out of range", port)
 	}
 	return host, port, nil
 }
@@ -130,9 +163,6 @@ func fixCIDRs(list []string) []string {
 
 func transport(q url.Values) domain.Transport {
 	net := strings.ToLower(cmp.Or(q.Get("type"), q.Get("net"), q.Get("network"), "tcp"))
-	if net == "splithttp" {
-		net = "xhttp"
-	}
 	svc := cmp.Or(q.Get("serviceName"), q.Get("service_name"))
 	if net == "grpc" && svc == "" {
 		svc = strings.TrimPrefix(q.Get("path"), "/")
@@ -144,8 +174,14 @@ func transport(q url.Values) domain.Transport {
 		ServiceName: svc,
 		Mode:        cmp.Or(q.Get("mode"), q.Get("headerType")),
 	}
-	if net == "xhttp" {
-		t.Extra = q.Get("extra")
+	if net == "xhttp" || net == "splithttp" {
+		t.Network, t.Host, t.Mode, t.Extra = "xhttp", q.Get("host"), q.Get("mode"), q.Get("extra")
+		if t.Mode == "" {
+			switch q.Get("headerType") {
+			case "auto", "packet-up", "stream-up", "stream-one":
+				t.Mode = q.Get("headerType")
+			}
+		}
 	}
 	return t
 }

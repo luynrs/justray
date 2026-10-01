@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -10,21 +11,24 @@ import (
 )
 
 type completed struct {
-	op  string
-	err error
+	connection bool
+	err        error
 }
 
 type pushed struct {
 	snapshot ipc.Snapshot
 	live     bool
+	err      error
 }
 
-func actionCmd(op string, start func(context.Context) error, fn func() error) tea.Cmd {
+func (m Model) actionCmd(connection bool, start func(context.Context) error, fn func() error) tea.Cmd {
 	return func() tea.Msg {
 		if start != nil {
-			_ = start(context.Background())
+			if err := start(m.watch); err != nil {
+				return completed{connection: connection, err: err}
+			}
 		}
-		return completed{op: op, err: fn()}
+		return completed{connection: connection, err: fn()}
 	}
 }
 
@@ -33,14 +37,17 @@ type tick struct{}
 func watch(ctx context.Context, c *ipc.Client, ch chan<- pushed) tea.Cmd {
 	return func() tea.Msg {
 		for ctx.Err() == nil {
-			_ = c.Watch(ctx, func(snap ipc.Snapshot) {
+			err := c.Watch(ctx, func(snap ipc.Snapshot) {
 				select {
 				case ch <- pushed{snapshot: snap, live: true}:
 				case <-ctx.Done():
 				}
 			})
+			if !errors.Is(err, ipc.ErrVersion) {
+				err = nil
+			}
 			select {
-			case ch <- pushed{}:
+			case ch <- pushed{err: err}:
 			case <-ctx.Done():
 				return nil
 			}

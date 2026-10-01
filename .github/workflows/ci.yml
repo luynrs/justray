@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -27,15 +27,13 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Verify
-        env:
-          JUSTRAY_TEST_SCHEDULER: "1"
         run: |
           go vet ./...
           go test ./...
       - uses: golangci/golangci-lint-action@v9
         if: runner.os == 'Linux'
         with:
-          version: v2.13.2
+          version: v2.14.0
           args: --build-tags with_quic,with_utls,with_gvisor,with_grpc,with_xhttp,badlinkname
       - name: Build
         run: go build ./...

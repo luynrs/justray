@@ -11,8 +11,8 @@ import (
 )
 
 type xrayDoc struct {
-	Remarks   string         `json:"remarks"`
-	Outbounds []xrayOutbound `json:"outbounds"`
+	Remarks   string            `json:"remarks"`
+	Outbounds []json.RawMessage `json:"outbounds"`
 }
 
 type xrayOutbound struct {
@@ -44,20 +44,21 @@ type xrayUser struct {
 	ID       string `json:"id"`
 	Password string `json:"password"`
 	Flow     string `json:"flow"`
-	AlterID  int    `json:"alterId"`
 	Security string `json:"security"`
+	AlterID  int    `json:"alterId"`
 }
 
 type xrayStreamSettings struct {
 	Network           string              `json:"network"`
+	Method            string              `json:"method"`
 	Security          string              `json:"security"`
 	RealitySettings   xrayRealitySettings `json:"realitySettings"`
 	TLSSettings       xrayTLSSettings     `json:"tlsSettings"`
 	WSSettings        xrayHTTPTransport   `json:"wsSettings"`
 	GRPCSettings      xrayGRPCTransport   `json:"grpcSettings"`
 	HTTPSettings      xrayHTTPTransport   `json:"httpSettings"`
-	XHTTPSettings     xrayXHTTPTransport  `json:"xhttpSettings"`
-	SplitHTTPSettings xrayXHTTPTransport  `json:"splitHttpSettings"`
+	XHTTPSettings     json.RawMessage     `json:"xhttpSettings"`
+	SplitHTTPSettings json.RawMessage     `json:"splitHttpSettings"`
 }
 
 type xrayRealitySettings struct {
@@ -80,34 +81,40 @@ type xrayHTTPTransport struct {
 	Headers map[string]string `json:"headers"`
 }
 
-type xrayXHTTPTransport struct {
-	Path    string            `json:"path"`
-	Host    string            `json:"host"`
-	Mode    string            `json:"mode"`
-	Headers map[string]string `json:"headers"`
-}
-
 type xrayGRPCTransport struct {
 	ServiceName string `json:"serviceName"`
 }
 
-func ParseXray(raw []byte) ([]domain.Node, error) {
+func ParseXray(raw []byte) ([]domain.Node, map[string]int, error) {
+	if !hasOutboundField(raw, "protocol") {
+		return nil, nil, ErrNotFormat
+	}
 	var docs []xrayDoc
 	if err := json.Unmarshal(raw, &docs); err != nil {
 		var doc xrayDoc
 		if json.Unmarshal(raw, &doc) != nil {
-			return nil, fmt.Errorf("invalid xray json: %w", err)
+			return nil, nil, errors.New("xray: invalid outbound fields")
 		}
 		docs = []xrayDoc{doc}
 	}
 
 	var nodes []domain.Node
+	skipped := make(map[string]int)
 	for _, doc := range docs {
 		proxies := make([]xrayOutbound, 0, len(doc.Outbounds))
-		for _, ob := range doc.Outbounds {
+		for _, rawOutbound := range doc.Outbounds {
+			var ob xrayOutbound
+			if json.Unmarshal(rawOutbound, &ob) != nil || ob.Protocol == "" {
+				skipped["xray: invalid outbound fields"]++
+				continue
+			}
 			p := strings.ToLower(ob.Protocol)
-			if p == "vless" || p == "vmess" || p == "trojan" || p == "shadowsocks" || p == "ss" {
+			switch p {
+			case "vless", "vmess", "trojan", "shadowsocks", "ss":
 				proxies = append(proxies, ob)
+			case "freedom", "blackhole", "dns", "loopback":
+			default:
+				skipped["unsupported"]++
 			}
 		}
 		for _, ob := range proxies {
@@ -116,105 +123,94 @@ func ParseXray(raw []byte) ([]domain.Node, error) {
 				name += " (" + ob.Tag + ")"
 			}
 			proto := strings.ToLower(ob.Protocol)
-			for _, s := range ob.Settings.Servers {
-				var node domain.Node
-				var err error
-				switch proto {
-				case "trojan":
-					node, err = parseXrayTrojan(ob.StreamSettings, s, name)
-				case "shadowsocks", "ss":
-					node, err = parseXraySS(s, name)
+			switch proto {
+			case "vless", "vmess":
+				if len(ob.Settings.Servers) > 0 || len(ob.Settings.Vnext) == 0 {
+					skipped["incompatible outbound settings"]++
+					continue
 				}
-				if err == nil {
-					nodes = append(nodes, node)
+			case "shadowsocks", "ss":
+				if len(ob.Settings.Vnext) > 0 || len(ob.Settings.Servers) == 0 {
+					skipped["incompatible outbound settings"]++
+					continue
+				}
+			case "trojan":
+				if len(ob.Settings.Servers) == 0 && len(ob.Settings.Vnext) == 0 {
+					skipped["incompatible outbound settings"]++
+					continue
 				}
 			}
+			for _, server := range ob.Settings.Servers {
+				node := domain.Node{Name: name, Server: server.Address, Port: server.Port}
+				switch proto {
+				case "trojan":
+					node.Protocol, node.Auth = domain.Trojan, domain.Auth{Password: server.Password}
+				case "shadowsocks", "ss":
+					node.Protocol, node.Auth = domain.SS, domain.Auth{Password: server.Password, Method: server.Method}
+				default:
+					continue
+				}
+				node, err := xrayNode(node, ob.StreamSettings)
+				if err != nil {
+					skipped[err.Error()]++
+					continue
+				}
+				nodes = append(nodes, node)
+			}
 			for _, next := range ob.Settings.Vnext {
+				if len(next.Users) == 0 {
+					skipped["incompatible outbound settings"]++
+					continue
+				}
 				for _, user := range next.Users {
-					var node domain.Node
-					var err error
+					node := domain.Node{Name: name, Server: next.Address, Port: next.Port}
 					switch proto {
 					case "vmess":
-						node, err = parseXrayVMess(ob.StreamSettings, next, user, name)
+						node.Protocol, node.Auth = domain.VMess, domain.Auth{UUID: user.ID, AlterID: user.AlterID, Method: cmp.Or(user.Security, "auto")}
 					case "vless":
-						node, err = parseXrayVLess(ob.StreamSettings, next, user, name)
+						node.Protocol, node.Auth = domain.VLess, domain.Auth{UUID: user.ID, Flow: user.Flow}
 					case "trojan":
-						node, err = parseXrayTrojan(ob.StreamSettings, xrayServer{Address: next.Address, Port: next.Port, Password: cmp.Or(user.Password, user.ID)}, name)
+						node.Protocol, node.Auth = domain.Trojan, domain.Auth{Password: cmp.Or(user.Password, user.ID)}
+					default:
+						continue
 					}
-					if err == nil {
-						nodes = append(nodes, node)
+					node, err := xrayNode(node, ob.StreamSettings)
+					if err != nil {
+						skipped[err.Error()]++
+						continue
 					}
+					nodes = append(nodes, node)
 				}
 			}
 		}
 	}
-	if len(nodes) == 0 {
-		return nil, errors.New("no supported outbounds in xray config")
+	if len(nodes) == 0 && len(skipped) == 0 {
+		return nil, nil, errors.New("no supported outbounds in xray config")
 	}
-	return nodes, nil
+	return nodes, skipped, nil
 }
 
-func parseXrayVLess(stream xrayStreamSettings, next xrayVnext, user xrayUser, name string) (domain.Node, error) {
-	if next.Address == "" || !domain.ValidPort(next.Port) || user.ID == "" {
-		return domain.Node{}, errors.New("vless: missing server, port, or uuid")
+func xrayNode(node domain.Node, stream xrayStreamSettings) (domain.Node, error) {
+	if node.Protocol == domain.SS {
+		return node, nil
 	}
-	transport, err := xrayTransport(stream)
+	var err error
+	node.Transport, err = xrayTransport(stream)
 	if err != nil {
 		return domain.Node{}, err
 	}
-	return domain.Node{
-		Name: name, Protocol: domain.VLess, Server: next.Address, Port: next.Port,
-		Auth: domain.Auth{UUID: user.ID, Flow: user.Flow}, Transport: transport,
-		TLS: xrayTLS(stream), Reality: xrayReality(stream),
-	}, nil
-}
-
-func parseXrayVMess(stream xrayStreamSettings, next xrayVnext, user xrayUser, name string) (domain.Node, error) {
-	if next.Address == "" || !domain.ValidPort(next.Port) || user.ID == "" {
-		return domain.Node{}, errors.New("vmess: missing server, port, or uuid")
+	node.TLS = xrayTLS(stream)
+	if node.Protocol != domain.VMess {
+		node.Reality = xrayReality(stream)
 	}
-	transport, err := xrayTransport(stream)
-	if err != nil {
-		return domain.Node{}, err
+	if node.Protocol == domain.Trojan && node.TLS == nil && stream.Security == "" {
+		node.TLS = &domain.TLS{SNI: node.Server}
 	}
-	return domain.Node{
-		Name: name, Protocol: domain.VMess, Server: next.Address, Port: next.Port,
-		Auth:      domain.Auth{UUID: user.ID, AlterID: user.AlterID, Method: cmp.Or(user.Security, "auto")},
-		Transport: transport, TLS: xrayTLS(stream),
-	}, nil
-}
-
-func parseXrayTrojan(stream xrayStreamSettings, s xrayServer, name string) (domain.Node, error) {
-	if s.Address == "" || !domain.ValidPort(s.Port) || s.Password == "" {
-		return domain.Node{}, errors.New("trojan: missing server, port, or password")
-	}
-	transport, err := xrayTransport(stream)
-	if err != nil {
-		return domain.Node{}, err
-	}
-	tls := xrayTLS(stream)
-	if tls == nil && stream.Security == "" {
-		tls = &domain.TLS{SNI: s.Address}
-	}
-	return domain.Node{
-		Name: name, Protocol: domain.Trojan, Server: s.Address, Port: s.Port,
-		Auth: domain.Auth{Password: s.Password}, Transport: transport,
-		TLS: tls, Reality: xrayReality(stream),
-	}, nil
-}
-
-func parseXraySS(s xrayServer, name string) (domain.Node, error) {
-	if s.Address == "" || !domain.ValidPort(s.Port) || s.Password == "" || s.Method == "" {
-		return domain.Node{}, errors.New("shadowsocks: missing server, port, password, or method")
-	}
-	return domain.Node{
-		Name: name, Protocol: domain.SS, Server: s.Address, Port: s.Port,
-		Auth: domain.Auth{Password: s.Password, Method: s.Method},
-	}, nil
+	return node, nil
 }
 
 func xrayTransport(s xrayStreamSettings) (domain.Transport, error) {
-	switch network := strings.ToLower(s.Network); network {
+	switch network := strings.ToLower(cmp.Or(s.Method, s.Network)); network {
 	case "", "tcp", "raw":
 		return domain.Transport{Network: "tcp"}, nil
 	case "ws":
@@ -224,12 +220,7 @@ func xrayTransport(s xrayStreamSettings) (domain.Transport, error) {
 	case "http", "h2":
 		return domain.Transport{Network: "http", Path: s.HTTPSettings.Path, Host: cmp.Or(s.HTTPSettings.Host, s.HTTPSettings.Headers["Host"])}, nil
 	case "xhttp", "splithttp":
-		return domain.Transport{
-			Network: "xhttp",
-			Path:    cmp.Or(s.XHTTPSettings.Path, s.SplitHTTPSettings.Path),
-			Host:    cmp.Or(s.XHTTPSettings.Host, s.SplitHTTPSettings.Host, s.XHTTPSettings.Headers["Host"], s.XHTTPSettings.Headers["host"], s.SplitHTTPSettings.Headers["Host"], s.SplitHTTPSettings.Headers["host"]),
-			Mode:    cmp.Or(s.XHTTPSettings.Mode, s.SplitHTTPSettings.Mode),
-		}, nil
+		return domain.Transport{Network: "xhttp", Extra: cmp.Or(string(s.XHTTPSettings), string(s.SplitHTTPSettings))}, nil
 	default:
 		return domain.Transport{}, fmt.Errorf("unsupported xray transport: %s", network)
 	}

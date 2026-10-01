@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -10,6 +12,7 @@ import (
 
 	"github.com/luynrs/justray/internal/client/tui/settings"
 	"github.com/luynrs/justray/internal/client/tui/tree"
+	"github.com/luynrs/justray/internal/ipc"
 )
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -35,21 +38,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.mouse(msg)
 
-	case tea.PasteMsg:
-		switch {
-		case m.dialog != nil:
-			return m.updateSettings(msg)
-		case m.editor.Focused():
-			var cmd tea.Cmd
-			m.editor, cmd = m.editor.Update(msg)
-			return m, cmd
-		case m.filter.Focused():
-			var cmd tea.Cmd
-			m.filter, cmd = m.filter.Update(msg)
-			m.clamp()
-			return m, cmd
-		}
-
 	case tick:
 		if m.err != "" && time.Since(m.errAt) > 10*time.Second {
 			m.err = ""
@@ -62,32 +50,38 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case completed:
-		if msg.op == "connection" {
+		if msg.connection {
 			m.busy = false
 		}
 		if msg.err != nil {
 			m.err, m.errAt = msg.err.Error(), time.Now()
 			return m, nil
 		}
-		m.err = ""
 		return m, nil
 
 	case pushed:
 		if !msg.live {
 			m.live = false
 			m.busy = false
+			if msg.err != nil {
+				m.err, m.errAt = msg.err.Error(), time.Now()
+			}
 			return m, next(m.watch, m.updates)
 		}
 		initial := m.snapshot.Settings.Port == 0
 		selected, selectedOK := m.at()
+		if !initial {
+			for _, sub := range msg.snapshot.Subscriptions {
+				if sub.Warning != "" && !slices.ContainsFunc(m.snapshot.Subscriptions, func(previous ipc.Subscription) bool {
+					return previous.SubscriptionID == sub.SubscriptionID && previous.Warning == sub.Warning && previous.UpdatedAt.Equal(sub.UpdatedAt)
+				}) {
+					m.err, m.errAt = sub.Warning, time.Now()
+				}
+			}
+		}
 		m.snapshot = msg.snapshot
 		m.syncTTY()
 		m.live = true
-		if initial {
-			for _, id := range m.snapshot.Collapsed {
-				m.collapsed[id] = true
-			}
-		}
 		rows := m.rows()
 		switch {
 		case initial && m.snapshot.Status.Connected:
@@ -100,7 +94,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case selectedOK:
 			for i, idx := range tree.Selectable(rows) {
 				row := rows[idx]
-				if row.Kind == selected.Kind && row.Sub.ID == selected.Sub.ID && (row.Kind != tree.Node || row.Node.Ref() == selected.Node.Ref()) {
+				if selected.Kind == tree.Node && row.Kind == tree.Header && row.Sub.SubscriptionID == selected.Sub.SubscriptionID {
+					m.cursor = i
+				}
+				if row.Kind == selected.Kind && row.Sub.SubscriptionID == selected.Sub.SubscriptionID && (row.Kind != tree.Node || row.Node.Ref() == selected.Node.Ref()) {
 					m.cursor = i
 					break
 				}
@@ -108,6 +105,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.cursor, m.scroll = tree.Clamp(rows, m.cursor, m.scroll, m.height())
 		return m, next(m.watch, m.updates)
+
+	default:
+		if m.dialog != nil {
+			return m.updateSettings(msg)
+		}
+		if m.editor.Focused() {
+			var cmd tea.Cmd
+			m.editor, cmd = m.editor.Update(msg)
+			return m, cmd
+		}
+		if m.filter.Focused() {
+			var cmd tea.Cmd
+			m.filter, cmd = m.filter.Update(msg)
+			m.clamp()
+			return m, cmd
+		}
 	}
 	return m, nil
 }
@@ -116,15 +129,11 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	k := msg.String()
 
 	switch {
-	case m.confirm.Sub.ID != "":
+	case m.confirm.Sub.SubscriptionID != "":
 		row := m.confirm
 		m.confirm = tree.Row{}
-		if k == "y" || k == "Y" {
-			if row.Kind == tree.Node && !row.Sub.Refreshable {
-				return m, actionCmd("mutation", m.start, func() error { return m.client.RemoveNode(row.Node.Ref()) })
-			}
-			delete(m.collapsed, row.Sub.ID)
-			return m, actionCmd("mutation", m.start, func() error { return m.client.RemoveSub(row.Sub.ID) })
+		if (k == "y" || k == "Y") && row.Removable() {
+			return m, m.actionCmd(false, m.start, func() error { return m.client.RemoveNode(m.watch, row.Node.Ref()) })
 		}
 		return m, nil
 
@@ -139,8 +148,8 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			if url == "" {
 				return m, nil
 			}
-			return m, actionCmd("mutation", m.start, func() error {
-				_, err := m.client.AddSub(url)
+			return m, m.actionCmd(false, m.start, func() error {
+				_, err := m.client.AddSubscription(m.watch, url)
 				return err
 			})
 		}
@@ -180,7 +189,9 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "right", "l":
 		return m.expand()
 	case "enter":
-		return m.activate()
+		if r, ok := m.at(); ok {
+			return m.activate(r)
+		}
 	case "t":
 		return m.probe()
 	case "T", "shift+t":
@@ -202,7 +213,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.filter.CursorEnd()
 		return m, tea.Batch(m.filter.Focus(), textinput.Blink)
 	case "d":
-		if r, ok := m.at(); ok && r.Sub.ID != "" {
+		if r, ok := m.at(); ok && r.Removable() {
 			m.confirm = r
 		}
 	case "q":
@@ -217,7 +228,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	if m.editor.Focused() || m.confirm.Sub.ID != "" {
+	if m.editor.Focused() || m.confirm.Sub.SubscriptionID != "" {
 		return m, nil
 	}
 	mouse := msg.Mouse()
@@ -259,10 +270,10 @@ func (m Model) click(x, y int) (tea.Model, tea.Cmd) {
 	}
 	clicked := cursor == m.cursor
 	m.cursor = cursor
-	m.clamp()
+	m.cursor, m.scroll = tree.Clamp(rows, m.cursor, m.scroll, m.height())
 
-	if r, _ := m.at(); clicked || r.Kind == tree.Header {
-		return m.activate()
+	if r, _ := tree.At(rows, m.cursor); clicked || r.Kind == tree.Header {
+		return m.activate(r)
 	}
 	return m, nil
 }
@@ -288,5 +299,22 @@ func (m Model) closeSettings() (Model, tea.Cmd) {
 	case !changed:
 		return m, nil
 	}
-	return m, actionCmd("settings", m.start, func() error { return m.client.SetSettings(next) })
+	old := m.snapshot.Settings
+	otherSettings := next
+	otherSettings.Autostart = old.Autostart
+	return m, m.actionCmd(false, m.start, func() error {
+		if next.Autostart != old.Autostart {
+			if err := m.client.SetAutostart(m.watch, next.Autostart == "on"); err != nil {
+				return err
+			}
+		}
+		if otherSettings.Equal(old) {
+			return nil
+		}
+		err := m.client.SetSettings(m.watch, next)
+		if err != nil && next.Autostart != old.Autostart {
+			return fmt.Errorf("autostart changed; settings: %w", err)
+		}
+		return err
+	})
 }

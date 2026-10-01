@@ -25,13 +25,19 @@ func ParseWireGuard(uri string) (domain.Node, error) {
 		privateKey = queryAny(u, q, "privatekey", "private_key", "private-key", "privkey")
 	}
 	peerKey := queryAny(u, q, "publickey", "public_key", "public-key", "peer_public_key", "pubkey", "pbk")
-	if privateKey == "" || peerKey == "" {
-		return domain.Node{}, fmt.Errorf("wireguard: missing private/public key")
-	}
 
 	address := addresses(queryAny(u, q, "address", "addresses", "ip"), queryAny(u, q, "ipv6"))
-	if len(address) == 0 {
-		return domain.Node{}, fmt.Errorf("wireguard: missing address")
+	reservedRaw := queryAny(u, q, "reserved", "reserved_bytes", "reserved-bytes")
+	reserved := parseReserved(reservedRaw)
+	if reservedRaw != "" && reserved == nil {
+		return domain.Node{}, fmt.Errorf("wireguard: invalid reserved bytes")
+	}
+	var mtu uint64
+	if q.Get("mtu") != "" {
+		mtu, err = strconv.ParseUint(q.Get("mtu"), 10, 32)
+		if err != nil {
+			return domain.Node{}, fmt.Errorf("wireguard: invalid mtu")
+		}
 	}
 
 	return domain.Node{
@@ -44,8 +50,8 @@ func ParseWireGuard(uri string) (domain.Node, error) {
 			PeerPublicKey: peerKey,
 			PreSharedKey:  queryAny(u, q, "presharedkey", "preshared_key", "pre-shared-key", "psk"),
 			Address:       address,
-			Reserved:      parseReserved(queryAny(u, q, "reserved", "reserved_bytes", "reserved-bytes")),
-			MTU:           uint32(atoi(q.Get("mtu"))),
+			Reserved:      reserved,
+			MTU:           uint32(mtu),
 		},
 	}, nil
 }

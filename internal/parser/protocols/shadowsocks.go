@@ -2,7 +2,6 @@ package protocols
 
 import (
 	"cmp"
-	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -10,66 +9,42 @@ import (
 	"github.com/luynrs/justray/internal/domain"
 )
 
-// SIP002 ss://base64(method:password)@host:port#remark, or the legacy form
 func ParseShadowsocks(uri string) (domain.Node, error) {
 	rest := strings.TrimPrefix(uri, "ss://")
 
 	rest, remark, _ := strings.Cut(rest, "#")
+	rest, query, hasQuery := strings.Cut(rest, "?")
+	legacy := !strings.Contains(rest, "@")
+	if legacy {
+		if decoded, err := Unbase64(rest); err == nil {
+			var innerRemark, innerQuery string
+			rest, innerRemark, _ = strings.Cut(string(decoded), "#")
+			rest, innerQuery, _ = strings.Cut(rest, "?")
+			remark = cmp.Or(remark, innerRemark)
+			if !hasQuery {
+				query = innerQuery
+			}
+		}
+	}
 	if unescaped, err := url.PathUnescape(remark); err == nil {
 		remark = unescaped
 	}
-	rest, query, hasQuery := strings.Cut(rest, "?")
-	var plugin string
-	if hasQuery {
-		plugin = parsePluginQuery(query)
-		if err := checkPlugin(plugin); err != nil {
-			return domain.Node{}, fmt.Errorf("ss: %w", err)
-		}
+	plugin := parsePluginQuery(query)
+	if err := checkPlugin(plugin); err != nil {
+		return domain.Node{}, fmt.Errorf("ss: %w", err)
 	}
-
-	var method, password, hp string
-	if at := strings.LastIndexByte(rest, '@'); at >= 0 {
-		userinfo := rest[:at]
+	at := strings.LastIndexByte(rest, '@')
+	if at < 0 {
+		return domain.Node{}, fmt.Errorf("ss: missing host")
+	}
+	userinfo := rest[:at]
+	if !legacy {
 		if unescaped, err := url.PathUnescape(userinfo); err == nil {
 			userinfo = unescaped
 		}
-		method, password = splitCreds(userinfo)
-		hp = rest[at+1:]
-	} else {
-		decoded, err := Unbase64(rest)
-		if err != nil {
-			return domain.Node{}, errors.New("invalid ss base64")
-		}
-		full := string(decoded)
-		if f, rem, ok := strings.Cut(full, "#"); ok {
-			full = f
-			if remark == "" {
-				if unescaped, err := url.PathUnescape(rem); err == nil {
-					remark = unescaped
-				} else {
-					remark = rem
-				}
-			}
-		}
-		if strings.Contains(full, "?") && !hasQuery {
-			full, query, _ = strings.Cut(full, "?")
-			plugin = parsePluginQuery(query)
-			if err := checkPlugin(plugin); err != nil {
-				return domain.Node{}, fmt.Errorf("ss: %w", err)
-			}
-		}
-		at := strings.LastIndexByte(full, '@')
-		if at < 0 {
-			return domain.Node{}, fmt.Errorf("ss: missing host")
-		}
-		method, password, _ = strings.Cut(full[:at], ":")
-		hp = full[at+1:]
 	}
-	if method == "" || password == "" {
-		return domain.Node{}, fmt.Errorf("ss: missing method/password")
-	}
-
-	host, port, err := hostPort(strings.TrimSuffix(hp, "/")) // SIP002 allows an empty path
+	method, password := splitCreds(userinfo)
+	host, port, err := hostPort(strings.TrimSuffix(rest[at+1:], "/")) // SIP002 allows an empty path
 	if err != nil {
 		return domain.Node{}, fmt.Errorf("ss: %w", err)
 	}

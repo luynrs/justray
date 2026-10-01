@@ -2,7 +2,6 @@ package protocols
 
 import (
 	"cmp"
-	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -17,9 +16,6 @@ func ParseHTTP(uri string) (domain.Node, error) {
 		return domain.Node{}, fmt.Errorf("http: %w", err)
 	}
 	host := u.Hostname()
-	if host == "" {
-		return domain.Node{}, errors.New("http: missing host")
-	}
 	port := 80
 	if strings.EqualFold(u.Scheme, "https") {
 		port = 443
@@ -27,7 +23,7 @@ func ParseHTTP(uri string) (domain.Node, error) {
 	if p := u.Port(); p != "" {
 		var err error
 		port, err = strconv.Atoi(p)
-		if err != nil || !domain.ValidPort(port) {
+		if err != nil {
 			return domain.Node{}, fmt.Errorf("http: bad port %q", p)
 		}
 	}

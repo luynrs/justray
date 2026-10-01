@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
 	"strconv"
+	"time"
 
 	"charm.land/lipgloss/v2"
 	"github.com/spf13/cobra"
@@ -31,17 +33,20 @@ var subAddCmd = &cobra.Command{
 
 func (a *app) subAdd(cmd *cobra.Command, args []string) error {
 	stop := spin("Fetching subscription")
-	sub, err := a.client.AddSub(args[0])
+	sub, err := a.client.AddSubscription(cmd.Context(), args[0])
 	stop()
 	if err != nil {
 		return err
 	}
 	if sub.Refreshable {
 		done("Added " + a.clean(sub.Name))
-		fields([2]string{"ID", sub.ID}, [2]string{"Nodes", strconv.Itoa(sub.Nodes)}, [2]string{"Traffic", style.Usage(sub.Traffic)})
+		fields([2]string{"ID", sub.SubscriptionID}, [2]string{"Nodes", strconv.Itoa(sub.NodeCount)}, [2]string{"Traffic", style.Usage(domain.Traffic(sub.Traffic))})
+		if sub.Warning != "" {
+			out(style.Pending.Render("Warning: " + a.clean(sub.Warning)))
+		}
 	} else {
 		done("Added node to " + a.clean(sub.Name))
-		fields([2]string{"ID", sub.ID}, [2]string{"Nodes", strconv.Itoa(sub.Nodes)})
+		fields([2]string{"ID", sub.SubscriptionID}, [2]string{"Nodes", strconv.Itoa(sub.NodeCount)})
 	}
 	return nil
 }
@@ -53,15 +58,15 @@ var subRemoveCmd = &cobra.Command{
 }
 
 func (a *app) subRemove(cmd *cobra.Command, args []string) error {
-	snapshot, err := a.client.Snapshot()
+	snapshot, err := a.client.Snapshot(cmd.Context())
 	if err != nil {
 		return err
 	}
-	sub, subErr := match(args[0], "subscription", snapshot.Subscriptions, func(s ipc.Sub) (string, string) { return s.ID, s.Name })
+	sub, subErr := match(args[0], "subscription", snapshot.Subscriptions, func(s ipc.Subscription) (string, string) { return s.SubscriptionID, s.Name })
 	if subErr == nil {
 		name := a.clean(sub.Name)
 		stop := spin("Removing " + name)
-		err = a.client.RemoveSub(sub.ID)
+		err = a.client.RemoveSubscription(cmd.Context(), sub.SubscriptionID)
 		stop()
 		if err != nil {
 			return err
@@ -75,14 +80,14 @@ func (a *app) subRemove(cmd *cobra.Command, args []string) error {
 
 	var directNodes []ipc.Node
 	for _, node := range snapshot.Nodes {
-		if slices.ContainsFunc(snapshot.Subscriptions, func(s ipc.Sub) bool { return s.ID == node.Sub && !s.Refreshable }) {
+		if slices.ContainsFunc(snapshot.Subscriptions, func(s ipc.Subscription) bool { return s.SubscriptionID == node.SubscriptionID && !s.Refreshable }) {
 			directNodes = append(directNodes, node)
 		}
 	}
-	node, nodeErr := match(args[0], "node", directNodes, func(n ipc.Node) (string, string) { return n.ID, n.Name })
+	node, nodeErr := match(args[0], "node", directNodes, func(n ipc.Node) (string, string) { return n.NodeID, n.Name })
 	if nodeErr == nil {
 		stop := spin("Removing " + a.clean(node.Name))
-		removeErr := a.client.RemoveNode(node.Ref())
+		removeErr := a.client.RemoveNode(cmd.Context(), node.Ref())
 		stop()
 		if removeErr != nil {
 			return removeErr
@@ -104,7 +109,7 @@ var subRefreshCmd = &cobra.Command{
 
 func (a *app) subRefresh(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
-		snapshot, err := a.client.Snapshot()
+		snapshot, err := a.client.Snapshot(cmd.Context())
 		if err != nil {
 			return err
 		}
@@ -113,8 +118,15 @@ func (a *app) subRefresh(cmd *cobra.Command, args []string) error {
 			return nil
 		}
 		stop := spin("Refreshing subscriptions")
-		err = a.client.RefreshAll()
+		err = a.client.RefreshSubscriptions(cmd.Context())
 		stop()
+		if snap, snapErr := a.client.Snapshot(cmd.Context()); snapErr == nil {
+			for _, sub := range snap.Subscriptions {
+				if sub.Warning != "" {
+					out(style.Pending.Render("Warning: " + a.clean(sub.Name) + ": " + a.clean(sub.Warning)))
+				}
+			}
+		}
 		if err != nil {
 			return err
 		}
@@ -122,7 +134,7 @@ func (a *app) subRefresh(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	sub, err := a.resolveSub(args[0])
+	sub, err := a.resolveSub(cmd.Context(), args[0])
 	if err != nil {
 		return err
 	}
@@ -131,16 +143,19 @@ func (a *app) subRefresh(cmd *cobra.Command, args []string) error {
 	}
 	name := a.clean(sub.Name)
 	stop := spin("Refreshing " + name)
-	err = a.client.Refresh(sub.ID)
+	err = a.client.RefreshSubscription(cmd.Context(), sub.SubscriptionID)
 	stop()
 	if err != nil {
 		return err
 	}
 	done("Refreshed " + name)
-	if snap, err := a.client.Snapshot(); err == nil {
+	if snap, err := a.client.Snapshot(cmd.Context()); err == nil {
 		for _, s := range snap.Subscriptions {
-			if s.ID == sub.ID {
-				fields([2]string{"ID", s.ID}, [2]string{"Nodes", strconv.Itoa(s.Nodes)}, [2]string{"Traffic", style.Usage(s.Traffic)})
+			if s.SubscriptionID == sub.SubscriptionID {
+				fields([2]string{"ID", s.SubscriptionID}, [2]string{"Nodes", strconv.Itoa(s.NodeCount)}, [2]string{"Traffic", style.Usage(domain.Traffic(s.Traffic))})
+				if s.Warning != "" {
+					out(style.Pending.Render("Warning: " + a.clean(s.Warning)))
+				}
 				break
 			}
 		}
@@ -155,10 +170,12 @@ var subListCmd = &cobra.Command{
 }
 
 func (a *app) subList(cmd *cobra.Command, args []string) error {
-	snapshot, err := a.client.Snapshot()
+	snapshot, err := a.client.Snapshot(cmd.Context())
 	if err != nil {
 		return err
 	}
+	a.emoji = snapshot.Settings.Emoji == "on"
+	style.TTY = style.DetectTTY(snapshot.Settings.ForceTTY)
 	subs := snapshot.Subscriptions
 	if jsonOut, _ := cmd.Flags().GetBool("json"); jsonOut {
 		type nodeOut struct {
@@ -169,12 +186,13 @@ func (a *app) subList(cmd *cobra.Command, args []string) error {
 			Port     int    `json:"port"`
 			Probed   bool   `json:"probed,omitempty"`
 			Alive    bool   `json:"alive,omitempty"`
-			MS       int    `json:"ms,omitempty"`
+			Duration int    `json:"ms,omitempty"`
 		}
 		type subOut struct {
 			ID      string          `json:"id"`
 			Name    string          `json:"name"`
 			Traffic *domain.Traffic `json:"traffic,omitempty"`
+			Warning string          `json:"warning,omitempty"`
 			Nodes   []nodeOut       `json:"nodes"`
 		}
 		groups := (tree.Data{Subs: subs, Nodes: snapshot.Nodes}).Groups()
@@ -182,11 +200,11 @@ func (a *app) subList(cmd *cobra.Command, args []string) error {
 		for i, g := range groups {
 			nodes := make([]nodeOut, len(g.Nodes))
 			for j, n := range g.Nodes {
-				nodes[j] = nodeOut{n.ID, n.Name, n.Protocol, n.Server, n.Port, n.Probed, n.Alive, n.MS}
+				nodes[j] = nodeOut{n.NodeID, n.Name, n.Protocol, n.Server, n.Port, n.Probed, n.Alive, n.Duration}
 			}
-			s := subOut{ID: g.Sub.ID, Name: g.Sub.Name, Nodes: nodes}
+			s := subOut{ID: g.Sub.SubscriptionID, Name: g.Sub.Name, Warning: g.Sub.Warning, Nodes: nodes}
 			if tr := g.Sub.Traffic; tr.TotalBytes > 0 || tr.UploadBytes > 0 || tr.DownloadBytes > 0 {
-				s.Traffic = &tr
+				s.Traffic = new(domain.Traffic(tr))
 			}
 			result[i] = s
 		}
@@ -208,12 +226,12 @@ func init() {
 	subListCmd.Flags().Bool("json", false, "Output subscriptions as JSON")
 }
 
-func (a *app) resolveSub(key string) (ipc.Sub, error) {
-	snapshot, err := a.client.Snapshot()
+func (a *app) resolveSub(ctx context.Context, key string) (ipc.Subscription, error) {
+	snapshot, err := a.client.Snapshot(ctx)
 	if err != nil {
-		return ipc.Sub{}, err
+		return ipc.Subscription{}, err
 	}
-	return match(key, "subscription", snapshot.Subscriptions, func(s ipc.Sub) (string, string) { return s.ID, s.Name })
+	return match(key, "subscription", snapshot.Subscriptions, func(s ipc.Subscription) (string, string) { return s.SubscriptionID, s.Name })
 }
 
 func (a *app) completeSub(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -221,17 +239,19 @@ func (a *app) completeSub(cmd *cobra.Command, args []string, toComplete string) 
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 	c := a.daemon()
-	if c == nil || c.Ping() != nil {
+	if c == nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	snapshot, err := c.Snapshot()
+	ctx, cancel := context.WithTimeout(cmd.Context(), time.Second)
+	defer cancel()
+	snapshot, err := c.Snapshot(ctx)
 	if err == nil && cmd == subRefreshCmd {
-		snapshot.Subscriptions = slices.DeleteFunc(snapshot.Subscriptions, func(s ipc.Sub) bool { return !s.Refreshable })
+		snapshot.Subscriptions = slices.DeleteFunc(snapshot.Subscriptions, func(s ipc.Subscription) bool { return !s.Refreshable })
 	}
-	names, directive := completeNames(snapshot.Subscriptions, err, func(s ipc.Sub) string { return s.Name })
+	names, directive := completeNames(snapshot.Subscriptions, err, func(s ipc.Subscription) string { return s.Name })
 	if err == nil && cmd == subRemoveCmd {
 		for _, node := range snapshot.Nodes {
-			if slices.ContainsFunc(snapshot.Subscriptions, func(sub ipc.Sub) bool { return sub.ID == node.Sub && !sub.Refreshable }) {
+			if slices.ContainsFunc(snapshot.Subscriptions, func(sub ipc.Subscription) bool { return sub.SubscriptionID == node.SubscriptionID && !sub.Refreshable }) {
 				names = append(names, node.Name)
 			}
 		}
@@ -239,7 +259,7 @@ func (a *app) completeSub(cmd *cobra.Command, args []string, toComplete string) 
 	return names, directive
 }
 
-func (a *app) showTree(subs []ipc.Sub, nodes []ipc.Node) {
+func (a *app) showTree(subs []ipc.Subscription, nodes []ipc.Node) {
 	groups := (tree.Data{Subs: subs, Nodes: nodes}).Groups()
 	for i, g := range groups {
 		if i > 0 {
@@ -248,8 +268,11 @@ func (a *app) showTree(subs []ipc.Sub, nodes []ipc.Node) {
 		if !g.Sub.Refreshable {
 			out(style.Name.Render(a.clean(g.Sub.Name)))
 		} else {
-			out(style.Name.Render(a.clean(g.Sub.Name)) + "  " + style.Dim.Render(g.Sub.ID))
-			out(style.Usage(g.Sub.Traffic) + style.Dim.Render(" "+style.Sep()+" updated "+style.Since(g.Sub.UpdatedAt)))
+			out(style.Name.Render(a.clean(g.Sub.Name)) + "  " + style.Dim.Render(g.Sub.SubscriptionID))
+			out(style.Usage(domain.Traffic(g.Sub.Traffic)) + style.Dim.Render(" "+style.Sep()+" updated "+style.Since(g.Sub.UpdatedAt)))
+			if g.Sub.Warning != "" {
+				out(style.Pending.Render("Warning: " + a.clean(g.Sub.Warning)))
+			}
 		}
 
 		nameW, infoW := 0, 0
@@ -267,7 +290,7 @@ func (a *app) showTree(subs []ipc.Sub, nodes []ipc.Node) {
 func (a *app) nodeLine(n ipc.Node, branch string, nameW, infoW int) string {
 	name := style.Pad(a.nodeName(n.Name, ""), nameW)
 	info := style.Dim.Render(style.Pad(a.serverProto(n), infoW))
-	id := style.Dim.Render(style.Pad(displayID(n.ID), 8))
+	id := style.Dim.Render(style.Pad(displayID(n.NodeID), 8))
 	prefix := "  "
 	if branch != "" {
 		prefix = style.Dim.Render(branch) + " "
@@ -275,7 +298,7 @@ func (a *app) nodeLine(n ipc.Node, branch string, nameW, infoW int) string {
 	line := fmt.Sprintf("%s%s  %s  %s", prefix, name, info, id)
 	if n.Probed {
 		if n.Alive {
-			line += "  " + style.Alive.Render(fmt.Sprintf("%dms", n.MS))
+			line += "  " + style.Alive.Render(fmt.Sprintf("%dms", n.Duration))
 		} else {
 			line += "  " + style.Dead.Render("t/o")
 		}

@@ -6,13 +6,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"slices"
 	"time"
 
 	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/ipc"
-	"github.com/luynrs/justray/internal/parser"
-	"github.com/luynrs/justray/internal/parser/protocols"
 )
 
 type Subscription struct {
@@ -22,16 +19,17 @@ type Subscription struct {
 	Nodes     []domain.Node  `json:"nodes"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	Traffic   domain.Traffic `json:"traffic,omitempty"`
+	Warning   string         `json:"warning,omitempty"`
 }
 
 type PersistentState struct {
-	Subscriptions []Subscription
-	Active        domain.NodeRef
-	Last          domain.NodeRef
-	Tun           bool
-	Pending       *Pending
-	Settings      domain.Settings
-	Collapsed     []string
+	Subscriptions []Subscription  `json:"subscriptions"`
+	Active        domain.NodeRef  `json:"active,omitzero"`
+	Last          domain.NodeRef  `json:"last,omitzero"`
+	Tun           bool            `json:"tun,omitempty"`
+	Pending       *Pending        `json:"pending,omitempty"`
+	Settings      domain.Settings `json:"-"`
+	Collapsed     []string        `json:"collapsed,omitempty"`
 }
 
 type Pending struct {
@@ -41,17 +39,6 @@ type Pending struct {
 
 // Disk reads and writes the daemon's persistent state.
 type Disk struct{ Dir string }
-
-type stateFile struct {
-	Subscriptions []Subscription `json:"subscriptions"`
-	Active        string         `json:"active,omitempty"`
-	ActiveSub     string         `json:"active_subscription,omitempty"`
-	Last          string         `json:"last,omitempty"`
-	LastSub       string         `json:"last_subscription,omitempty"`
-	Tun           bool           `json:"tun,omitempty"`
-	Pending       *Pending       `json:"pending,omitempty"`
-	Collapsed     []string       `json:"collapsed,omitempty"`
-}
 
 func (d Disk) Load() (PersistentState, error) {
 	state := PersistentState{
@@ -70,103 +57,11 @@ func (d Disk) Load() (PersistentState, error) {
 	}
 
 	if stateErr == nil {
-		var sf stateFile
-		if err := json.Unmarshal(stateData, &sf); err != nil {
+		if err := json.Unmarshal(stateData, &state); err != nil {
 			return state, err
 		}
-		state.Active = domain.NodeRef{SubscriptionID: sf.ActiveSub, NodeID: sf.Active}
-		state.Last = domain.NodeRef{SubscriptionID: sf.LastSub, NodeID: sf.Last}
-		state.Tun = sf.Tun
-		state.Pending = sf.Pending
-		state.Collapsed = sf.Collapsed
-		if sf.Subscriptions != nil {
-			state.Subscriptions = sf.Subscriptions
-		}
-		var directNodes []domain.Node
-		position := -1
-		subs := make([]Subscription, 0, len(state.Subscriptions))
-		for _, sub := range state.Subscriptions {
-			if parser.IsLink(sub.URL) {
-				if position < 0 {
-					position = len(subs)
-				}
-				for _, node := range sub.Nodes {
-					if !slices.ContainsFunc(directNodes, func(n domain.Node) bool { return n.ID == node.ID }) {
-						directNodes = append(directNodes, node)
-					}
-				}
-				if state.Active.SubscriptionID == sub.ID {
-					state.Active.SubscriptionID = "default"
-				}
-				if state.Last.SubscriptionID == sub.ID {
-					state.Last.SubscriptionID = "default"
-				}
-				if state.Pending != nil && state.Pending.Ref.SubscriptionID == sub.ID {
-					state.Pending.Ref.SubscriptionID = "default"
-				}
-				continue
-			}
-			subs = append(subs, sub)
-		}
-		if position >= 0 {
-			if index := slices.IndexFunc(subs, func(sub Subscription) bool { return sub.ID == "default" }); index >= 0 {
-				for _, node := range directNodes {
-					if !slices.ContainsFunc(subs[index].Nodes, func(n domain.Node) bool { return n.ID == node.ID }) {
-						subs[index].Nodes = append(subs[index].Nodes, node)
-					}
-				}
-			} else {
-				subs = slices.Insert(subs, position, Subscription{ID: "default", Name: "Default", Nodes: directNodes})
-			}
-		}
-		state.Subscriptions = subs
-		uniqueIDs := make(map[string]string)
-		for _, sub := range subs {
-			for _, node := range sub.Nodes {
-				if id, ok := uniqueIDs[node.ID]; ok && id != sub.ID {
-					uniqueIDs[node.ID] = ""
-				} else if !ok {
-					uniqueIDs[node.ID] = sub.ID
-				}
-			}
-		}
-		oldActive, oldLast := state.Active, state.Last
-		for i := range state.Subscriptions {
-			sub := &state.Subscriptions[i]
-			seen := make(map[string]int, len(sub.Nodes))
-			nodes := sub.Nodes[:0]
-			var activeKey, lastKey, pendingKey string
-			for _, node := range sub.Nodes {
-				key := protocols.NodeKey(node)
-				if node.ID == oldActive.NodeID && oldActive.NodeID != "" && (oldActive.SubscriptionID == sub.ID || oldActive.SubscriptionID == "" && uniqueIDs[node.ID] == sub.ID) {
-					activeKey = key
-				}
-				if node.ID == oldLast.NodeID && oldLast.NodeID != "" && (oldLast.SubscriptionID == sub.ID || oldLast.SubscriptionID == "" && uniqueIDs[node.ID] == sub.ID) {
-					lastKey = key
-				}
-				if state.Pending != nil && node.ID == state.Pending.Ref.NodeID && node.ID != "" && (state.Pending.Ref.SubscriptionID == sub.ID || state.Pending.Ref.SubscriptionID == "" && uniqueIDs[node.ID] == sub.ID) {
-					pendingKey = key
-				}
-				if index, ok := seen[key]; ok {
-					if node.ID == oldActive.NodeID && nodes[index].ID != node.ID && activeKey == key {
-						nodes[index] = node
-					}
-					continue
-				}
-				seen[key] = len(nodes)
-				nodes = append(nodes, node)
-			}
-			clear(sub.Nodes[len(nodes):])
-			sub.Nodes = nodes
-			if activeKey != "" {
-				state.Active = domain.NodeRef{SubscriptionID: sub.ID, NodeID: nodes[seen[activeKey]].ID}
-			}
-			if lastKey != "" {
-				state.Last = domain.NodeRef{SubscriptionID: sub.ID, NodeID: nodes[seen[lastKey]].ID}
-			}
-			if pendingKey != "" {
-				state.Pending.Ref = domain.NodeRef{SubscriptionID: sub.ID, NodeID: nodes[seen[pendingKey]].ID}
-			}
+		if state.Subscriptions == nil {
+			state.Subscriptions = []Subscription{}
 		}
 	} else if !os.IsNotExist(stateErr) {
 		return state, stateErr
@@ -175,28 +70,11 @@ func (d Disk) Load() (PersistentState, error) {
 	return state, nil
 }
 
-func (d Disk) Save(state PersistentState) error {
-	if err := d.SaveState(state); err != nil {
-		return err
-	}
-	return d.SaveConfig(state.Settings)
-}
-
 func (d Disk) SaveState(state PersistentState) error {
 	if state.Subscriptions == nil {
 		state.Subscriptions = []Subscription{}
 	}
-	sf := stateFile{
-		Subscriptions: state.Subscriptions,
-		Active:        state.Active.NodeID,
-		ActiveSub:     state.Active.SubscriptionID,
-		Last:          state.Last.NodeID,
-		LastSub:       state.Last.SubscriptionID,
-		Tun:           state.Tun,
-		Pending:       state.Pending,
-		Collapsed:     state.Collapsed,
-	}
-	stateData, err := json.MarshalIndent(sf, "", "  ")
+	stateData, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -205,6 +83,7 @@ func (d Disk) SaveState(state PersistentState) error {
 }
 
 func (d Disk) SaveConfig(settings domain.Settings) error {
+	settings.Autostart = ""
 	for _, l := range []*[]string{&settings.Direct, &settings.Proxy, &settings.Block} {
 		if *l == nil {
 			*l = []string{}

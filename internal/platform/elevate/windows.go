@@ -13,6 +13,8 @@ import (
 // elevatedArg stops Restore() from re-prompting UAC on every startup
 const elevatedArg = "--elevated"
 
+func Executable(source, _ string) string { return source }
+
 func Needed(err error) bool {
 	if err == nil || windows.GetCurrentProcessToken().IsElevated() {
 		return false

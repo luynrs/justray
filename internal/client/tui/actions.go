@@ -9,32 +9,25 @@ import (
 	"github.com/luynrs/justray/internal/ipc"
 )
 
-func (m Model) activate() (tea.Model, tea.Cmd) {
-	r, ok := m.at()
-	if !ok {
-		return m, nil
-	}
+func (m Model) activate(r tree.Row) (tea.Model, tea.Cmd) {
 	if r.Kind == tree.Header {
-		id := r.Sub.ID
-		target := !m.collapsed[id]
-		m.collapsed[id] = target
-		m.clamp()
+		id := r.Sub.SubscriptionID
 		if m.client == nil {
 			return m, nil
 		}
-		return m, actionCmd("collapse", nil, func() error { return m.client.SetCollapsed(id, target) })
+		return m, m.actionCmd(false, nil, func() error { return m.client.SetCollapsed(m.watch, id, nil) })
 	}
 	if m.busy {
 		return m, nil
 	}
 
 	m.busy = true
-	act := m.client.Disconnect
+	act := func() error { return m.client.Disconnect(m.watch) }
 	if !m.connected() || m.snapshot.Status.NodeRef != r.Node.Ref() {
 		ref := r.Node.Ref()
-		act = func() error { return m.client.Connect(ref, nil) }
+		act = func() error { return m.client.Connect(m.watch, ref, nil) }
 	}
-	return m, actionCmd("connection", m.start, act)
+	return m, m.actionCmd(true, m.start, act)
 }
 
 func (m Model) collapse() (tea.Model, tea.Cmd) {
@@ -42,25 +35,21 @@ func (m Model) collapse() (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	id := r.Sub.ID
+	id := r.Sub.SubscriptionID
 	var cmd tea.Cmd
-	if !m.collapsed[id] {
-		m.collapsed[id] = true
-		if m.client != nil {
-			cmd = actionCmd("collapse", nil, func() error { return m.client.SetCollapsed(id, true) })
-		}
+	if m.client != nil {
+		cmd = m.actionCmd(false, nil, func() error { return m.client.SetCollapsed(m.watch, id, new(true)) })
 	}
 	if r.Kind == tree.Node {
 		m.toHeader(id)
 	}
-	m.clamp()
 	return m, cmd
 }
 
 func (m *Model) toHeader(id string) {
 	rows := m.rows()
 	for i, idx := range tree.Selectable(rows) {
-		if rows[idx].Kind == tree.Header && rows[idx].Sub.ID == id {
+		if rows[idx].Kind == tree.Header && rows[idx].Sub.SubscriptionID == id {
 			m.cursor = i
 			return
 		}
@@ -72,15 +61,11 @@ func (m Model) expand() (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	id := r.Sub.ID
+	id := r.Sub.SubscriptionID
 	var cmd tea.Cmd
-	if m.collapsed[id] {
-		m.collapsed[id] = false
-		if m.client != nil {
-			cmd = actionCmd("collapse", nil, func() error { return m.client.SetCollapsed(id, false) })
-		}
+	if m.client != nil {
+		cmd = m.actionCmd(false, nil, func() error { return m.client.SetCollapsed(m.watch, id, new(false)) })
 	}
-	m.clamp()
 	return m, cmd
 }
 
@@ -93,13 +78,13 @@ func (m Model) probe() (tea.Model, tea.Cmd) {
 		if r.Node.Probing {
 			return m, nil
 		}
-		return m, actionCmd("probe", m.start, func() error { return m.client.Probe(r.Node.Sub, r.Node.ID) })
+		return m, m.actionCmd(false, m.start, func() error { return m.client.Probe(m.watch, r.Node.SubscriptionID, r.Node.NodeID) })
 	}
-	return m, actionCmd("probe", m.start, func() error { return m.client.Probe(r.Sub.ID, "") })
+	return m, m.actionCmd(false, m.start, func() error { return m.client.Probe(m.watch, r.Sub.SubscriptionID, "") })
 }
 
 func (m Model) probeAll() (tea.Model, tea.Cmd) {
-	return m, actionCmd("probe", m.start, func() error { return m.client.Probe("", "") })
+	return m, m.actionCmd(false, m.start, func() error { return m.client.Probe(m.watch, "", "") })
 }
 
 func (m Model) refresh() (tea.Model, tea.Cmd) {
@@ -107,15 +92,15 @@ func (m Model) refresh() (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	id := r.Sub.ID
+	id := r.Sub.SubscriptionID
 	if !r.Sub.Refreshable {
 		return m, nil
 	}
-	return m, actionCmd("refresh", m.start, func() error { return m.client.Refresh(id) })
+	return m, m.actionCmd(false, m.start, func() error { return m.client.RefreshSubscription(m.watch, id) })
 }
 
 func (m Model) refreshAll() (tea.Model, tea.Cmd) {
-	return m, actionCmd("refresh", m.start, m.client.RefreshAll)
+	return m, m.actionCmd(false, m.start, func() error { return m.client.RefreshSubscriptions(m.watch) })
 }
 
 func (m Model) moveSub(dir int) (tea.Model, tea.Cmd) {
@@ -123,23 +108,19 @@ func (m Model) moveSub(dir int) (tea.Model, tea.Cmd) {
 	if !ok || r.Kind != tree.Header {
 		return m, nil
 	}
-	id := r.Sub.ID
-	i := slices.IndexFunc(m.snapshot.Subscriptions, func(sub ipc.Sub) bool { return sub.ID == id })
+	id := r.Sub.SubscriptionID
+	i := slices.IndexFunc(m.snapshot.Subscriptions, func(sub ipc.Subscription) bool { return sub.SubscriptionID == id })
 	j := i + dir
 	if i < 0 || j < 0 || j >= len(m.snapshot.Subscriptions) {
 		return m, nil
 	}
-	return m, actionCmd("mutation", m.start, func() error { return m.client.MoveSub(id, dir) })
+	return m, m.actionCmd(false, m.start, func() error { return m.client.MoveSubscription(m.watch, id, dir) })
 }
 
 func (m Model) setTun(enable bool) (tea.Model, tea.Cmd) {
 	if m.busy {
 		return m, nil
 	}
-	op := "mode"
-	if m.connected() {
-		m.busy = true
-		op = "connection"
-	}
-	return m, actionCmd(op, m.start, func() error { return m.client.SetTun(enable) })
+	m.busy = m.connected()
+	return m, m.actionCmd(m.busy, m.start, func() error { return m.client.SetTun(m.watch, enable) })
 }

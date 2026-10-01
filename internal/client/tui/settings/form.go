@@ -32,7 +32,7 @@ func (s *Settings) Hints() [][2]string {
 	switch {
 	case ok && len(f.enum) > 0:
 		return [][2]string{{move, "Move"}, {style.Fold(), "Cycle"}, {enter, "Choose"}, {tab, "Tab"}, out}
-	case ok && f.remove != nil:
+	case ok && f.removable():
 		return [][2]string{
 			{move, "Move"}, {tab, "Tab"}, {enter, "Edit"}, {"d", "Remove"}, out,
 		}
@@ -57,7 +57,7 @@ func (s *Settings) lines(width, height int) []string {
 	blocks := make([][]string, len(rows))
 	picks := make([][]string, len(rows))
 	for i, f := range rows {
-		blocks[i], picks[i] = s.fieldBlock(f, i, w)
+		blocks[i], picks[i] = s.fieldBlock(f, i)
 	}
 
 	h := max(height, 1)
@@ -108,14 +108,19 @@ func (s *Settings) TabBar(width int) string {
 	for i, t := range tabs {
 		b.WriteString(style.Segment(" "+t.name+" ", i == s.tab))
 	}
-	if lipgloss.Width(b.String()) <= width {
+	s.compactTabs = lipgloss.Width(b.String()) > width
+	if !s.compactTabs {
 		return b.String()
 	}
 	return style.Segment(" "+tabs[s.tab].name+" ", true) + style.Dim.Render(fmt.Sprintf(" %d/%d", s.tab+1, len(tabs)))
 }
 
-func tabAt(x int) (int, bool) {
+func (s *Settings) tabAt(x int) (int, bool) {
 	pos := lipgloss.Width(style.Title.Render("JustRay")+" "+style.Dim.Render(version.String())) + 2
+	if s.compactTabs {
+		width := lipgloss.Width(style.Segment(" "+tabs[s.tab].name+" ", true))
+		return s.tab, x >= pos && x < pos+width
+	}
 	for i, t := range tabs {
 		w := lipgloss.Width(style.Segment(" "+t.name+" ", false))
 		if x >= pos && x < pos+w {
@@ -127,7 +132,7 @@ func tabAt(x int) (int, bool) {
 }
 
 // fieldBlock renders one row, blank line above non-list rows
-func (s *Settings) fieldBlock(f field, i, width int) (lines, choices []string) {
+func (s *Settings) fieldBlock(f field, i int) (lines, choices []string) {
 	selected := i == s.cursor
 
 	bar := "  "
@@ -136,7 +141,7 @@ func (s *Settings) fieldBlock(f field, i, width int) (lines, choices []string) {
 	}
 
 	switch {
-	case f.set == nil:
+	case !f.editable():
 		line := bar + f.name
 		if f.hint != "" {
 			line += " " + style.Dim.Render(f.hint)
@@ -144,7 +149,7 @@ func (s *Settings) fieldBlock(f field, i, width int) (lines, choices []string) {
 		lines, choices = []string{line}, []string{""}
 	case f.bare:
 		var prefix, body string
-		if f.remove != nil {
+		if f.removable() {
 			prefix = style.Sep() + " "
 			body = f.name
 		} else {
@@ -180,7 +185,7 @@ func (s *Settings) valueLines(f field, selected bool, bar string) (lines, choice
 	}
 
 	if len(f.enum) > 0 && selected {
-		cur := f.get(s.cur)
+		cur := f.value(s.cur)
 		for _, opt := range f.enum {
 			line := bar + style.Dim.Render(style.Dot(false)+" "+opt)
 			if opt == cur {
@@ -192,7 +197,7 @@ func (s *Settings) valueLines(f field, selected bool, bar string) (lines, choice
 		return lines, choices
 	}
 
-	v := f.get(s.cur)
+	v := f.value(s.cur)
 	if v == "" {
 		v = cmp.Or(f.hint, "auto")
 	}

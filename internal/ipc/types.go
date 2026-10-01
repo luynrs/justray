@@ -8,57 +8,72 @@ import (
 	"github.com/luynrs/justray/internal/domain"
 )
 
-type Req struct {
-	Method string
-	Args   Args
+type Request struct {
+	Version   string
+	Method    string
+	Arguments Arguments
 }
 
-var ErrElevate = errors.New("granting permissions")
+var ErrElevate = errors.New("elevation required")
+var ErrVersion = errors.New("client and daemon version mismatch")
 
-type Args struct {
-	ID        string
-	Sub       string
-	URL       string
-	Dir       int
-	Tun       bool
-	Mode      *bool
-	Settings  domain.Settings
-	Collapsed bool
+type Arguments struct {
+	NodeID         string
+	SubscriptionID string
+	URL            string
+	Direction      int
+	Tun            *bool
+	Settings       domain.Settings
+	Autostart      bool
+	Collapsed      *bool // nil toggles the current state
 }
 
-type Resp struct {
-	OK     bool
-	Result json.RawMessage
-	Error  string
+type Response struct {
+	Version string
+	Success bool
+	Result  json.RawMessage
+	Error   *Error
 }
 
-type Sub struct {
-	ID          string
-	Name        string
-	Nodes       int
-	UpdatedAt   time.Time
-	Traffic     domain.Traffic
-	Refreshable bool
-	Refreshing  bool
+type Error struct {
+	Type    string
+	Message string
+}
+
+func (failure *Error) Error() string { return failure.Message }
+
+func (failure *Error) Is(target error) bool {
+	return target == ErrElevate && failure.Type == "elevation" || target == ErrVersion && failure.Type == "version_mismatch"
+}
+
+type Subscription struct {
+	SubscriptionID string
+	Name           string
+	NodeCount      int
+	UpdatedAt      time.Time
+	Traffic        Traffic
+	Refreshable    bool
+	Refreshing     bool
+	Warning        string
 }
 
 type Node struct {
-	ID       string
-	Name     string
-	Protocol string
-	Server   string
-	Port     int
-	Sub      string
+	NodeID         string
+	Name           string
+	Protocol       string
+	Server         string
+	Port           int
+	SubscriptionID string
 
 	// false until Probe has run
-	Probed  bool
-	Alive   bool
-	MS      int
-	Probing bool
+	Probed   bool
+	Alive    bool
+	Duration int // milliseconds
+	Probing  bool
 }
 
 func (n Node) Ref() domain.NodeRef {
-	return domain.NodeRef{SubscriptionID: n.Sub, NodeID: n.ID}
+	return domain.NodeRef{SubscriptionID: n.SubscriptionID, NodeID: n.NodeID}
 }
 
 type Status struct {
@@ -79,9 +94,16 @@ func (s Status) Uptime() time.Duration {
 
 type Snapshot struct {
 	Settings      domain.Settings
-	Subscriptions []Sub
+	Subscriptions []Subscription
 	Nodes         []Node
 	Status        Status
 	Selected      domain.NodeRef
 	Collapsed     []string
+}
+
+type Traffic struct {
+	UploadBytes   int64
+	DownloadBytes int64
+	TotalBytes    int64
+	ExpiresAt     time.Time
 }

@@ -23,7 +23,7 @@ func (s *Server) AutoRefresh() {
 		active := map[string]struct{}{}
 		for _, sub := range snapshot.Subscriptions {
 			if sub.Refreshable && time.Since(sub.UpdatedAt) >= every {
-				active[sub.ID] = struct{}{}
+				active[sub.SubscriptionID] = struct{}{}
 			}
 		}
 		for id := range tried {

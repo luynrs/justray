@@ -2,7 +2,6 @@ package protocols
 
 import (
 	"cmp"
-	"fmt"
 
 	"github.com/luynrs/justray/internal/domain"
 )
@@ -14,9 +13,6 @@ func ParseHysteria2(uri string) (domain.Node, error) {
 	}
 	q := u.Query()
 	auth := cmp.Or(rawUser(u), q.Get("auth"), q.Get("password"))
-	if auth == "" {
-		return domain.Node{}, fmt.Errorf("hysteria2: missing auth")
-	}
 	obfsPw := cmp.Or(q.Get("obfs-password"), q.Get("obfs_password"), q.Get("obfs-param"), q.Get("obfsparam"))
 	obfs := q.Get("obfs")
 	if obfs == "" && obfsPw != "" {

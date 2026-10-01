@@ -43,14 +43,14 @@ func (e *Box) Apply(ctx context.Context, spec SessionSpec) error {
 	nodeChanged := e.node.ID != spec.Node.ID
 	tunChanged := spec.Tun != e.tun
 
-	if Rebuilds(e.settings, spec.Settings) || (nodeChanged && tunChanged) {
+	if Rebuilds(e.settings, spec.Settings, spec.Tun) || (nodeChanged && tunChanged) {
 		if err := e.Stop(); err != nil {
 			return err
 		}
 		return e.start(ctx, spec)
 	}
 	if nodeChanged {
-		if err := e.swap(ctx, spec.Node); err != nil {
+		if err := e.swap(spec.Node); err != nil {
 			return err
 		}
 	}
@@ -63,12 +63,11 @@ func (e *Box) Apply(ctx context.Context, spec SessionSpec) error {
 			return err
 		}
 	}
-	e.settings = spec.Settings
 	return nil
 }
 
 func (e *Box) start(ctx context.Context, spec SessionSpec) error {
-	opts, err := Build(ctx, spec.Node, spec.Settings, e.logPath, spec.Tun)
+	opts, err := Build(spec.Node, spec.Settings, e.logPath, spec.Tun)
 	if err != nil {
 		return err
 	}
@@ -108,9 +107,9 @@ func startBox(ctx context.Context, opts option.Options) (*sbox.Box, error) {
 	}
 }
 
-func (e *Box) swap(ctx context.Context, n domain.Node) error {
-	if err := e.apply(ctx, n); err != nil {
-		if rbErr := e.apply(ctx, e.node); rbErr != nil {
+func (e *Box) swap(n domain.Node) error {
+	if err := e.apply(n); err != nil {
+		if rbErr := e.apply(e.node); rbErr != nil {
 			_ = e.Stop()
 			return errors.Join(err, fmt.Errorf("swap rollback failed: %w", rbErr))
 		}
@@ -120,7 +119,7 @@ func (e *Box) swap(ctx context.Context, n domain.Node) error {
 	return nil
 }
 
-func (e *Box) apply(ctx context.Context, n domain.Node) error {
+func (e *Box) apply(n domain.Node) error {
 	ep, obs, err := outbound.New(n, Tag)
 	if err != nil {
 		return err

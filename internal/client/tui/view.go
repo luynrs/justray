@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"cmp"
 	"fmt"
 	"strings"
 
@@ -44,7 +45,7 @@ func (m Model) content() string {
 	case m.dialog != nil:
 		body := m.titleLine() + "\n\n" + m.dialog.View(m.w, max(m.h-topLines-footerLines, 1))
 		status := ""
-		if e := m.dialog.Err(); e != "" {
+		if e := cmp.Or(m.dialog.Err(), m.err); e != "" {
 			errLine, _, _ := strings.Cut(e, "\n")
 			status = style.Err.Render(style.Sanitize(errLine, true))
 		}
@@ -107,15 +108,19 @@ func (m Model) keys() [][2]string {
 	switch {
 	case m.dialog != nil:
 		return m.dialog.Hints()
-	case m.confirm.Sub.ID != "":
+	case m.confirm.Sub.SubscriptionID != "":
 		return [][2]string{{"y", "Delete"}, {"any", "Cancel"}}
 	case m.editor.Focused():
 		return [][2]string{{style.Enter(), "Add"}, {"esc", "Cancel"}}
 	}
-	return [][2]string{
+	keys := [][2]string{
 		{style.Move(), "Move"}, {style.Fold(), "Fold"}, {style.Enter(), "Toggle"}, {"t/T", "Ping"}, {"r/R", "Refresh"},
-		{"m", "Mode"}, {"/", "Filter"}, {"a", "Add"}, {"d", "Delete"}, {"o", "Settings"}, {"q", "Quit"},
+		{"m", "Mode"}, {"/", "Filter"}, {"a", "Add"},
 	}
+	if row, ok := m.at(); ok && row.Removable() {
+		keys = append(keys, [2]string{"d", "Delete"})
+	}
+	return append(keys, [2]string{"o", "Settings"}, [2]string{"q", "Quit"})
 }
 
 func (m Model) hints(maxW int) string {
@@ -151,22 +156,21 @@ func (m Model) footer() string {
 		}
 		status = iconStyle.Render(icon) + " " + style.Sanitize(m.snapshot.Status.NodeName, m.emoji()) + " " + style.Dim.Render(style.Sep()) + " " + style.Uptime(m.snapshot.Status.Uptime())
 	case m.busy:
-		status = style.Pending.Render(m.spin.View()) + " " + style.Dim.Render("connecting")
+		status = style.Pending.Render(icon) + " " + style.Dim.Render("connecting")
 	default:
 		status = style.Dim.Render(icon) + " " + style.Dim.Render("disconnected")
 	}
 	if m.err != "" {
 		errLine, _, _ := strings.Cut(m.err, "\n")
 		status += "   " + style.Err.Render(style.Sanitize(errLine, true))
+	} else if r, ok := m.at(); ok && r.Sub.Warning != "" {
+		warnLine, _, _ := strings.Cut(r.Sub.Warning, "\n")
+		status += "   " + style.Pending.Render(style.Sanitize(warnLine, true))
 	}
 
 	hints := m.hints(m.w)
-	if m.confirm.Sub.ID != "" {
-		name := m.confirm.Sub.Name
-		if m.confirm.Kind == tree.Node && !m.confirm.Sub.Refreshable {
-			name = m.confirm.Node.Name
-		}
-		q := style.Err.Render(style.Sanitize("Delete "+name+"?", true))
+	if m.confirm.Sub.SubscriptionID != "" {
+		q := style.Err.Render(style.Sanitize("Delete "+m.confirm.Node.Name+"?", true))
 		hints = q + "  " + m.hints(max(m.w-lipgloss.Width(q)-2, 0))
 	}
 

@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/url"
 	"strings"
 
@@ -13,23 +12,24 @@ import (
 
 // v2rayn schema
 type vmessLink struct {
-	PS            string     `json:"ps"`
-	Add           string     `json:"add"`
-	Port          flexInt    `json:"port"`
-	ID            string     `json:"id"`
-	AID           flexInt    `json:"aid"`
-	SCY           string     `json:"scy"`
-	Net           string     `json:"net"`
-	Type          string     `json:"type"`
-	Host          string     `json:"host"`
-	Path          string     `json:"path"`
-	TLS           flexString `json:"tls"`
-	SNI           string     `json:"sni"`
-	ALPN          flexString `json:"alpn"`
-	FP            string     `json:"fp"`
-	Insecure      flexString `json:"insecure"`
-	AllowInsecure flexString `json:"allowInsecure"`
-	Extra         string     `json:"extra"`
+	PS            string          `json:"ps"`
+	Add           string          `json:"add"`
+	Port          flexInt         `json:"port"`
+	ID            string          `json:"id"`
+	AID           flexInt         `json:"aid"`
+	SCY           string          `json:"scy"`
+	Net           string          `json:"net"`
+	Type          string          `json:"type"`
+	Mode          string          `json:"mode"`
+	Host          string          `json:"host"`
+	Path          string          `json:"path"`
+	TLS           flexString      `json:"tls"`
+	SNI           string          `json:"sni"`
+	ALPN          flexString      `json:"alpn"`
+	FP            string          `json:"fp"`
+	Insecure      flexString      `json:"insecure"`
+	AllowInsecure flexString      `json:"allowInsecure"`
+	Extra         json.RawMessage `json:"extra"`
 }
 
 // vmess://<base64 json>
@@ -48,17 +48,7 @@ func ParseVMess(uri string) (domain.Node, error) {
 	if err := json.Unmarshal(data, &vm); err != nil {
 		return domain.Node{}, errors.New("invalid vmess json")
 	}
-	if vm.Add == "" || !domain.ValidPort(int(vm.Port)) || vm.ID == "" {
-		return domain.Node{}, fmt.Errorf("vmess: missing add/port/id")
-	}
-
 	net := strings.ToLower(cmp.Or(vm.Net, "tcp"))
-	if net == "splithttp" {
-		net = "xhttp"
-	}
-	if net == "h2" {
-		net = "http"
-	}
 	host0 := strings.TrimSpace(strings.SplitN(vm.Host, ",", 2)[0])
 	n := domain.Node{
 		Name:     cmp.Or(vm.PS, frag, vm.Add),
@@ -80,8 +70,16 @@ func ParseVMess(uri string) (domain.Node, error) {
 	if net == "grpc" {
 		n.Transport.ServiceName = vm.Path // grpc exports reuse "path" as name
 	}
-	if net == "xhttp" {
-		n.Transport.Extra = vm.Extra
+	if net == "xhttp" || net == "splithttp" {
+		n.Transport.Network, n.Transport.Host, n.Transport.Mode = "xhttp", host0, vm.Mode
+		if n.Transport.Mode == "" && vm.Type != "none" {
+			n.Transport.Mode = vm.Type
+		}
+		if len(vm.Extra) > 0 && vm.Extra[0] == '"' {
+			_ = json.Unmarshal(vm.Extra, &n.Transport.Extra)
+		} else {
+			n.Transport.Extra = string(vm.Extra)
+		}
 	}
 	tlsStr := strings.ToLower(string(vm.TLS))
 	if tlsStr == "tls" || tlsStr == "reality" || tlsStr == "xtls" || truthy(tlsStr) {

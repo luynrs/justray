@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -20,7 +22,7 @@ var probeCmd = &cobra.Command{
 }
 
 func (a *app) probe(cmd *cobra.Command, args []string) error {
-	snapshot, err := a.client.Snapshot()
+	snapshot, err := a.client.Snapshot(cmd.Context())
 	if err != nil {
 		return err
 	}
@@ -34,17 +36,17 @@ func (a *app) probe(cmd *cobra.Command, args []string) error {
 		spinnerText = "Probing nodes"
 	} else {
 		key := args[0]
-		sub, subErr := match(key, "subscription", snapshot.Subscriptions, func(s ipc.Sub) (string, string) { return s.ID, s.Name })
+		sub, subErr := match(key, "subscription", snapshot.Subscriptions, func(s ipc.Subscription) (string, string) { return s.SubscriptionID, s.Name })
 		if subErr == nil {
-			subID = sub.ID
+			subID = sub.SubscriptionID
 			spinnerText = "Probing " + a.clean(sub.Name)
 		} else if !errors.Is(subErr, errNotFound) {
 			return subErr
 		} else {
-			node, nodeErr := match(key, "node", snapshot.Nodes, func(n ipc.Node) (string, string) { return n.ID, n.Name })
+			node, nodeErr := match(key, "node", snapshot.Nodes, func(n ipc.Node) (string, string) { return n.NodeID, n.Name })
 			if nodeErr == nil {
-				subID = node.Sub
-				nodeID = node.ID
+				subID = node.SubscriptionID
+				nodeID = node.NodeID
 				spinnerText = "Probing " + a.clean(node.Name)
 			} else if !errors.Is(nodeErr, errNotFound) {
 				return nodeErr
@@ -55,10 +57,10 @@ func (a *app) probe(cmd *cobra.Command, args []string) error {
 	}
 
 	stop := spin(spinnerText)
-	probeErr := a.client.Probe(subID, nodeID)
+	probeErr := a.client.Probe(cmd.Context(), subID, nodeID)
 	stop()
 
-	snap, err := a.client.Snapshot()
+	snap, err := a.client.Snapshot(cmd.Context())
 	if err != nil {
 		return errors.Join(probeErr, err)
 	}
@@ -68,7 +70,7 @@ func (a *app) probe(cmd *cobra.Command, args []string) error {
 
 	if nodeID != "" {
 		n := a.lookupNode(domain.NodeRef{SubscriptionID: subID, NodeID: nodeID}, snap.Nodes)
-		if n.ID == "" {
+		if n.NodeID == "" {
 			return fmt.Errorf("node %q not found", nodeID)
 		}
 		if probeErr == nil {
@@ -78,7 +80,7 @@ func (a *app) probe(cmd *cobra.Command, args []string) error {
 		if n.Probed && !n.Alive {
 			lat = style.Dead.Render("t/o")
 		} else if n.Probed {
-			lat = style.Alive.Render(fmt.Sprintf("%dms", n.MS))
+			lat = style.Alive.Render(fmt.Sprintf("%dms", n.Duration))
 		}
 		fields(append([][2]string{{"Latency", lat}}, a.nodeFields(n)...)...)
 		return probeErr
@@ -87,8 +89,8 @@ func (a *app) probe(cmd *cobra.Command, args []string) error {
 	nodes := snap.Nodes
 	subs := snap.Subscriptions
 	if subID != "" {
-		nodes = slices.DeleteFunc(nodes, func(n ipc.Node) bool { return n.Sub != subID })
-		subs = slices.DeleteFunc(subs, func(s ipc.Sub) bool { return s.ID != subID })
+		nodes = slices.DeleteFunc(nodes, func(n ipc.Node) bool { return n.SubscriptionID != subID })
+		subs = slices.DeleteFunc(subs, func(s ipc.Subscription) bool { return s.SubscriptionID != subID })
 		name := subID
 		if len(subs) > 0 {
 			name = a.clean(subs[0].Name)
@@ -114,10 +116,12 @@ func (a *app) completeProbe(cmd *cobra.Command, args []string, toComplete string
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 	c := a.daemon()
-	if c == nil || c.Ping() != nil {
+	if c == nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	snap, err := c.Snapshot()
+	ctx, cancel := context.WithTimeout(cmd.Context(), time.Second)
+	defer cancel()
+	snap, err := c.Snapshot(ctx)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}

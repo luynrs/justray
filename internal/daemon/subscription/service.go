@@ -36,14 +36,14 @@ func (s *Service) PrepareAdd(ctx context.Context, rawURL string) (store.Subscrip
 
 func check(rawURL string) error {
 	if rawURL == "" {
-		return fmt.Errorf("paste a subscription url or a share link")
+		return fmt.Errorf("subscription URL or share link is required")
 	}
 	if parser.IsLink(rawURL) {
 		return nil
 	}
 	u, err := url.Parse(rawURL)
 	if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
-		return fmt.Errorf("%q is not a url or a share link", rawURL)
+		return fmt.Errorf("%q is not a valid URL or share link", rawURL)
 	}
 	return nil
 }

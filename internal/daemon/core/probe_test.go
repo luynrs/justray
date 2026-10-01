@@ -28,7 +28,7 @@ func probeCore(t *testing.T, n int, probe func(context.Context, []domain.Node, d
 
 func instantProbe(_ context.Context, nodes []domain.Node, _ domain.Settings, _ string, onResult func(string, engine.Result)) error {
 	for _, node := range nodes {
-		onResult(node.ID, engine.Result{Alive: true, MS: 10})
+		onResult(node.ID, engine.Result{Alive: true, Duration: 10})
 	}
 	return nil
 }
@@ -40,7 +40,7 @@ func TestProbeBatch(t *testing.T) {
 	probe := func(_ context.Context, nodes []domain.Node, _ domain.Settings, _ string, onResult func(string, engine.Result)) error {
 		previous := app.snapshot.Load()
 		for _, node := range nodes {
-			onResult(node.ID, engine.Result{Alive: true, MS: 10})
+			onResult(node.ID, engine.Result{Alive: true, Duration: 10})
 			if current := app.snapshot.Load(); current != previous {
 				updates++
 				previous = current
@@ -57,7 +57,7 @@ func TestProbeBatch(t *testing.T) {
 		t.Fatalf("probe published %d intermediate snapshots for a burst of %d results", updates, n)
 	}
 	for _, node := range after.Nodes {
-		if node.Probing || !node.Probed || !node.Alive || node.MS != 10 {
+		if node.Probing || !node.Probed || !node.Alive || node.Duration != 10 {
 			t.Fatalf("incomplete final result: %+v", node)
 		}
 	}
@@ -78,7 +78,7 @@ func TestProbeCanceled(t *testing.T) {
 
 func TestProbeProgress(t *testing.T) {
 	probe := func(ctx context.Context, nodes []domain.Node, _ domain.Settings, _ string, onResult func(string, engine.Result)) error {
-		onResult(nodes[0].ID, engine.Result{Alive: true, MS: 10})
+		onResult(nodes[0].ID, engine.Result{Alive: true, Duration: 10})
 		<-ctx.Done()
 		return ctx.Err()
 	}

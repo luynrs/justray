@@ -70,13 +70,6 @@ func (s *Service) Restore(n domain.Node, ref domain.NodeRef, settings domain.Set
 	}
 }
 
-func (s *Service) ForgetIfRemoved(subID string) error {
-	if s.Status().NodeRef.SubscriptionID != subID {
-		return nil
-	}
-	return s.Disconnect(context.Background())
-}
-
 func (s *Service) Probe(ctx context.Context, nodes []domain.Node, settings domain.Settings, onResult func(string, engine.Result)) error {
 	return s.probeAll(ctx, nodes, settings, ipc.EngineLog(s.dir), onResult)
 }
@@ -98,12 +91,7 @@ func (s *Service) Shutdown() {
 
 func (s *Service) Status() ipc.Status {
 	if st := s.status.Load(); st != nil {
-		out := *st
-		if out.Connected && !out.StartedAt.IsZero() && out.StartedAt.After(time.Now()) {
-			out.StartedAt = time.Now().Add(-max(time.Since(st.StartedAt), 0))
-			s.status.Store(&out)
-		}
-		return out
+		return *st
 	}
 	return ipc.Status{}
 }
@@ -113,7 +101,7 @@ func (s *Service) apply(ctx context.Context, n domain.Node, ref domain.NodeRef, 
 		return err
 	}
 	if n.TLS != nil && n.TLS.Insecure {
-		return errors.New("insecure TLS node is not allowed")
+		return errors.New("insecure TLS is not supported")
 	}
 
 	previous := s.Status()
@@ -141,7 +129,7 @@ func (s *Service) apply(ctx context.Context, n domain.Node, ref domain.NodeRef, 
 		return err
 	}
 
-	if resetStarted || started.IsZero() || started.After(time.Now()) {
+	if resetStarted || started.IsZero() {
 		started = time.Now()
 	}
 	s.eng = eng

@@ -41,7 +41,7 @@ func TestRestoreFallback(t *testing.T) {
 	}
 }
 
-func TestStatusDuringEngineOperations(t *testing.T) {
+func TestStatusOperations(t *testing.T) {
 	fake := &fakeEngine{}
 	service := testService(t, nil)
 	service.newEngine = func(context.Context, string) engine.Engine { return fake }

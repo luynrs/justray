@@ -155,11 +155,23 @@ try {
 
 	New-Item -ItemType Directory -Force -Path $dir | Out-Null
 
-	$restart = (Get-Process justrayd -ErrorAction SilentlyContinue) -ne $null
-	if (Test-Path "$dir\justray.exe") {
-		try { & "$dir\justray.exe" stop *>$null } catch {}
+	$daemonPath = [IO.Path]::GetFullPath((Join-Path $dir "justrayd.exe"))
+	$running = @(Get-CimInstance Win32_Process -Filter "Name = 'justrayd.exe'" | Where-Object {
+		if (-not $_.ExecutablePath) {
+			throw "Cannot determine justrayd's location. Stop it before updating."
+		}
+		$_.ExecutablePath -eq $daemonPath
+	} | ForEach-Object {
+		Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue
+	})
+	$restart = $running.Count -gt 0
+	if ($restart) {
+		if (Test-Path "$dir\justray.exe") {
+			try { & "$dir\justray.exe" stop *>$null } catch {}
+		}
+		$running | Wait-Process -Timeout 5 -ErrorAction SilentlyContinue
+		$running | Stop-Process -Force -ErrorAction SilentlyContinue
 	}
-	Stop-Process -Name justrayd, justray, jray -ErrorAction SilentlyContinue
 
 	# Windows allows renaming running binaries away, but forbids overwriting them in place
 	Get-ChildItem $dir -Filter *.old* -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue

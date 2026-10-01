@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 
 	"github.com/spf13/cobra"
+
+	"github.com/luynrs/justray/internal/client/tui/style"
 )
 
 var statusCmd = &cobra.Command{
@@ -18,10 +20,12 @@ func init() {
 }
 
 func (a *app) status(cmd *cobra.Command, args []string) error {
-	snapshot, err := a.daemon().Snapshot()
+	snapshot, err := a.daemon().Snapshot(cmd.Context())
 	if err != nil {
 		return err
 	}
+	a.emoji = snapshot.Settings.Emoji == "on"
+	style.TTY = style.DetectTTY(snapshot.Settings.ForceTTY)
 	st := snapshot.Status
 
 	if jsonOut, _ := cmd.Flags().GetBool("json"); jsonOut {
@@ -45,7 +49,7 @@ func (a *app) status(cmd *cobra.Command, args []string) error {
 			if !st.Tun && st.Port > 0 {
 				out.ProxyPort = st.Port
 			}
-		} else if n := a.lookupNode(snapshot.Selected, snapshot.Nodes); n.ID != "" {
+		} else if n := a.lookupNode(snapshot.Selected, snapshot.Nodes); n.NodeID != "" {
 			out.LastNode = a.clean(n.Name)
 		}
 		enc := json.NewEncoder(cmd.OutOrStdout())
@@ -65,10 +69,10 @@ func (a *app) status(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	n := a.lookupNode(ref, snapshot.Nodes)
-	if n.ID == "" {
+	if n.NodeID == "" {
 		return nil
 	}
-	last := [][2]string{{"Last node", a.nodeName(n.Name, n.ID)}}
+	last := [][2]string{{"Last node", a.nodeName(n.Name, n.NodeID)}}
 	fields(append(last, a.nodeFields(n)...)...)
 	return nil
 }

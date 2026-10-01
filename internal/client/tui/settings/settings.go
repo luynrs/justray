@@ -16,13 +16,14 @@ import (
 )
 
 type field struct {
-	name   string
-	bare   bool   // the row is its own value, like a routing rule
-	hint   string // the editor placeholder, and the value shown while unset
-	get    func(domain.Settings) string
-	set    func(*domain.Settings, string) error
-	enum   []string
-	remove func(*domain.Settings)
+	name  string
+	bare  bool   // the row is its own value, like a routing rule
+	hint  string // the editor placeholder, and the value shown while unset
+	get   func(domain.Settings) string
+	set   func(*domain.Settings, string) error
+	enum  []string
+	list  *list
+	index int
 }
 
 type tab struct {
@@ -182,17 +183,18 @@ func setInt(at func(*domain.Settings) *int, def int) func(*domain.Settings, stri
 }
 
 type Settings struct {
-	top     int
-	hits    map[int]hit
-	tab     int
-	cursor  int
-	scroll  int
-	abandon bool
-	input   textinput.Model
-	cur     domain.Settings
-	orig    domain.Settings
-	err     string
-	wheel   time.Time
+	top         int
+	hits        map[int]hit
+	tab         int
+	cursor      int
+	scroll      int
+	abandon     bool
+	input       textinput.Model
+	cur         domain.Settings
+	orig        domain.Settings
+	err         string
+	wheel       time.Time
+	compactTabs bool
 }
 
 func New(s domain.Settings, top int) *Settings {
@@ -233,12 +235,11 @@ func (s *Settings) Update(msg tea.Msg) (closed bool, cmd tea.Cmd) {
 		return s.key(msg)
 	case tea.MouseMsg:
 		return false, s.mouse(msg)
-	case tea.PasteMsg:
-		if s.input.Focused() {
-			var cmd tea.Cmd
-			s.input, cmd = s.input.Update(msg)
-			return false, cmd
-		}
+	}
+	if s.input.Focused() {
+		var cmd tea.Cmd
+		s.input, cmd = s.input.Update(msg)
+		return false, cmd
 	}
 	return false, nil
 }
@@ -281,8 +282,8 @@ func (s *Settings) key(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 		return false, s.activate()
 
 	case "d":
-		if f, ok := s.at(); ok && f.remove != nil {
-			f.remove(&s.cur)
+		if f, ok := s.at(); ok && f.removable() {
+			_ = f.apply(&s.cur, "")
 			s.move(0)
 		}
 	}
@@ -302,7 +303,7 @@ func (s *Settings) mouse(msg tea.MouseMsg) tea.Cmd {
 			return nil
 		}
 		if mouse.Y == 0 {
-			if i, ok := tabAt(mouse.X); ok {
+			if i, ok := s.tabAt(mouse.X); ok {
 				s.switchTab(i - s.tab)
 			}
 			return nil
@@ -320,7 +321,7 @@ func (s *Settings) mouse(msg tea.MouseMsg) tea.Cmd {
 			}
 			return nil
 		}
-		if rows := s.rows(); h.row < len(rows) && rows[h.row].set == nil {
+		if rows := s.rows(); h.row < len(rows) && !rows[h.row].editable() {
 			return nil
 		}
 		if h.row == s.cursor {
@@ -346,7 +347,7 @@ func (s *Settings) mouse(msg tea.MouseMsg) tea.Cmd {
 
 func (s *Settings) activate() tea.Cmd {
 	f, ok := s.at()
-	if !ok || f.set == nil {
+	if !ok || !f.editable() {
 		return nil
 	}
 	if len(f.enum) > 0 {
@@ -356,7 +357,7 @@ func (s *Settings) activate() tea.Cmd {
 
 	s.err = ""
 	s.input.Placeholder = f.hint
-	s.input.SetValue(f.get(s.cur))
+	s.input.SetValue(f.value(s.cur))
 	s.input.CursorEnd()
 	return s.input.Focus()
 }
@@ -374,7 +375,7 @@ func (s *Settings) editKey(msg tea.KeyPressMsg) tea.Cmd {
 			s.input.Blur()
 			return nil
 		}
-		if err := f.set(&s.cur, s.input.Value()); err != nil {
+		if err := f.apply(&s.cur, s.input.Value()); err != nil {
 			s.err = err.Error()
 			return nil
 		}
@@ -395,94 +396,86 @@ func (s *Settings) step(delta int) {
 	if !ok || len(f.enum) == 0 {
 		return
 	}
-	i := (slices.Index(f.enum, f.get(s.cur)) + delta + len(f.enum)) % len(f.enum)
+	i := (slices.Index(f.enum, f.value(s.cur)) + delta + len(f.enum)) % len(f.enum)
 	s.assign(f, f.enum[i])
 }
 
 func (s *Settings) assign(f field, v string) {
 	s.err = ""
-	if f.set == nil {
+	if !f.editable() {
 		return
 	}
-	if err := f.set(&s.cur, v); err != nil {
+	if err := f.apply(&s.cur, v); err != nil {
 		s.err = err.Error()
 	}
 }
 
 func (s *Settings) rows() []field {
-	t := tabs[s.tab]
+	t := &tabs[s.tab]
 	out := slices.Clone(t.fields)
-	for _, l := range t.lists {
-		out = append(out, s.listRows(l)...)
+	for i := range t.lists {
+		out = append(out, s.listRows(&t.lists[i])...)
 	}
 	return out
 }
 
 // listRows is a heading, its entries and an add row
-func (s *Settings) listRows(l list) []field {
+func (s *Settings) listRows(l *list) []field {
 	entries := *l.at(&s.cur)
 	out := make([]field, 0, len(entries)+2)
 	out = append(out, field{name: l.title, hint: fmt.Sprintf("(%d)", len(entries))})
-
-	for i := range entries {
-		set := func(v *domain.Settings, in string) error {
-			at := l.at(v)
-			if in = strings.TrimSpace(in); in == "" {
-				*at = slices.Delete(*at, i, i+1)
-				return nil
-			}
-			rule, err := domain.ParseRule(in)
-			if err != nil {
-				return err
-			}
-			if err := conflict(v, at, rule); err != nil {
-				return err
-			}
-			(*at)[i] = rule
-			return nil
-		}
-		out = append(out, field{
-			name:   entries[i],
-			bare:   true,
-			hint:   "delete?",
-			get:    func(v domain.Settings) string { return (*l.at(&v))[i] },
-			set:    set,
-			remove: func(v *domain.Settings) { _ = set(v, "") }, // empty input never errors
-		})
+	for i, entry := range entries {
+		out = append(out, field{name: entry, bare: true, hint: "delete?", list: l, index: i})
 	}
+	return append(out, field{name: "+ add rule", bare: true, hint: "domain, ip, app or path", list: l, index: -1})
+}
 
-	return append(out, field{
-		name: "+ add rule",
-		bare: true,
-		hint: "domain, ip, app or path",
-		get:  func(domain.Settings) string { return "" },
-		set: func(v *domain.Settings, in string) error {
-			if in = strings.TrimSpace(in); in == "" {
-				return nil
-			}
-			rule, err := domain.ParseRule(in)
-			if err != nil {
-				return err
-			}
-			at := l.at(v)
-			if err := conflict(v, at, rule); err != nil {
-				return err
-			}
-			if slices.Contains(*at, rule) {
-				return nil
-			}
-			*at = append(*at, rule)
-			return nil
-		},
-	})
+func (f field) editable() bool { return f.set != nil || f.list != nil }
+
+func (f field) removable() bool { return f.list != nil && f.index >= 0 }
+
+func (f field) value(s domain.Settings) string {
+	if f.list != nil {
+		if f.index >= 0 {
+			return (*f.list.at(&s))[f.index]
+		}
+		return ""
+	}
+	return f.get(s)
+}
+
+func (f field) apply(s *domain.Settings, in string) error {
+	if f.list == nil {
+		return f.set(s, in)
+	}
+	at := f.list.at(s)
+	if in = strings.TrimSpace(in); in == "" {
+		if f.index >= 0 {
+			*at = slices.Delete(*at, f.index, f.index+1)
+		}
+		return nil
+	}
+	rule, err := domain.ParseRule(in)
+	if err != nil {
+		return err
+	}
+	if err := conflict(s, at, rule); err != nil {
+		return err
+	}
+	if f.index >= 0 {
+		(*at)[f.index] = rule
+	} else if !slices.Contains(*at, rule) {
+		*at = append(*at, rule)
+	}
+	return nil
 }
 
 func conflict(s *domain.Settings, target *[]string, rule string) error {
 	if target == &s.Direct && slices.Contains(s.Proxy, rule) {
-		return fmt.Errorf("%q already in proxy", rule)
+		return fmt.Errorf("rule %q already exists in proxy", rule)
 	}
 	if target == &s.Proxy && slices.Contains(s.Direct, rule) {
-		return fmt.Errorf("%q already in direct", rule)
+		return fmt.Errorf("rule %q already exists in direct", rule)
 	}
 	return nil
 }
@@ -502,17 +495,12 @@ func (s *Settings) dirty() bool {
 // move skips list headings
 func (s *Settings) move(delta int) {
 	rows := s.rows()
-	if len(rows) == 0 {
-		s.cursor = 0
-		return
-	}
-
 	i := min(max(s.cursor+delta, 0), len(rows)-1)
 	step := max(min(delta, 1), -1)
 	if step == 0 {
 		step = 1
 	}
-	for n := 0; n < len(rows) && rows[i].set == nil; n++ {
+	for n := 0; n < len(rows) && !rows[i].editable(); n++ {
 		next := i + step
 		if next < 0 || next >= len(rows) {
 			step = -step
@@ -543,7 +531,7 @@ func parseHours(in string) (int, error) {
 	}
 	v, err := strconv.Atoi(in)
 	if err != nil || v < 0 {
-		return 0, fmt.Errorf("%q is not a number of hours", in)
+		return 0, fmt.Errorf("expected integer hours, got %q", in)
 	}
 	return v, nil
 }

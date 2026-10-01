@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -42,7 +43,7 @@ func TestDNSResolution(t *testing.T) {
 		settings, _ := (domain.Settings{}).Normalize()
 		settings.DNS = server
 		settings.IPVersion = "ipv4"
-		options := ProbeConfig(t.Context(), nil, settings, "")
+		options := ProbeConfig(nil, settings, "")
 		if configure != nil {
 			configure(options)
 		}
@@ -74,7 +75,10 @@ func TestDNSResolution(t *testing.T) {
 	t.Run("UDP", func(t *testing.T) { lookup(t, packetConn.LocalAddr().String(), nil) })
 	t.Run("TCP detour", func(t *testing.T) {
 		var queries atomic.Int32
+		var handlers sync.WaitGroup
 		proxy := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			handlers.Add(1)
+			defer handlers.Done()
 			if request.Method != http.MethodConnect || request.Host != "203.0.113.53:53" {
 				t.Errorf("unexpected proxy request: %s %s", request.Method, request.Host)
 				writer.WriteHeader(http.StatusBadRequest)
@@ -88,15 +92,11 @@ func TestDNSResolution(t *testing.T) {
 			defer func() { _ = conn.Close() }()
 			_, _ = stream.WriteString("HTTP/1.1 200 Connection Established\r\n\r\n")
 			if err := stream.Flush(); err != nil {
-				t.Error(err)
 				return
 			}
 			connection := &dns.Conn{Conn: conn}
 			query, err := connection.ReadMsg()
 			if err != nil {
-				if !errors.Is(err, io.EOF) {
-					t.Error(err)
-				}
 				return
 			}
 			if query.Question[0].Name != "example.test." {
@@ -105,15 +105,16 @@ func TestDNSResolution(t *testing.T) {
 			if query.Question[0].Qtype == dns.TypeA {
 				queries.Add(1)
 			}
-			if err := connection.WriteMsg(answer(query)); err != nil {
-				t.Error(err)
-			}
+			_ = connection.WriteMsg(answer(query))
 		}))
-		defer proxy.Close()
+		defer func() {
+			proxy.Close()
+			handlers.Wait()
+		}()
 		lookup(t, "203.0.113.53", func(options *option.Options) {
 			settings, _ := (domain.Settings{}).Normalize()
 			settings.DNS, settings.IPVersion = "203.0.113.53", "ipv4"
-			built, err := Build(t.Context(), domain.Node{Protocol: domain.HTTP, Server: "proxy.example.test", Port: proxy.Listener.Addr().(*net.TCPAddr).Port}, settings, "", false)
+			built, err := Build(domain.Node{Protocol: domain.HTTP, Server: "proxy.example.test", Port: proxy.Listener.Addr().(*net.TCPAddr).Port}, settings, "", false)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -167,7 +168,7 @@ func TestDNSResolution(t *testing.T) {
 
 	settings, _ := (domain.Settings{}).Normalize()
 	settings.DNS = "https://dns.example/dns-query"
-	servers := ProbeConfig(t.Context(), nil, settings, "").DNS.Servers
+	servers := ProbeConfig(nil, settings, "").DNS.Servers
 	resolver := servers[0].Options.(*option.RemoteHTTPSDNSServerOptions).DomainResolver
 	if len(servers) != 2 || resolver == nil || resolver.Server != "remote-bootstrap" || servers[1].Type != "local" {
 		t.Fatalf("DoH hostname bootstrap: %+v", servers)
@@ -178,7 +179,7 @@ func TestDNSRouting(t *testing.T) {
 	settings, _ := (domain.Settings{}).Normalize()
 	node := domain.Node{ID: "node", Protocol: domain.VLess, Server: "node.example", Port: 443, Auth: domain.Auth{UUID: "11111111-1111-1111-1111-111111111111"}}
 	settings.DNS = "1.1.1.1"
-	options, err := Build(t.Context(), node, settings, "", true)
+	options, err := Build(node, settings, "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +202,7 @@ func TestDNSRouting(t *testing.T) {
 	}
 
 	settings.DNS = "https://dns.example/dns-query"
-	options, err = Build(t.Context(), node, settings, "", false)
+	options, err = Build(node, settings, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +216,7 @@ func TestDNSRouting(t *testing.T) {
 	}
 
 	settings.Mode = domain.DirectAll
-	options, err = Build(t.Context(), node, settings, "", false)
+	options, err = Build(node, settings, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}

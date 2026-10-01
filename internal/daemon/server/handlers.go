@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -10,37 +11,55 @@ import (
 
 	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/ipc"
+	"github.com/luynrs/justray/internal/version"
 )
 
-func (s *Server) handle(conn net.Conn, semHeld *bool) {
-	defer func() { _ = conn.Close() }()
-	_ = conn.SetReadDeadline(time.Now().Add(ipc.IdleTimeout))
+func (s *Server) handle(conn net.Conn) {
+	semHeld := true
+	defer func() {
+		_ = conn.Close()
+		s.mu.Lock()
+		delete(s.active, conn)
+		s.mu.Unlock()
+		if semHeld {
+			<-s.sem
+		}
+	}()
+	_ = conn.SetDeadline(time.Now().Add(ipc.IdleTimeout))
 
-	var req ipc.Req
+	var req ipc.Request
 	if err := json.NewDecoder(io.LimitReader(conn, 1<<20)).Decode(&req); err != nil { // max req size
-		reply(conn, nil, fmt.Errorf("bad request: %w", err))
+		if !errors.Is(err, io.EOF) {
+			_ = reply(conn, nil, fmt.Errorf("bad request: %w", err))
+		}
+		return
+	}
+	if req.Method == "Ping" {
+		_ = reply(conn, "pong", nil)
+		return
+	}
+	if req.Method == "Shutdown" {
+		_ = reply(conn, nil, nil)
+		select {
+		case s.stop <- struct{}{}:
+		default:
+		}
+		return
+	}
+	if req.Version != version.Version {
+		_ = reply(conn, nil, ipc.ErrVersion)
 		return
 	}
 	if req.Method == "Watch" {
 		select {
 		case s.watchSem <- struct{}{}:
 			defer func() { <-s.watchSem }()
-		case <-s.ctx.Done():
+		default:
 			return
 		}
-		if semHeld != nil && *semHeld {
-			<-s.sem
-			*semHeld = false
-		}
+		<-s.sem
+		semHeld = false
 		s.watch(conn)
-		return
-	}
-	if req.Method == "Shutdown" {
-		reply(conn, nil, nil)
-		select {
-		case s.stop <- struct{}{}:
-		default:
-		}
 		return
 	}
 	_ = conn.SetDeadline(time.Time{})
@@ -52,28 +71,26 @@ func (s *Server) handle(conn net.Conn, semHeld *bool) {
 	}()
 	result, err := s.dispatch(ctx, req)
 	_ = conn.SetDeadline(time.Now().Add(ipc.IdleTimeout))
-	reply(conn, result, err)
+	_ = reply(conn, result, err)
 }
 
-func (s *Server) dispatch(ctx context.Context, req ipc.Req) (any, error) {
-	a := req.Args
+func (s *Server) dispatch(ctx context.Context, req ipc.Request) (any, error) {
+	a := req.Arguments
 	switch req.Method {
-	case "Ping":
-		return "pong", nil
 	case "Snapshot":
 		return s.core.Snapshot(), nil
-	case "AddSub":
+	case "AddSubscription":
 		return s.core.AddSubscription(ctx, a.URL)
-	case "RemoveSub":
-		return nil, s.core.RemoveSubscription(a.ID)
+	case "RemoveSubscription":
+		return nil, s.core.RemoveSubscription(ctx, a.SubscriptionID)
 	case "RemoveNode":
-		return nil, s.core.RemoveNode(domain.NodeRef{SubscriptionID: a.Sub, NodeID: a.ID})
-	case "MoveSub":
-		return nil, s.core.MoveSubscription(a.ID, a.Dir)
-	case "RefreshAll", "Refresh":
+		return nil, s.core.RemoveNode(ctx, domain.NodeRef{SubscriptionID: a.SubscriptionID, NodeID: a.NodeID})
+	case "MoveSubscription":
+		return nil, s.core.MoveSubscription(ctx, a.SubscriptionID, a.Direction)
+	case "RefreshSubscriptions", "RefreshSubscription":
 		var ids []string
-		if req.Method == "Refresh" {
-			ids = []string{a.ID}
+		if req.Method == "RefreshSubscription" {
+			ids = []string{a.SubscriptionID}
 		}
 		err := s.core.RefreshSubscriptions(ctx, ids...)
 		if err != nil {
@@ -81,17 +98,22 @@ func (s *Server) dispatch(ctx context.Context, req ipc.Req) (any, error) {
 		}
 		return nil, err
 	case "Probe":
-		return nil, s.core.Probe(ctx, a.Sub, a.ID)
+		return nil, s.core.Probe(ctx, a.SubscriptionID, a.NodeID)
 	case "Connect":
-		return nil, s.core.Connect(ctx, a.ID, a.Sub, a.Mode)
+		return nil, s.core.Connect(ctx, a.NodeID, a.SubscriptionID, a.Tun)
 	case "Disconnect":
 		return nil, s.core.Disconnect(ctx)
 	case "SetTun":
-		return nil, s.core.SetTun(ctx, a.Tun)
+		if a.Tun == nil {
+			return nil, errors.New("tun is required")
+		}
+		return nil, s.core.SetTun(ctx, *a.Tun)
 	case "SetSettings":
 		return nil, s.core.SetSettings(ctx, a.Settings)
+	case "SetAutostart":
+		return nil, s.core.SetAutostart(ctx, a.Autostart)
 	case "SetCollapsed":
-		return nil, s.core.SetCollapsed(a.ID, a.Collapsed)
+		return nil, s.core.SetCollapsed(ctx, a.SubscriptionID, a.Collapsed)
 	}
 	return nil, fmt.Errorf("unknown method %q", req.Method)
 }
@@ -108,8 +130,7 @@ func (s *Server) watch(conn net.Conn) {
 		close(gone)
 	}()
 
-	enc := json.NewEncoder(conn)
-	if err := enc.Encode(initial); err != nil {
+	if err := reply(conn, initial, nil); err != nil {
 		return
 	}
 	for {
@@ -119,22 +140,27 @@ func (s *Server) watch(conn net.Conn) {
 		case <-gone:
 			return
 		case changed := <-ch:
-			if err := enc.Encode(changed); err != nil {
+			if err := reply(conn, changed, nil); err != nil {
 				return
 			}
 		}
 	}
 }
 
-func reply(conn net.Conn, result any, err error) {
-	resp := ipc.Resp{OK: true}
+func reply(conn net.Conn, result any, err error) error {
+	resp := ipc.Response{Version: version.Version, Success: true}
 	if err == nil {
-		var raw []byte
-		raw, err = json.Marshal(result)
-		resp.Result = raw
+		resp.Result, err = json.Marshal(result)
 	}
 	if err != nil {
-		resp.OK, resp.Error = false, err.Error()
+		resp.Success = false
+		resp.Error = &ipc.Error{Type: "failure", Message: err.Error()}
+		switch {
+		case errors.Is(err, ipc.ErrElevate):
+			resp.Error.Type = "elevation"
+		case errors.Is(err, ipc.ErrVersion):
+			resp.Error.Type = "version_mismatch"
+		}
 	}
-	_ = json.NewEncoder(conn).Encode(resp)
+	return json.NewEncoder(conn).Encode(resp)
 }

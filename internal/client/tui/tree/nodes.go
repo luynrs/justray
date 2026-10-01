@@ -3,8 +3,10 @@ package tree
 import (
 	"cmp"
 	"fmt"
+	"slices"
 
 	"github.com/luynrs/justray/internal/client/tui/style"
+	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/ipc"
 )
 
@@ -18,14 +20,14 @@ func (d Data) Render(r Row, selected bool, width int) string {
 	case Gap:
 		return ""
 	case Meta:
-		return bar + style.Flush("  "+style.Usage(r.Sub.Traffic), subMeta(r.Sub, d.Spinner), width-2)
+		return bar + style.Flush("  "+style.Usage(domain.Traffic(r.Sub.Traffic)), subMeta(r.Sub, d.Spinner), width-2)
 	case Header:
-		return bar + subHeader(r.Sub, d.Collapsed[r.Sub.ID], selected, d.Emoji)
+		return bar + subHeader(r.Sub, slices.Contains(d.Collapsed, r.Sub.SubscriptionID), selected, d.Emoji)
 	}
 	return bar + style.Flush(d.node(r.Node, selected), info(r.Node), width-2)
 }
 
-func subHeader(s ipc.Sub, collapsed, selected, emoji bool) string {
+func subHeader(s ipc.Subscription, collapsed, selected, emoji bool) string {
 	arrow := style.Arrow(collapsed)
 	clean := style.Sanitize(s.Name, emoji)
 	if selected {
@@ -34,7 +36,7 @@ func subHeader(s ipc.Sub, collapsed, selected, emoji bool) string {
 	return arrow + " " + style.Name.Render(clean)
 }
 
-func subMeta(s ipc.Sub, spinner string) string {
+func subMeta(s ipc.Subscription, spinner string) string {
 	age := "never updated"
 	switch {
 	case s.Refreshing:
@@ -43,10 +45,10 @@ func subMeta(s ipc.Sub, spinner string) string {
 		age = "updated " + style.Since(s.UpdatedAt)
 	}
 	plural := "s"
-	if s.Nodes == 1 {
+	if s.NodeCount == 1 {
 		plural = ""
 	}
-	return style.Dim.Render(fmt.Sprintf("%d node%s %s %s", s.Nodes, plural, style.Sep(), age))
+	return style.Dim.Render(fmt.Sprintf("%d node%s %s %s", s.NodeCount, plural, style.Sep(), age))
 }
 
 func (d Data) node(n ipc.Node, selected bool) string {
@@ -70,7 +72,7 @@ func latency(n ipc.Node) string {
 	case n.Probing || !n.Probed:
 		return ""
 	case n.Alive:
-		return fmt.Sprintf("%dms", n.MS)
+		return fmt.Sprintf("%dms", n.Duration)
 	}
 	return "t/o"
 }

@@ -7,7 +7,6 @@ import (
 	"io"
 	"mime"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -16,20 +15,18 @@ import (
 	"github.com/luynrs/justray/internal/parser"
 )
 
-func (s *Service) fetch(ctx context.Context, rawURL string) ([]domain.Node, string, domain.Traffic, error) {
+func (s *Service) fetch(ctx context.Context, rawURL string) ([]domain.Node, string, domain.Traffic, string, error) {
 	var none domain.Traffic
 	if s.device.Get("X-Hwid") == "" {
-		return nil, "", none, fmt.Errorf("device id unavailable")
+		return nil, "", none, "", fmt.Errorf("device id unavailable")
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return nil, "", none, err
+		return nil, "", none, "", err
 	}
 	req.Header = s.device.Clone()
-	if u, err := url.Parse(rawURL); err == nil {
-		req.Header.Set("X-Hwid", hash(s.device.Get("X-Hwid")+u.Hostname()))
-	}
+	req.Header.Set("X-Hwid", hash(s.device.Get("X-Hwid")+req.URL.Hostname()))
 
 	client := http.Client{
 		Timeout: 20 * time.Second,
@@ -38,7 +35,7 @@ func (s *Service) fetch(ctx context.Context, rawURL string) ([]domain.Node, stri
 				return fmt.Errorf("subscription redirect must use http or https")
 			}
 			if via[len(via)-1].URL.Scheme == "https" && r.URL.Scheme == "http" {
-				return fmt.Errorf("subscription redirect must not downgrade to http")
+				return fmt.Errorf("insecure redirect from HTTPS to HTTP")
 			}
 			if len(via) >= 10 {
 				return fmt.Errorf("stopped after 10 redirects")
@@ -47,44 +44,39 @@ func (s *Service) fetch(ctx context.Context, rawURL string) ([]domain.Node, stri
 				for k := range s.device {
 					r.Header.Del(k)
 				}
-				if hwid := s.device.Get("X-Hwid"); hwid != "" {
-					r.Header.Set("X-Hwid", hash(hwid+r.URL.Hostname()))
-				}
+				r.Header.Set("X-Hwid", hash(s.device.Get("X-Hwid")+r.URL.Hostname()))
 			}
 			return nil
 		},
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, "", none, err
+		return nil, "", none, "", err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	switch {
 	case resp.StatusCode != http.StatusOK:
-		return nil, "", none, fmt.Errorf("http %d", resp.StatusCode)
+		return nil, "", none, "", fmt.Errorf("http %d", resp.StatusCode)
 	case resp.Header.Get("X-Hwid-Max-Devices-Reached") == "true":
-		return nil, "", none, fmt.Errorf("device limit reached")
+		return nil, "", none, "", fmt.Errorf("device limit reached")
 	case resp.Header.Get("X-Hwid-Not-Supported") == "true":
-		return nil, "", none, fmt.Errorf("this subscription requires a device id")
+		return nil, "", none, "", fmt.Errorf("subscription requires device ID")
 	}
 
 	const maxBody = 10 << 20
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
 	if err != nil {
-		return nil, "", none, err
+		return nil, "", none, "", err
 	}
 	if len(body) > maxBody {
-		return nil, "", none, fmt.Errorf("subscription response exceeded maximum size (10MB)")
+		return nil, "", none, "", fmt.Errorf("subscription response exceeds 10MB limit")
 	}
-	nodes, err := parser.ParseSubscription(body)
+	nodes, warning, err := parser.ParseSubscription(body)
 	if err != nil {
-		return nil, "", none, err
+		return nil, "", none, "", err
 	}
-	if err := validateNodes(nodes); err != nil {
-		return nil, "", none, err
-	}
-	return nodes, title(resp.Header), usage(resp.Header), nil
+	return nodes, title(resp.Header), usage(resp.Header), warning, nil
 }
 
 // "Subscription-Userinfo: upload=N; download=N; total=N; expire=unixSeconds"
