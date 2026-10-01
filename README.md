@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  A modern VPN/proxy client that lives in your terminal
+  A modern VPN client that lives in your terminal
 </p>
 
 <p align="center">
@@ -81,9 +81,9 @@ Package manager and script installations also provide `jray` as a short alias fo
 > [!NOTE]
 > WinGet provides only `justray` and `justrayd`; the `jray` alias must be added manually
 
-- `jray`: open Terminal UI
+- `jray`: open the TUI
 
-#### Connection Control (CLI)
+#### Connection 
 
 - `jray up <node> [--tun | --proxy]`: start the daemon and connect
 - `jray down`: disconnect
@@ -101,22 +101,22 @@ Package manager and script installations also provide `jray` as a short alias fo
 - `refresh`: refresh subscriptions
 - `list [--json]`: list subscriptions and nodes
 
-#### General Options
+#### Additional
 
 - `-h`, `--help`: show help
 - `-v`, `--version`: show the current version
 
-### Keybinds (TUI)
+### Keybinds
 
-| **Key**      | **Action**                | **Key**       | **Action**             |
-| ------------ | ------------------------- | ------------- | ---------------------- |
-| `↑/↓`, `k/j` | Navigate list             | `shift+↑/↓`   | Reorder subscriptions  |
-| `←/→`, `h/l` | Fold / expand group       | `Enter`       | Toggle group / connect |
-| `t` / `T`    | Ping selected / Ping all  | `r` / `R`     | Refresh selected / all |
-| `m`          | Switch mode (PROXY / TUN) | `/`           | Filter nodes           |
-| `a`          | Add subscription / node   | `d`           | Delete subscription    |
-| `o`          | Settings menu             | `Esc`         | Back / cancel input    |
-| `Tab`        | Switch active panel       | `q`, `Ctrl+C` | Detach / exit TUI      |
+| **Key**      | **Action**              | **Key**       | **Action**             |
+| ------------ | ----------------------- | ------------- | ----------------------- |
+| `↑/↓`, `k/j` | Navigate                | `Shift+↑/↓`   | Reorder subscriptions  |
+| `←/→`, `h/l` | Fold / expand           | `Enter`       | Toggle / connect       |
+| `t` / `T`    | Ping selected / all     | `r` / `R`     | Refresh selected / all |
+| `m`          | Switch mode (PROXY / TUN) | `/`         | Filter nodes            |
+| `a`          | Add subscription / node | `d`           | Delete subscription     |
+| `o`          | Open settings           | `Esc`         | Back / cancel           |
+| `Tab`        | Switch panel            | `q`, `Ctrl+C` | Exit TUI                |
 
 ### License
 [GPL-3.0](LICENSE)
