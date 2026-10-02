@@ -91,7 +91,7 @@ func Execute() error {
 	rootCmd.Use = filepath.Base(os.Args[0]) + " <command>"
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		for c := cmd; c != nil; c = c.Parent() {
-			if c.Name() == "completion" || c.Name() == "help" || c.Name() == "stop" || c.Name() == "version" || c.Name() == "logs" {
+			if c.Name() == cobra.ShellCompRequestCmd || c.Name() == "completion" || c.Name() == "help" || c.Name() == "stop" || c.Name() == "version" || c.Name() == "logs" {
 				return nil
 			}
 		}
@@ -233,7 +233,7 @@ func (a *app) connectDaemon(ctx context.Context, startMissing, restore bool) err
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := spawn(elevate.Executable(bin, dir), dir); err != nil {
+		if err := spawn(bin, dir); err != nil {
 			return fmt.Errorf("start background service: %w", err)
 		}
 		err = wait(ctx, a.client, 10*time.Second)
@@ -286,7 +286,8 @@ func spawn(bin, dir string) error {
 	}
 	defer func() { _ = errLog.Close() }()
 
-	cmd := exec.Command(bin)
+	cmd := exec.Command(elevate.Executable(bin, dir))
+	cmd.Args[0] = bin
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = devNull, devNull, errLog
 	detach.Cmd(cmd)
 	if err := cmd.Start(); err != nil {

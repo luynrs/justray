@@ -58,7 +58,11 @@ func Enable() error {
 		return fmt.Errorf("%s is managed elsewhere", path)
 	}
 
-	bin, err := os.Executable()
+	bin, err := exec.LookPath(os.Args[0])
+	if err != nil && !errors.Is(err, exec.ErrDot) {
+		return err
+	}
+	bin, err = filepath.Abs(bin)
 	if err != nil {
 		return err
 	}
