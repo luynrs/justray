@@ -1,7 +1,6 @@
 #Requires -Version 5.1
 
 $ErrorActionPreference = "Stop"
-$ProgressPreference = "SilentlyContinue"
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 
 $repo = "https://github.com/luynrs/justray"
@@ -13,6 +12,7 @@ $dir = if ($env:JUSTRAY_INSTALL_DIR) {
 }
 
 $isTty = [Environment]::UserInteractive -and -not [Console]::IsOutputRedirected
+$ProgressPreference = if ($isTty -and $PSVersionTable.PSVersion.Major -ge 6) { "Continue" } else { "SilentlyContinue" }
 
 function clear_line() {
 	if ($isTty) {
@@ -72,6 +72,7 @@ function download($uri, $out) {
 			return
 		} catch {
 			if ($i -eq 3) { throw $_ }
+			step "Retrying download ($($i + 1)/3)..."
 			Start-Sleep -Seconds (1 * $i)
 		}
 	}
@@ -110,13 +111,16 @@ try {
 
 	$zip = Join-Path $tmp $archive
 	download "$base/$archive" $zip
+	done "Downloaded archive"
 
+	step "Verifying checksum..."
 	if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash -ne $hash) {
 		throw "Checksum mismatch"
 	}
 
 	done "Verified checksum"
 
+	step "Extracting archive..."
 	$out = Join-Path $tmp "out"
 	Expand-Archive -LiteralPath $zip -DestinationPath $out -Force
 
@@ -132,13 +136,17 @@ try {
 			throw "$dir\$exe is a directory"
 		}
 	}
+	done "Extracted archive"
 
-	step "Installing..."
+	step "Stopping daemon..."
 
 	$restart = (& "$out\justray.exe" stop) -match 'Daemon stopped'
 	if ($LASTEXITCODE) {
 		throw "Failed to stop daemon"
 	}
+	done $(if ($restart) { "Daemon stopped" } else { "Daemon is not running" })
+
+	step "Installing..."
 
 	# Windows allows renaming running binaries away, but forbids overwriting them in place
 	$backup = [guid]::NewGuid().ToString("N")
@@ -184,6 +192,7 @@ finally {
 	Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
 
 	if ($restart -and (Test-Path -LiteralPath "$dir\justrayd.exe")) {
+		Write-Host "• Restarting daemon..."
 		Start-Process "$dir\justrayd.exe" -WindowStyle Hidden
 	}
 }

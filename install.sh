@@ -64,6 +64,7 @@ cleanup() {
 	rm -rf "$tmp"
 
 	if [ "$restart" -eq 1 ] && [ -x "$dir/justrayd" ]; then
+		printf '• Restarting daemon...\n'
 		nohup "$dir/justrayd" >/dev/null 2>&1 </dev/null &
 	fi
 }
@@ -98,7 +99,15 @@ pass "Found v$version for ${os}/${arch}"
 
 step "Downloading $archive..."
 
-curl -fsSL --retry 3 "$base/$archive" -o "$tmp/$archive" 2>/dev/null || fail "Failed to download $archive"
+set -- -fsSL
+if [ -t 1 ] && [ -t 2 ]; then
+	printf '\n'
+	set -- -fSL --progress-bar
+fi
+curl "$@" --retry 3 "$base/$archive" -o "$tmp/$archive" || fail "Failed to download $archive"
+pass "Downloaded archive"
+
+step "Verifying checksum..."
 
 if command -v sha256sum >/dev/null 2>&1; then
 	actual=$(sha256sum < "$tmp/$archive" | awk '{print $1}')
@@ -112,6 +121,7 @@ fi
 
 pass "Verified checksum"
 
+step "Extracting archive..."
 mkdir -p "$tmp/out"
 tar -xzf "$tmp/$archive" -C "$tmp/out" 2>/dev/null || fail "Failed to extract archive"
 
@@ -124,13 +134,17 @@ ln -sf justray "$tmp/out/jray"
 for binary in justray justrayd jray; do
 	[ ! -d "$dir/$binary" ] || fail "$dir/$binary is a directory"
 done
+pass "Extracted archive"
 
-step "Installing..."
+step "Stopping daemon..."
 
 stopped=$("$tmp/out/justray" stop) || fail "Failed to stop daemon"
 case "$stopped" in
 	*"Daemon stopped"*) restart=1 ;;
 esac
+pass "${stopped#✓ }"
+
+step "Installing..."
 
 for binary in justrayd justray jray; do
 	mv -f "$tmp/out/$binary" "$dir/$binary" || fail "Failed to install $binary"
