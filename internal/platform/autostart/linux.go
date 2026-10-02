@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 const unit = `[Unit]
@@ -16,7 +17,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart=%s
+ExecStart=:%q
 Restart=on-failure
 RestartSec=3
 
@@ -69,7 +70,7 @@ func Enable() error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, fmt.Appendf(nil, unit, bin), 0o600); err != nil {
+	if err := os.WriteFile(path, fmt.Appendf(nil, unit, strings.ReplaceAll(bin, "%", "%%")), 0o600); err != nil {
 		return err
 	}
 

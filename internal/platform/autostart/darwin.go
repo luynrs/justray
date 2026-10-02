@@ -10,6 +10,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+
+	"github.com/luynrs/justray/internal/ipc"
 )
 
 const label = "com.github.luynrs.justrayd"
@@ -43,6 +46,13 @@ func Enabled() bool {
 	return err == nil
 }
 
+func guiDomain() string {
+	if os.Geteuid() == 0 {
+		return "gui/" + os.Getenv("JUSTRAY_UID")
+	}
+	return "gui/" + strconv.Itoa(os.Getuid())
+}
+
 func Enable() error {
 	path, err := plistPath()
 	if err != nil {
@@ -55,12 +65,21 @@ func Enable() error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
+	if err := ipc.Chown(filepath.Dir(path)); err != nil {
+		return err
+	}
 	var command bytes.Buffer
 	_ = xml.EscapeText(&command, []byte(bin))
 	if err := os.WriteFile(path, fmt.Appendf(nil, task, label, command.String()), 0o600); err != nil {
 		return err
 	}
-	if err := exec.Command("launchctl", "load", "-w", path).Run(); err != nil {
+	if err := ipc.Chown(path); err != nil {
+		return err
+	}
+	if err := exec.Command("launchctl", "enable", guiDomain()+"/"+label).Run(); err != nil {
+		return errors.New("could not enable autostart")
+	}
+	if err := exec.Command("launchctl", "bootstrap", guiDomain(), path).Run(); err != nil {
 		return errors.New("could not enable autostart")
 	}
 	return nil
@@ -71,7 +90,7 @@ func Disable() error {
 	if err != nil {
 		return err
 	}
-	_ = exec.Command("launchctl", "unload", "-w", path).Run()
+	_ = exec.Command("launchctl", "bootout", guiDomain(), path).Run()
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return err
 	}

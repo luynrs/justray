@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/engine/outbound"
@@ -122,8 +123,17 @@ func parseSub(body []byte) ([]domain.Node, string, error) {
 }
 
 func validateNode(node domain.Node) error {
+	if !utf8.ValidString(node.Auth.Password) || !utf8.ValidString(node.Auth.Username) || !utf8.ValidString(node.ObfsPassword) || node.ShadowTLS != nil && !utf8.ValidString(node.ShadowTLS.Password) {
+		return errors.New("non-UTF8 credentials are not supported")
+	}
 	if node.TLS != nil && node.TLS.Insecure {
 		return errors.New("insecure TLS is not supported")
+	}
+	if (node.Protocol == domain.SOCKS || node.Protocol == domain.SS && node.ShadowTLS == nil) && (node.TLS != nil || node.Reality != nil) {
+		return fmt.Errorf("%s: TLS is not supported", node.Protocol)
+	}
+	if node.Reality != nil && node.Reality.PublicKey == "" {
+		return errors.New("reality: missing public key")
 	}
 	if node.Server == "" || !domain.ValidPort(node.Port) {
 		return errors.New("missing host or valid port")

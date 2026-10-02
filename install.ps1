@@ -107,7 +107,7 @@ try {
 	}
 
 	$lines = @(
-		Get-Content $checksums |
+		Get-Content -LiteralPath $checksums |
 			Where-Object {
 				$_ -match "^[0-9A-Fa-f]{64}\s+\*?justray_.*_windows_$arch\.zip$"
 			}
@@ -132,7 +132,7 @@ try {
 		fail "failed to download $archive"
 	}
 
-	if ((Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne $hash.ToLowerInvariant()) {
+	if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne $hash.ToLowerInvariant()) {
 		fail "checksum mismatch"
 	}
 
@@ -140,13 +140,13 @@ try {
 
 	$out = Join-Path $tmp "out"
 	try {
-		Expand-Archive $zip -DestinationPath $out -Force
+		Expand-Archive -LiteralPath $zip -DestinationPath $out -Force
 	} catch {
 		fail "failed to extract archive"
 	}
 
 	foreach ($exe in "justray.exe", "justrayd.exe") {
-		if (-not (Test-Path (Join-Path $out $exe) -PathType Leaf)) {
+		if (-not (Test-Path -LiteralPath (Join-Path $out $exe) -PathType Leaf)) {
 			fail "archive is missing $exe"
 		}
 	}
@@ -166,7 +166,7 @@ try {
 	})
 	$restart = $running.Count -gt 0
 	if ($restart) {
-		if (Test-Path "$dir\justray.exe") {
+		if (Test-Path -LiteralPath "$dir\justray.exe") {
 			try { & "$dir\justray.exe" stop *>$null } catch {}
 		}
 		$running | Wait-Process -Timeout 5 -ErrorAction SilentlyContinue
@@ -174,13 +174,13 @@ try {
 	}
 
 	# Windows allows renaming running binaries away, but forbids overwriting them in place
-	Get-ChildItem $dir -Filter *.old* -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+	Get-ChildItem -LiteralPath $dir -File -Filter *.exe.old.* -ErrorAction SilentlyContinue | Where-Object Name -Match '^(justray|jray|justrayd)\.exe\.old\.[0-9a-f]{32}$' | Remove-Item -Force -ErrorAction SilentlyContinue
 
 	function install_file($src, $dst) {
-		if (Test-Path $dst) {
-			Move-Item $dst ("$dst.old." + [guid]::NewGuid().ToString("N")) -Force -ErrorAction SilentlyContinue
+		if (Test-Path -LiteralPath $dst) {
+			Move-Item -LiteralPath $dst -Destination ("$dst.old." + [guid]::NewGuid().ToString("N")) -Force -ErrorAction SilentlyContinue
 		}
-		Copy-Item $src $dst -Force
+		Copy-Item -LiteralPath $src -Destination $dst -Force
 	}
 
 	install_file "$out\justray.exe" "$dir\justray.exe"
@@ -205,10 +205,10 @@ try {
 	Write-Host "`nTo get started, run jray in a new terminal window"
 }
 finally {
-	Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
-	Get-ChildItem $dir -Filter *.old* -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+	Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+	Get-ChildItem -LiteralPath $dir -File -Filter *.exe.old.* -ErrorAction SilentlyContinue | Where-Object Name -Match '^(justray|jray|justrayd)\.exe\.old\.[0-9a-f]{32}$' | Remove-Item -Force -ErrorAction SilentlyContinue
 
-	if ($restart -and (Test-Path "$dir\justrayd.exe")) {
+	if ($restart -and (Test-Path -LiteralPath "$dir\justrayd.exe")) {
 		Start-Process "$dir\justrayd.exe" -WindowStyle Hidden
 	}
 }

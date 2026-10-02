@@ -74,10 +74,9 @@ func main() {
 			logger.Printf("clear engine log failed (%v)", err)
 		}
 
-		st := store.Disk{Dir: dir}
 		conn := connection.New(ctx, dir, engine.New, engine.Probe, logger)
 		subs := subscription.New(ctx, logger)
-		app, err := core.New(st, conn, subs)
+		app, err := core.New(store.Disk{Dir: dir}, conn, subs)
 		if err != nil {
 			_ = ln.Close()
 			unlock()

@@ -25,7 +25,7 @@ type Row struct {
 func (r Row) Selectable() bool { return r.Kind == Header || r.Kind == Node }
 
 func (r Row) Removable() bool {
-	return r.Kind == Node && r.Sub.SubscriptionID == "default" && !r.Sub.Refreshable
+	return r.Kind == Header || r.Kind == Node && r.Sub.SubscriptionID == "default" && !r.Sub.Refreshable
 }
 
 type Data struct {

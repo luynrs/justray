@@ -9,6 +9,7 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/luynrs/justray/internal/client/tui/settings"
 	"github.com/luynrs/justray/internal/client/tui/tree"
@@ -141,7 +142,12 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		row := m.confirm
 		m.confirm = tree.Row{}
 		if (k == "y" || k == "Y") && row.Removable() {
-			return m, m.actionCmd(false, m.start(false), func() error { return m.client.RemoveNode(m.watch, row.Node.Ref()) })
+			return m, m.actionCmd(false, m.start(false), func() error {
+				if row.Kind == tree.Header {
+					return m.client.RemoveSubscription(m.watch, row.Sub.SubscriptionID)
+				}
+				return m.client.RemoveNode(m.watch, row.Node.Ref())
+			})
 		}
 		return m, nil
 
@@ -268,7 +274,7 @@ func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) click(x, y int) (tea.Model, tea.Cmd) {
 	if y == 0 {
-		if tun, ok := modeAt(x, m.w); ok {
+		if tun, ok := modeAt(x, m.w, lipgloss.Width(m.titleLeft())); ok && x < m.w {
 			return m.setTun(tun)
 		}
 		return m, nil

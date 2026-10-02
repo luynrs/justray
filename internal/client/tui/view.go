@@ -18,9 +18,9 @@ const (
 	modeTun   = "  TUN  "
 )
 
-func modeAt(x, w int) (tun, ok bool) {
+func modeAt(x, w, leftWidth int) (tun, ok bool) {
 	proxyW, tunW := segW(modeProxy), segW(modeTun)
-	switch x -= w - proxyW - tunW; {
+	switch x -= max(w-proxyW-tunW, leftWidth+2); {
 	case x < 0:
 		return false, false
 	case x < proxyW:
@@ -61,19 +61,22 @@ func (m Model) content() string {
 	return style.Fit(body, m.h-footerLines) + "\n" + m.footer()
 }
 
-func (m Model) titleLine() string {
+func (m Model) titleLeft() string {
 	left := style.Title.Render("JustRay") + " " + style.Dim.Render(version.String())
 	if m.dialog != nil {
 		left += "  " + m.dialog.TabBar(max(m.w-lipgloss.Width(left)-2, 10))
 	} else if m.filter.Focused() || m.filter.Value() != "" {
 		left += " " + style.Dim.Render("~ Search:") + " " + m.filter.View()
 	}
+	return left
+}
 
+func (m Model) titleLine() string {
 	var right string
 	if m.dialog == nil {
 		right = style.Segment(modeProxy, !m.snapshot.Status.Tun) + style.Segment(modeTun, m.snapshot.Status.Tun)
 	}
-	return m.clip(style.Flush(left, right, m.w))
+	return m.clip(style.Flush(m.titleLeft(), right, m.w))
 }
 
 func (m Model) tree() string {
@@ -172,8 +175,12 @@ func (m Model) footer() string {
 
 	hints := m.hints(m.w)
 	if m.confirm.Sub.SubscriptionID != "" {
-		q := style.Err.Render(style.Sanitize("Delete "+m.confirm.Node.Name+"?", true))
-		hints = q + "  " + m.hints(max(m.w-lipgloss.Width(q)-2, 0))
+		question := m.confirm.Sub.Name
+		if m.confirm.Kind == tree.Node {
+			question = m.confirm.Node.Name
+		}
+		question = style.Err.Render(style.Sanitize("Delete "+question+"?", true))
+		hints = question + "  " + m.hints(max(m.w-lipgloss.Width(question)-2, 0))
 	}
 
 	return "\n" + m.clip(status) + "\n" + m.clip(hints)

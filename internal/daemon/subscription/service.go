@@ -29,7 +29,8 @@ func (s *Service) PrepareAdd(ctx context.Context, rawURL string) (store.Subscrip
 		return store.Subscription{}, err
 	}
 	if sub.Name == "" {
-		sub.Name = host(rawURL)
+		parsedURL, _ := url.Parse(rawURL)
+		sub.Name = parsedURL.Host
 	}
 	return sub, nil
 }
@@ -46,11 +47,4 @@ func check(rawURL string) error {
 		return fmt.Errorf("%q is not a valid URL or share link", rawURL)
 	}
 	return nil
-}
-
-func host(rawURL string) string {
-	if u, err := url.Parse(rawURL); err == nil && u.Host != "" {
-		return u.Host
-	}
-	return rawURL
 }

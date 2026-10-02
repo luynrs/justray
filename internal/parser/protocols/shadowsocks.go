@@ -10,7 +10,7 @@ import (
 )
 
 func ParseShadowsocks(uri string) (domain.Node, error) {
-	rest := strings.TrimPrefix(uri, "ss://")
+	_, rest, _ := strings.Cut(uri, "://")
 
 	rest, remark, _ := strings.Cut(rest, "#")
 	rest, query, hasQuery := strings.Cut(rest, "?")

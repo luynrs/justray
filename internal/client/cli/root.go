@@ -263,7 +263,10 @@ func (a *app) connectDaemon(ctx context.Context, startMissing, restore bool) err
 		if state.Active.NodeID != "" {
 			err := a.client.Connect(ctx, state.Active, &state.Tun)
 			if errors.Is(err, ipc.ErrElevate) {
-				_, err = a.client.AwaitConnection(ctx, state.Active, &state.Tun, 30*time.Second)
+				_, err = a.client.AwaitConnection(context.WithoutCancel(ctx), state.Active, &state.Tun, 30*time.Second)
+				if err := caller.Err(); err != nil {
+					return err
+				}
 			}
 			if err != nil {
 				return fmt.Errorf("restore connection: %w", err)

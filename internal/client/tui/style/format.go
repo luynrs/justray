@@ -18,24 +18,8 @@ func Clip(s string, width int) string {
 	return lipgloss.NewStyle().MaxWidth(width).Render(s)
 }
 
-func Pad(s string, w int) string {
-	switch n := lipgloss.Width(s); {
-	case w <= 0:
-		return ""
-	case n > w:
-		tail := pick("..", "…")
-		tw := lipgloss.Width(tail)
-		if w <= tw {
-			return tail[:w]
-		}
-		t := lipgloss.NewStyle().MaxWidth(w-tw).Render(s) + tail
-		if shortfall := w - lipgloss.Width(t); shortfall > 0 {
-			t += strings.Repeat(" ", shortfall)
-		}
-		return t
-	default:
-		return s + strings.Repeat(" ", w-n)
-	}
+func Pad(text string, width int) string {
+	return text + strings.Repeat(" ", max(0, width-lipgloss.Width(text)))
 }
 
 // Flush right-aligns right, at least two spaces apart

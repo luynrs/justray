@@ -192,12 +192,17 @@ func clashNode(p clashProxy) (domain.Node, error) {
 		if stlsOpts == nil {
 			stlsOpts = p.ShadowTLSOpts
 		}
-		if (p.Plugin == "shadow-tls" || p.ShadowTLSOpts != nil) && stlsOpts != nil {
+		if p.Plugin == "shadow-tls" || p.ShadowTLSOpts != nil {
+			if stlsOpts == nil {
+				return domain.Node{}, fmt.Errorf("shadowtls: missing settings")
+			}
 			n.ShadowTLS = &domain.ShadowTLS{
 				Version:  cmp.Or(stlsOpts.Version, 3),
 				Password: stlsOpts.Password,
 				SNI:      cmp.Or(stlsOpts.Host, stlsOpts.SNI, p.Server),
 			}
+			n.TLS = tls
+			n.TLS.SNI = n.ShadowTLS.SNI
 		}
 
 	case "shadow-tls", "shadowtls", "stls":

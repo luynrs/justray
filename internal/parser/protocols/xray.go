@@ -49,16 +49,22 @@ type xrayUser struct {
 }
 
 type xrayStreamSettings struct {
-	Network           string              `json:"network"`
-	Method            string              `json:"method"`
-	Security          string              `json:"security"`
-	RealitySettings   xrayRealitySettings `json:"realitySettings"`
-	TLSSettings       xrayTLSSettings     `json:"tlsSettings"`
-	WSSettings        xrayHTTPTransport   `json:"wsSettings"`
-	GRPCSettings      xrayGRPCTransport   `json:"grpcSettings"`
-	HTTPSettings      xrayHTTPTransport   `json:"httpSettings"`
-	XHTTPSettings     json.RawMessage     `json:"xhttpSettings"`
-	SplitHTTPSettings json.RawMessage     `json:"splitHttpSettings"`
+	Network         string              `json:"network"`
+	Method          string              `json:"method"`
+	Security        string              `json:"security"`
+	RealitySettings xrayRealitySettings `json:"realitySettings"`
+	TLSSettings     xrayTLSSettings     `json:"tlsSettings"`
+	WSSettings      xrayHTTPTransport   `json:"wsSettings"`
+	GRPCSettings    xrayGRPCTransport   `json:"grpcSettings"`
+	HTTPSettings    struct {
+		Path    string                   `json:"path"`
+		Host    stringOrSlice            `json:"host"`
+		Headers map[string]stringOrSlice `json:"headers"`
+	} `json:"httpSettings"`
+	XHTTPSettings     json.RawMessage   `json:"xhttpSettings"`
+	SplitHTTPSettings json.RawMessage   `json:"splitHttpSettings"`
+	TCPSettings       xrayTCPTransport  `json:"tcpSettings"`
+	RawSettings       *xrayTCPTransport `json:"rawSettings"`
 }
 
 type xrayRealitySettings struct {
@@ -83,6 +89,12 @@ type xrayHTTPTransport struct {
 
 type xrayGRPCTransport struct {
 	ServiceName string `json:"serviceName"`
+}
+
+type xrayTCPTransport struct {
+	Header struct {
+		Type string `json:"type"`
+	} `json:"header"`
 }
 
 func ParseXray(raw []byte) ([]domain.Node, map[string]int, error) {
@@ -191,9 +203,6 @@ func ParseXray(raw []byte) ([]domain.Node, map[string]int, error) {
 }
 
 func xrayNode(node domain.Node, stream xrayStreamSettings) (domain.Node, error) {
-	if node.Protocol == domain.SS {
-		return node, nil
-	}
 	var err error
 	node.Transport, err = xrayTransport(stream)
 	if err != nil {
@@ -212,13 +221,22 @@ func xrayNode(node domain.Node, stream xrayStreamSettings) (domain.Node, error) 
 func xrayTransport(s xrayStreamSettings) (domain.Transport, error) {
 	switch network := strings.ToLower(cmp.Or(s.Method, s.Network)); network {
 	case "", "tcp", "raw":
-		return domain.Transport{Network: "tcp"}, nil
+		if s.RawSettings != nil {
+			s.TCPSettings = *s.RawSettings
+		}
+		return domain.Transport{Network: "tcp", Mode: strings.ToLower(s.TCPSettings.Header.Type)}, nil
 	case "ws":
 		return domain.Transport{Network: network, Path: s.WSSettings.Path, Host: cmp.Or(s.WSSettings.Host, s.WSSettings.Headers["Host"])}, nil
 	case "grpc":
 		return domain.Transport{Network: network, ServiceName: s.GRPCSettings.ServiceName}, nil
 	case "http", "h2":
-		return domain.Transport{Network: "http", Path: s.HTTPSettings.Path, Host: cmp.Or(s.HTTPSettings.Host, s.HTTPSettings.Headers["Host"])}, nil
+		transport := domain.Transport{Network: "http", Path: s.HTTPSettings.Path}
+		if len(s.HTTPSettings.Host) > 0 {
+			transport.Host = s.HTTPSettings.Host[0]
+		} else if hosts := s.HTTPSettings.Headers["Host"]; len(hosts) > 0 {
+			transport.Host = hosts[0]
+		}
+		return transport, nil
 	case "xhttp", "splithttp":
 		return domain.Transport{Network: "xhttp", Extra: cmp.Or(string(s.XHTTPSettings), string(s.SplitHTTPSettings))}, nil
 	default:
@@ -238,7 +256,7 @@ func xrayTLS(s xrayStreamSettings) *domain.TLS {
 }
 
 func xrayReality(s xrayStreamSettings) *domain.Reality {
-	if !strings.EqualFold(s.Security, "reality") || s.RealitySettings.PublicKey == "" {
+	if !strings.EqualFold(s.Security, "reality") {
 		return nil
 	}
 	return &domain.Reality{PublicKey: s.RealitySettings.PublicKey, ShortID: s.RealitySettings.ShortID}

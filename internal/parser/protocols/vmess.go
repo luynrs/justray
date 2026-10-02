@@ -34,9 +34,9 @@ type vmessLink struct {
 
 // vmess://<base64 json>
 func ParseVMess(uri string) (domain.Node, error) {
-	payload := strings.TrimPrefix(uri, "vmess://")
+	_, payload, _ := strings.Cut(uri, "://")
 	payload, frag, _ := strings.Cut(payload, "#")
-	if u, err := url.QueryUnescape(frag); err == nil {
+	if u, err := url.PathUnescape(frag); err == nil {
 		frag = u
 	}
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
+	"strings"
 
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
@@ -16,6 +17,9 @@ import (
 
 func transport(n domain.Node) (*option.V2RayTransportOptions, error) {
 	if n.Transport.Network == "" || n.Transport.Network == "tcp" {
+		if n.Transport.Mode != "" && !strings.EqualFold(n.Transport.Mode, "none") {
+			return nil, fmt.Errorf("tcp: unsupported header type %q", n.Transport.Mode)
+		}
 		return nil, nil
 	}
 	if n.Protocol != domain.VLess && n.Protocol != domain.VMess && n.Protocol != domain.Trojan {

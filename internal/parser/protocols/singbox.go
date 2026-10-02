@@ -2,6 +2,7 @@ package protocols
 
 import (
 	"cmp"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -43,10 +44,7 @@ type singboxOutbound struct {
 	Reserved       []int         `json:"reserved"`
 	MTU            uint32        `json:"mtu"`
 
-	Obfs struct {
-		Type     string `json:"type"`
-		Password string `json:"password"`
-	} `json:"obfs"`
+	Obfs  json.RawMessage `json:"obfs"`
 	Peers []struct {
 		Server       string `json:"server"`
 		ServerPort   int    `json:"server_port"`
@@ -177,10 +175,7 @@ func parseSingBoxOutbound(ob singboxOutbound, stlsByTag map[string]singboxOutbou
 	}
 
 	server, port := ob.Server, ob.ServerPort
-	if proto == domain.WG {
-		if len(ob.Peers) == 0 {
-			return domain.Node{}, errors.New("wireguard: missing peer")
-		}
+	if proto == domain.WG && len(ob.Peers) > 0 {
 		server = cmp.Or(ob.Peers[0].Address, ob.Peers[0].Server)
 		port = cmp.Or(ob.Peers[0].Port, ob.Peers[0].ServerPort)
 	}
@@ -208,7 +203,8 @@ func parseSingBoxOutbound(ob singboxOutbound, stlsByTag map[string]singboxOutbou
 			if !ok {
 				return domain.Node{}, errors.New("shadowsocks: missing or invalid shadowtls detour")
 			}
-			sni := server
+			n.TLS, n.Reality = singboxTLS(stls.TLS, stls.Server)
+			sni := stls.Server
 			if stls.TLS != nil && stls.TLS.ServerName != "" {
 				sni = stls.TLS.ServerName
 			}
@@ -216,22 +212,41 @@ func parseSingBoxOutbound(ob singboxOutbound, stlsByTag map[string]singboxOutbou
 			n.ShadowTLS = &domain.ShadowTLS{Version: cmp.Or(stls.Version, 3), Password: stls.Password, SNI: sni}
 		}
 	case domain.HY1:
-		n.Auth = domain.Auth{Password: cmp.Or(ob.AuthString, ob.Auth, ob.Password)}
-		n.UpMbps, n.DownMbps, n.ObfsPassword = ob.UpMbps, ob.DownMbps, ob.Obfs.Password
+		auth := ob.AuthString
+		if auth == "" && ob.Auth != "" {
+			decoded, err := base64.StdEncoding.DecodeString(ob.Auth)
+			if err != nil {
+				return domain.Node{}, errors.New("hysteria: invalid base64 auth")
+			}
+			auth = string(decoded)
+		}
+		n.Auth = domain.Auth{Password: cmp.Or(auth, ob.Password)}
+		n.UpMbps, n.DownMbps = ob.UpMbps, ob.DownMbps
+		if len(ob.Obfs) > 0 && json.Unmarshal(ob.Obfs, &n.ObfsPassword) != nil {
+			return domain.Node{}, errors.New("sing-box: invalid outbound fields")
+		}
 	case domain.HY2:
 		n.Auth = domain.Auth{Password: cmp.Or(ob.Password, ob.Auth)}
-		n.UpMbps, n.DownMbps, n.Obfs, n.ObfsPassword = ob.UpMbps, ob.DownMbps, ob.Obfs.Type, ob.Obfs.Password
+		var obfs struct {
+			Type     string `json:"type"`
+			Password string `json:"password"`
+		}
+		if len(ob.Obfs) > 0 && json.Unmarshal(ob.Obfs, &obfs) != nil {
+			return domain.Node{}, errors.New("sing-box: invalid outbound fields")
+		}
+		n.UpMbps, n.DownMbps, n.Obfs, n.ObfsPassword = ob.UpMbps, ob.DownMbps, obfs.Type, obfs.Password
 	case domain.TUIC:
 		n.Auth = domain.Auth{UUID: ob.UUID, Password: ob.Password}
 		n.Congestion, n.UDPRelayMode = ob.Congestion, ob.UDPRelayMode
 	case domain.AnyTLS:
 		n.Auth = domain.Auth{Password: ob.Password}
 	case domain.WG:
-		peerPK := cmp.Or(ob.Peers[0].PublicKey, ob.PeerPublicKey)
-		psk := cmp.Or(ob.Peers[0].PreSharedKey, ob.PreSharedKey)
-		res := ob.Peers[0].Reserved
-		if len(res) == 0 {
-			res = ob.Reserved
+		peerPK, psk, res := ob.PeerPublicKey, ob.PreSharedKey, ob.Reserved
+		if len(ob.Peers) > 0 {
+			peerPK, psk = ob.Peers[0].PublicKey, ob.Peers[0].PreSharedKey
+			if len(ob.Peers[0].Reserved) > 0 {
+				res = ob.Peers[0].Reserved
+			}
 		}
 		var reserved []uint8
 		for _, b := range res {

@@ -52,7 +52,7 @@ func hasOutboundField(raw []byte, field string) bool {
 
 func Unbase64(s string) ([]byte, error) {
 	if strings.Contains(s, "%") {
-		if unescaped, err := url.QueryUnescape(s); err == nil {
+		if unescaped, err := url.PathUnescape(s); err == nil {
 			s = unescaped
 		}
 	}
@@ -111,7 +111,7 @@ func splitCreds(blob string) (method, password string) {
 		method, password, _ = strings.Cut(blob, ":")
 		return method, password
 	}
-	if decoded, err := Unbase64(blob); err == nil {
+	if decoded, err := Unbase64(blob); err == nil && strings.Contains(string(decoded), ":") {
 		blob = string(decoded)
 	}
 	method, password, _ = strings.Cut(blob, ":")
@@ -134,13 +134,6 @@ func userPass(u *url.URL) (string, string) {
 	}
 	p, _ := u.User.Password()
 	return u.User.Username(), p
-}
-
-func rawUser(u *url.URL) string {
-	if u.User == nil {
-		return ""
-	}
-	return strings.TrimPrefix(u.User.String(), ":")
 }
 
 func fixCIDRs(list []string) []string {

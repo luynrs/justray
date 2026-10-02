@@ -43,18 +43,13 @@ func New(n domain.Node, tag string) (*option.Endpoint, []option.Outbound, error)
 	return nil, append(obs, *out), nil
 }
 
-func TLSOnly(p domain.Proto) bool {
-	switch p {
-	case domain.HY1, domain.HY2, domain.TUIC, domain.AnyTLS:
-		return true
-	}
-	return false
-}
-
 func proxy(n domain.Node, tag string, transportOptions *option.V2RayTransportOptions) (*option.Outbound, error) {
 	tls := tlsOptions(n)
-	if tls == nil && TLSOnly(n.Protocol) {
-		tls = &option.OutboundTLSOptions{Enabled: true}
+	if tls == nil {
+		switch n.Protocol {
+		case domain.HY1, domain.HY2, domain.TUIC, domain.AnyTLS:
+			tls = &option.OutboundTLSOptions{Enabled: true}
+		}
 	}
 
 	switch n.Protocol {
