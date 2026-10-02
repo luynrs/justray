@@ -114,7 +114,7 @@ func (d Disk) Migrate() error {
 	if !changed {
 		return nil
 	}
-	state := PersistentState{Settings: domain.Settings{General: domain.General{RefreshEvery: domain.DefaultRefresh}}}
+	state := State{Settings: domain.Settings{General: domain.General{RefreshEvery: domain.DefaultRefresh}}}
 	for index, file := range files {
 		data := file.after
 		if data == nil {

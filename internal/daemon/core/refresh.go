@@ -61,7 +61,7 @@ dispatch:
 	return errors.Join(refreshErr, ctx.Err())
 }
 
-func (c *Core) sanitizeRefs(state *store.PersistentState, updated store.Subscription) bool {
+func (c *Core) sanitizeRefs(state *store.State, updated store.Subscription) bool {
 	nodeExists := func(ref domain.NodeRef) bool {
 		return slices.ContainsFunc(updated.Nodes, func(n domain.Node) bool { return n.ID == ref.NodeID })
 	}

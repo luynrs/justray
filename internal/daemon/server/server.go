@@ -29,6 +29,8 @@ type Server struct {
 	stop     chan struct{}
 }
 
+var ErrRunning = errors.New("another justrayd is already listening")
+
 func New(ctx context.Context, logger *log.Logger, app *core.Core) *Server {
 	ctx, cancel := context.WithCancel(ctx)
 	return &Server{
@@ -42,7 +44,7 @@ func Listen(socket string) (net.Listener, func(), error) {
 	unlock, err := lock.File(socket + ".lock")
 	if err != nil {
 		if errors.Is(err, lock.ErrLocked) {
-			return nil, nil, errors.New("another justrayd is already listening")
+			return nil, nil, ErrRunning
 		}
 		return nil, nil, err
 	}
@@ -50,7 +52,7 @@ func Listen(socket string) (net.Listener, func(), error) {
 	if conn, err := net.DialTimeout("unix", socket, time.Second); err == nil {
 		_ = conn.Close()
 		unlock()
-		return nil, nil, errors.New("another justrayd is already listening")
+		return nil, nil, ErrRunning
 	}
 
 	_ = os.Remove(socket)

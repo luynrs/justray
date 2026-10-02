@@ -11,25 +11,36 @@ import (
 	"strings"
 	"time"
 
+	"github.com/luynrs/justray/internal/daemon/store"
 	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/parser"
 )
 
-func (s *Service) fetch(ctx context.Context, rawURL string) ([]domain.Node, string, domain.Traffic, string, error) {
-	var none domain.Traffic
-	if s.device.Get("X-Hwid") == "" {
-		return nil, "", none, "", fmt.Errorf("device id unavailable")
+func (s *Service) Refresh(ctx context.Context, sub store.Subscription) (store.Subscription, error) {
+	if sub.URL == "" {
+		return sub, fmt.Errorf("subscription URL or share link is required")
 	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-	if err != nil {
-		return nil, "", none, "", err
+	if parser.IsLink(sub.URL) {
+		node, err := parser.ParseURI(sub.URL)
+		if err != nil {
+			return sub, err
+		}
+		sub.Nodes, sub.Name, sub.Traffic = []domain.Node{node}, node.Name, domain.Traffic{}
+		sub.UpdatedAt = time.Now().UTC()
+		return sub, nil
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sub.URL, nil)
+	if err != nil || req.URL.Host == "" || (req.URL.Scheme != "https" && req.URL.Scheme != "http") {
+		return sub, fmt.Errorf("%q is not a valid URL or share link", sub.URL)
+	}
+	if s.device.Get("X-Hwid") == "" {
+		return sub, fmt.Errorf("device id unavailable")
 	}
 	req.Header = s.device.Clone()
 	req.Header.Set("X-Hwid", hash(s.device.Get("X-Hwid")+req.URL.Hostname()))
 
 	client := http.Client{
-		Timeout: 20 * time.Second,
+		Timeout: 8 * time.Second,
 		CheckRedirect: func(r *http.Request, via []*http.Request) error {
 			if r.URL.Scheme != "https" && r.URL.Scheme != "http" {
 				return fmt.Errorf("subscription redirect must use http or https")
@@ -51,32 +62,37 @@ func (s *Service) fetch(ctx context.Context, rawURL string) ([]domain.Node, stri
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, "", none, "", err
+		return sub, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	switch {
 	case resp.StatusCode != http.StatusOK:
-		return nil, "", none, "", fmt.Errorf("http %d", resp.StatusCode)
+		return sub, fmt.Errorf("http %d", resp.StatusCode)
 	case resp.Header.Get("X-Hwid-Max-Devices-Reached") == "true":
-		return nil, "", none, "", fmt.Errorf("device limit reached")
+		return sub, fmt.Errorf("device limit reached")
 	case resp.Header.Get("X-Hwid-Not-Supported") == "true":
-		return nil, "", none, "", fmt.Errorf("subscription requires device ID")
+		return sub, fmt.Errorf("subscription requires device ID")
 	}
 
 	const maxBody = 10 << 20
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
 	if err != nil {
-		return nil, "", none, "", err
+		return sub, err
 	}
 	if len(body) > maxBody {
-		return nil, "", none, "", fmt.Errorf("subscription response exceeds 10MB limit")
+		return sub, fmt.Errorf("subscription response exceeds 10MB limit")
 	}
 	nodes, warning, err := parser.ParseSubscription(body)
 	if err != nil {
-		return nil, "", none, "", err
+		return sub, err
 	}
-	return nodes, title(resp.Header), usage(resp.Header), warning, nil
+	sub.Nodes, sub.Traffic, sub.Warning = nodes, usage(resp.Header), warning
+	sub.UpdatedAt = time.Now().UTC()
+	if name := title(resp.Header); name != "" { // change name if it changed on server
+		sub.Name = name
+	}
+	return sub, nil
 }
 
 // "Subscription-Userinfo: upload=N; download=N; total=N; expire=unixSeconds"

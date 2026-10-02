@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,40 +14,47 @@ import (
 	"github.com/luynrs/justray/internal/daemon/store"
 	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/engine"
+	"github.com/luynrs/justray/internal/ipc"
 )
 
-func probeCore(t *testing.T, n int, probe func(context.Context, []domain.Node, domain.Settings, string, func(string, engine.Result)) error) *Core {
+func probeCore(t *testing.T, n int, probe func(context.Context, domain.Node, domain.Settings, string) (engine.Result, error)) *Core {
 	t.Helper()
 	nodes := make([]domain.Node, n)
 	for i := range nodes {
 		nodes[i] = domain.Node{ID: fmt.Sprint(i), Name: "example node", Server: fmt.Sprintf("node-%d.example", i), Port: 443}
 	}
-	app := testCore(t, &fakeEngine{}, store.PersistentState{Subscriptions: []store.Subscription{{ID: "s", Nodes: nodes}}})
-	app.conn = connection.New(context.Background(), t.TempDir(), nil, probe, log.New(io.Discard, "", 0))
+	app := testCore(t, &fakeEngine{}, store.State{Subscriptions: []store.Subscription{{ID: "s", Nodes: nodes}}})
+	app.conn = connection.New(context.Background(), t.TempDir(), nil, func(targets []engine.Target, settings domain.Settings, logPath string, onResult func(int, engine.Result, error)) {
+		var workers sync.WaitGroup
+		for i, target := range targets {
+			workers.Go(func() {
+				result, err := probe(target.Context, target.Node, settings, logPath)
+				onResult(i, result, err)
+			})
+		}
+		workers.Wait()
+	}, log.New(io.Discard, "", 0))
 	return app
 }
 
-func instantProbe(_ context.Context, nodes []domain.Node, _ domain.Settings, _ string, onResult func(string, engine.Result)) error {
-	for _, node := range nodes {
-		onResult(node.ID, engine.Result{Alive: true, Duration: 10})
-	}
-	return nil
+func instantProbe(_ context.Context, _ domain.Node, _ domain.Settings, _ string) (engine.Result, error) {
+	return engine.Result{Alive: true, Duration: 10}, nil
 }
 
 func TestProbeBatch(t *testing.T) {
 	const n = 512
 	var app *Core
 	var updates int
-	probe := func(_ context.Context, nodes []domain.Node, _ domain.Settings, _ string, onResult func(string, engine.Result)) error {
-		previous := app.snapshot.Load()
-		for _, node := range nodes {
-			onResult(node.ID, engine.Result{Alive: true, Duration: 10})
-			if current := app.snapshot.Load(); current != previous {
-				updates++
-				previous = current
-			}
+	var observed sync.Mutex
+	var previous *ipc.Snapshot
+	probe := func(_ context.Context, _ domain.Node, _ domain.Settings, _ string) (engine.Result, error) {
+		observed.Lock()
+		defer observed.Unlock()
+		if current := app.snapshot.Load(); current != previous {
+			updates++
+			previous = current
 		}
-		return nil
+		return engine.Result{Alive: true, Duration: 10}, nil
 	}
 	app = probeCore(t, n, probe)
 	if err := app.Probe(context.Background(), "s", ""); err != nil {
@@ -77,10 +85,12 @@ func TestProbeCanceled(t *testing.T) {
 }
 
 func TestProbeProgress(t *testing.T) {
-	probe := func(ctx context.Context, nodes []domain.Node, _ domain.Settings, _ string, onResult func(string, engine.Result)) error {
-		onResult(nodes[0].ID, engine.Result{Alive: true, Duration: 10})
+	probe := func(ctx context.Context, node domain.Node, _ domain.Settings, _ string) (engine.Result, error) {
+		if node.ID == "0" {
+			return engine.Result{Alive: true, Duration: 10}, nil
+		}
 		<-ctx.Done()
-		return ctx.Err()
+		return engine.Result{}, ctx.Err()
 	}
 	app := probeCore(t, 2, probe)
 	_, updates, stop := app.Watch()

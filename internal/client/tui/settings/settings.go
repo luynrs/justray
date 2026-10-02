@@ -182,7 +182,7 @@ func setInt(at func(*domain.Settings) *int, def int) func(*domain.Settings, stri
 	}
 }
 
-type Settings struct {
+type Model struct {
 	top         int
 	hits        map[int]hit
 	tab         int
@@ -197,7 +197,7 @@ type Settings struct {
 	compactTabs bool
 }
 
-func New(s domain.Settings, top int) *Settings {
+func New(s domain.Settings, top int) *Model {
 	input := textinput.New()
 	input.Prompt = ""
 	styles := input.Styles()
@@ -208,12 +208,12 @@ func New(s domain.Settings, top int) *Settings {
 	cur.Direct = slices.Clone(s.Direct)
 	cur.Proxy = slices.Clone(s.Proxy)
 	cur.Block = slices.Clone(s.Block)
-	res := &Settings{top: top, cur: cur, orig: s, input: input}
+	res := &Model{top: top, cur: cur, orig: s, input: input}
 	res.move(0)
 	return res
 }
 
-func (s *Settings) Result() (domain.Settings, bool, error) {
+func (s *Model) Result() (domain.Settings, bool, error) {
 	if s.abandon || !s.dirty() {
 		return s.orig, false, nil
 	}
@@ -221,11 +221,11 @@ func (s *Settings) Result() (domain.Settings, bool, error) {
 	return next, true, err
 }
 
-func (s *Settings) Current() domain.Settings { return s.cur }
+func (s *Model) Current() domain.Settings { return s.cur }
 
-func (s *Settings) Err() string { return s.err }
+func (s *Model) Err() string { return s.err }
 
-func (s *Settings) Update(msg tea.Msg) (closed bool, cmd tea.Cmd) {
+func (s *Model) Update(msg tea.Msg) (closed bool, cmd tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		return s.key(msg)
@@ -240,7 +240,7 @@ func (s *Settings) Update(msg tea.Msg) (closed bool, cmd tea.Cmd) {
 	return false, nil
 }
 
-func (s *Settings) key(msg tea.KeyPressMsg) (bool, tea.Cmd) {
+func (s *Model) key(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	if s.input.Focused() {
 		return false, s.editKey(msg)
 	}
@@ -286,7 +286,7 @@ func (s *Settings) key(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	return false, nil
 }
 
-func (s *Settings) mouse(msg tea.MouseMsg) tea.Cmd {
+func (s *Model) mouse(msg tea.MouseMsg) tea.Cmd {
 	if s.input.Focused() {
 		return nil
 	}
@@ -341,7 +341,7 @@ func (s *Settings) mouse(msg tea.MouseMsg) tea.Cmd {
 	return nil
 }
 
-func (s *Settings) activate() tea.Cmd {
+func (s *Model) activate() tea.Cmd {
 	f, ok := s.at()
 	if !ok || !f.editable() {
 		return nil
@@ -358,7 +358,7 @@ func (s *Settings) activate() tea.Cmd {
 	return s.input.Focus()
 }
 
-func (s *Settings) editKey(msg tea.KeyPressMsg) tea.Cmd {
+func (s *Model) editKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch msg.String() {
 	case "esc":
 		s.err = ""
@@ -387,7 +387,7 @@ func (s *Settings) editKey(msg tea.KeyPressMsg) tea.Cmd {
 }
 
 // step cycles an enum choice
-func (s *Settings) step(delta int) {
+func (s *Model) step(delta int) {
 	f, ok := s.at()
 	if !ok || len(f.enum) == 0 {
 		return
@@ -396,7 +396,7 @@ func (s *Settings) step(delta int) {
 	s.assign(f, f.enum[i])
 }
 
-func (s *Settings) assign(f field, v string) {
+func (s *Model) assign(f field, v string) {
 	s.err = ""
 	if !f.editable() {
 		return
@@ -406,7 +406,7 @@ func (s *Settings) assign(f field, v string) {
 	}
 }
 
-func (s *Settings) rows() []field {
+func (s *Model) rows() []field {
 	t := &tabs[s.tab]
 	out := slices.Clone(t.fields)
 	for i := range t.lists {
@@ -416,7 +416,7 @@ func (s *Settings) rows() []field {
 }
 
 // listRows is a heading, its entries and an add row
-func (s *Settings) listRows(l *list) []field {
+func (s *Model) listRows(l *list) []field {
 	entries := *l.at(&s.cur)
 	out := make([]field, 0, len(entries)+2)
 	out = append(out, field{name: l.title, hint: fmt.Sprintf("(%d)", len(entries))})
@@ -476,7 +476,7 @@ func conflict(s *domain.Settings, target *[]string, rule string) error {
 	return nil
 }
 
-func (s *Settings) at() (field, bool) {
+func (s *Model) at() (field, bool) {
 	rows := s.rows()
 	if s.cursor < 0 || s.cursor >= len(rows) {
 		return field{}, false
@@ -484,12 +484,12 @@ func (s *Settings) at() (field, bool) {
 	return rows[s.cursor], true
 }
 
-func (s *Settings) dirty() bool {
+func (s *Model) dirty() bool {
 	return !s.cur.Equal(s.orig)
 }
 
 // move skips list headings
-func (s *Settings) move(delta int) {
+func (s *Model) move(delta int) {
 	rows := s.rows()
 	i := min(max(s.cursor+delta, 0), len(rows)-1)
 	step := max(min(delta, 1), -1)
@@ -507,7 +507,7 @@ func (s *Settings) move(delta int) {
 	s.cursor = i
 }
 
-func (s *Settings) switchTab(delta int) {
+func (s *Model) switchTab(delta int) {
 	s.tab = (s.tab + delta + len(tabs)) % len(tabs)
 	s.cursor, s.scroll, s.err = 0, 0, ""
 	s.move(0)

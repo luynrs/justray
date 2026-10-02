@@ -18,7 +18,7 @@ import (
 	"github.com/luynrs/justray/internal/platform/link"
 )
 
-type Box struct {
+type box struct {
 	lifetime context.Context
 	runtime  context.Context
 	settings domain.Settings
@@ -30,10 +30,10 @@ type Box struct {
 }
 
 func New(ctx context.Context, logPath string) Engine {
-	return &Box{lifetime: ctx, logPath: logPath}
+	return &box{lifetime: ctx, logPath: logPath}
 }
 
-func (e *Box) Apply(ctx context.Context, spec SessionSpec) error {
+func (e *box) Apply(ctx context.Context, spec Spec) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -43,7 +43,7 @@ func (e *Box) Apply(ctx context.Context, spec SessionSpec) error {
 	nodeChanged := e.node.ID != spec.Node.ID
 	tunChanged := spec.Tun != e.tun
 
-	if Rebuilds(e.settings, spec.Settings, spec.Tun) || (nodeChanged && tunChanged) {
+	if rebuilds(e.settings, spec.Settings, spec.Tun) || (nodeChanged && tunChanged) {
 		if err := e.Stop(); err != nil {
 			return err
 		}
@@ -66,8 +66,8 @@ func (e *Box) Apply(ctx context.Context, spec SessionSpec) error {
 	return nil
 }
 
-func (e *Box) start(ctx context.Context, spec SessionSpec) error {
-	opts, err := Build(spec.Node, spec.Settings, e.logPath, spec.Tun)
+func (e *box) start(ctx context.Context, spec Spec) error {
+	opts, err := build(spec.Node, spec.Settings, e.logPath, spec.Tun)
 	if err != nil {
 		return err
 	}
@@ -75,7 +75,7 @@ func (e *Box) start(ctx context.Context, spec SessionSpec) error {
 		return err
 	}
 
-	runtimeCtx := Context(e.lifetime)
+	runtimeCtx := withRegistry(e.lifetime)
 	inst, err := startBox(runtimeCtx, *opts)
 	if err != nil {
 		return err
@@ -88,17 +88,12 @@ func (e *Box) start(ctx context.Context, spec SessionSpec) error {
 
 func startBox(ctx context.Context, opts option.Options) (*sbox.Box, error) {
 	for attempt := 0; ; attempt++ {
-		inst, err := sbox.New(sbox.Options{Options: opts, Context: Context(ctx)})
+		inst, err := sbox.New(sbox.Options{Options: opts, Context: ctx})
 		if err == nil {
 			err = inst.Start()
 		}
 		if err == nil {
 			return inst, nil
-		}
-		if inst != nil {
-			if closeErr := inst.Close(); closeErr != nil {
-				err = errors.Join(err, closeErr)
-			}
 		}
 		if !errors.Is(err, syscall.EBUSY) || attempt == 2 {
 			return nil, err
@@ -107,7 +102,7 @@ func startBox(ctx context.Context, opts option.Options) (*sbox.Box, error) {
 	}
 }
 
-func (e *Box) swap(n domain.Node) error {
+func (e *box) swap(n domain.Node) error {
 	if err := e.apply(n); err != nil {
 		if rbErr := e.apply(e.node); rbErr != nil {
 			_ = e.Stop()
@@ -119,18 +114,18 @@ func (e *Box) swap(n domain.Node) error {
 	return nil
 }
 
-func (e *Box) apply(n domain.Node) error {
-	ep, obs, err := outbound.New(n, Tag)
+func (e *box) apply(n domain.Node) error {
+	ep, obs, err := outbound.New(n, proxyTag)
 	if err != nil {
 		return err
 	}
 
 	router := e.inst.Router()
-	logger := e.inst.LogFactory().NewLogger("outbound/" + Tag)
+	logger := e.inst.LogFactory().NewLogger("outbound/" + proxyTag)
 
-	_ = e.inst.Endpoint().Remove(Tag)
-	_ = e.inst.Outbound().Remove(Tag)
-	_ = e.inst.Outbound().Remove(Tag + "-stls")
+	_ = e.inst.Endpoint().Remove(proxyTag)
+	_ = e.inst.Outbound().Remove(proxyTag)
+	_ = e.inst.Outbound().Remove(proxyTag + "-stls")
 	if ep != nil {
 		if err := e.inst.Endpoint().Create(e.runtime, router, logger, ep.Tag, ep.Type, ep.Options); err != nil {
 			return err
@@ -154,8 +149,8 @@ func (e *Box) apply(n domain.Node) error {
 	return nil
 }
 
-func (e *Box) tunAdd() error {
-	inb := TunInbound(e.settings)
+func (e *box) tunAdd() error {
+	inb := tunInbound(e.settings)
 	logger := e.inst.LogFactory().NewLogger("inbound/tun[tun-in]")
 
 	err := e.inst.Inbound().Create(e.runtime, e.inst.Router(), logger, "tun-in", C.TypeTun, inb.Options)
@@ -169,7 +164,7 @@ func (e *Box) tunAdd() error {
 	return err
 }
 
-func (e *Box) tunRemove() error {
+func (e *box) tunRemove() error {
 	if err := e.inst.Inbound().Remove("tun-in"); err != nil {
 		return err
 	}
@@ -178,7 +173,7 @@ func (e *Box) tunRemove() error {
 	return nil
 }
 
-func (e *Box) Stop() error {
+func (e *box) Stop() error {
 	if e.inst == nil {
 		return nil
 	}
@@ -199,6 +194,6 @@ func (e *Box) Stop() error {
 	return err
 }
 
-func (e *Box) Running() bool {
+func (e *box) Running() bool {
 	return e.inst != nil
 }

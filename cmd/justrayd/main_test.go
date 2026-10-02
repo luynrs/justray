@@ -32,7 +32,7 @@ func TestLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	client := ipc.NewClient(ipc.Socket(directory))
+	client := ipc.New(ipc.Socket(directory))
 	start := func() (*exec.Cmd, <-chan struct{}) {
 		cmd := exec.Command(os.Args[0], "-test.run=^TestLifecycle$")
 		cmd.Stdout, cmd.Stderr = t.Output(), t.Output()

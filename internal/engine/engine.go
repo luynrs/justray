@@ -8,18 +8,18 @@ import (
 )
 
 type Engine interface {
-	Apply(context.Context, SessionSpec) error
+	Apply(context.Context, Spec) error
 	Stop() error
 	Running() bool
 }
 
-type SessionSpec struct {
+type Spec struct {
 	Node     domain.Node
 	Settings domain.Settings
 	Tun      bool
 }
 
-func Rebuilds(x, y domain.Settings, tun bool) bool {
+func rebuilds(x, y domain.Settings, tun bool) bool {
 	return x.LogLevel != y.LogLevel || x.Port != y.Port || x.AllowLAN != y.AllowLAN ||
 		x.IPVersion != y.IPVersion || x.DNS != y.DNS ||
 		x.Mode != y.Mode || x.BypassLocal != y.BypassLocal ||
@@ -32,4 +32,6 @@ func Rebuilds(x, y domain.Settings, tun bool) bool {
 type Result struct {
 	Alive    bool
 	Duration int
+	Failure  string
+	Error    string
 }

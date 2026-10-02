@@ -69,7 +69,7 @@ func (a *app) probe(cmd *cobra.Command, args []string) error {
 	}
 
 	if nodeID != "" {
-		n := a.lookupNode(domain.NodeRef{SubscriptionID: subID, NodeID: nodeID}, snap.Nodes)
+		n := lookup(domain.NodeRef{SubscriptionID: subID, NodeID: nodeID}, snap.Nodes)
 		if n.NodeID == "" {
 			return fmt.Errorf("node %q not found", nodeID)
 		}
@@ -78,11 +78,15 @@ func (a *app) probe(cmd *cobra.Command, args []string) error {
 		}
 		lat := style.Dim.Render("not tested")
 		if n.Probed && !n.Alive {
-			lat = style.Dead.Render("t/o")
+			lat = style.Dead.Render(n.Latency())
 		} else if n.Probed {
-			lat = style.Alive.Render(fmt.Sprintf("%dms", n.Duration))
+			lat = style.Alive.Render(n.Latency())
 		}
-		fields(append([][2]string{{"Latency", lat}}, a.nodeFields(n)...)...)
+		pairs := append([][2]string{{"Latency", lat}}, a.nodeFields(n)...)
+		if n.Error != "" {
+			pairs = append(pairs, [2]string{"Error", a.clean(n.Error)})
+		}
+		fields(pairs...)
 		return probeErr
 	}
 

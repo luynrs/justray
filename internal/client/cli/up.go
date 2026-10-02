@@ -33,45 +33,40 @@ func (a *app) up(cmd *cobra.Command, args []string) error {
 	}
 	ctx := cmd.Context()
 
-	if len(args) > 0 {
-		return a.connectNode(ctx, args[0], mode)
-	}
-
 	snapshot, err := a.client.Snapshot(ctx)
 	if err != nil {
 		return err
 	}
-	st := snapshot.Status
-	if st.Connected {
-		if mode != nil {
-			return a.switchMode(ctx, st, *mode)
+	nodes := snapshot.Nodes
+	var key string
+	if len(args) > 0 {
+		key = args[0]
+	} else {
+		if snapshot.Status.Connected {
+			if mode != nil {
+				return a.switchMode(ctx, snapshot.Status, *mode)
+			}
+			a.report(snapshot)
+			return nil
 		}
-		a.report(snapshot)
-		return nil
+		if snapshot.Selected.NodeID == "" {
+			return fmt.Errorf("no node selected yet; pick one: %s <id | name>", cmd.CommandPath())
+		}
+		key = snapshot.Selected.NodeID
+		if snapshot.Selected.SubscriptionID != "" {
+			nodes = slices.DeleteFunc(nodes, func(node ipc.Node) bool { return node.SubscriptionID != snapshot.Selected.SubscriptionID })
+		}
 	}
-
-	ref := snapshot.Selected
-	if ref.NodeID == "" {
-		return fmt.Errorf("no node selected yet; pick one: %s <id | name>", cmd.CommandPath())
-	}
-	n, err := a.resolveNode(ctx, ref.NodeID, ref.SubscriptionID)
+	node, err := match(key, "node", nodes, func(node ipc.Node) (string, string) { return node.NodeID, node.Name })
 	if err != nil {
 		return err
 	}
-	return a.connect(ctx, n, mode)
+	return a.connect(ctx, node, mode)
 }
 
 func init() {
 	upCmd.Flags().Bool("tun", false, "Connect in TUN mode")
 	upCmd.Flags().Bool("proxy", false, "Connect in proxy mode")
-}
-
-func (a *app) connectNode(ctx context.Context, key string, mode *bool) error {
-	n, err := a.resolveNode(ctx, key, "")
-	if err != nil {
-		return err
-	}
-	return a.connect(ctx, n, mode)
 }
 
 func (a *app) connect(ctx context.Context, n ipc.Node, mode *bool) error {
@@ -107,7 +102,7 @@ func (a *app) runOp(ctx context.Context, text string, op func() error, ref domai
 		tun := true
 		want = &tun
 	}
-	return a.client.AwaitConnection(ctx, ref, want, 30*time.Second)
+	return a.client.AwaitConnection(ctx, ref, want)
 }
 
 func (a *app) switchMode(ctx context.Context, st ipc.Status, tun bool) error {
@@ -124,18 +119,6 @@ func (a *app) switchMode(ctx context.Context, st ipc.Status, tun bool) error {
 func (a *app) report(snapshot ipc.Snapshot) {
 	done(upperFirst(state(snapshot.Status)))
 	a.nodeDetails(snapshot.Status, snapshot.Nodes)
-}
-
-func (a *app) resolveNode(ctx context.Context, key, sub string) (ipc.Node, error) {
-	snapshot, err := a.client.Snapshot(ctx)
-	if err != nil {
-		return ipc.Node{}, err
-	}
-	nodes := snapshot.Nodes
-	if sub != "" {
-		nodes = slices.DeleteFunc(nodes, func(n ipc.Node) bool { return n.SubscriptionID != sub })
-	}
-	return match(key, "node", nodes, func(n ipc.Node) (string, string) { return n.NodeID, n.Name })
 }
 
 func (a *app) completeNode(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {

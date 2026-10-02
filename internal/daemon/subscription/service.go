@@ -2,13 +2,11 @@ package subscription
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 	"net/url"
 
 	"github.com/luynrs/justray/internal/daemon/store"
-	"github.com/luynrs/justray/internal/parser"
 )
 
 type Service struct {
@@ -33,18 +31,4 @@ func (s *Service) PrepareAdd(ctx context.Context, rawURL string) (store.Subscrip
 		sub.Name = parsedURL.Host
 	}
 	return sub, nil
-}
-
-func check(rawURL string) error {
-	if rawURL == "" {
-		return fmt.Errorf("subscription URL or share link is required")
-	}
-	if parser.IsLink(rawURL) {
-		return nil
-	}
-	u, err := url.Parse(rawURL)
-	if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
-		return fmt.Errorf("%q is not a valid URL or share link", rawURL)
-	}
-	return nil
 }

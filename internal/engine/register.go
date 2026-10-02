@@ -39,7 +39,7 @@ var ( // read-only, built once instead of on every connect/probe
 	certReg     = boxcertificate.NewRegistry()
 )
 
-func Context(ctx context.Context) context.Context {
+func withRegistry(ctx context.Context) context.Context {
 	return sbox.Context(ctx, inboundReg, outboundReg, endpointReg, dnsReg, serviceReg, certReg)
 }
 

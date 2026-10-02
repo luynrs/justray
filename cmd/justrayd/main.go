@@ -2,13 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/signal"
 	"runtime"
 	"runtime/debug"
-	"strings"
 	"syscall"
 	"time"
 
@@ -19,7 +20,6 @@ import (
 	"github.com/luynrs/justray/internal/daemon/subscription"
 	"github.com/luynrs/justray/internal/engine"
 	"github.com/luynrs/justray/internal/ipc"
-	logging "github.com/luynrs/justray/internal/logger"
 	"github.com/luynrs/justray/internal/platform/elevate"
 	"github.com/luynrs/justray/internal/version"
 )
@@ -33,7 +33,7 @@ func main() {
 		}
 	}
 
-	logger := logging.New(os.Stderr, "justrayd")
+	logger := log.New(os.Stderr, "justrayd: ", log.LstdFlags)
 	dir, err := ipc.Dir()
 	if err != nil {
 		logger.Fatalf("find config dir failed (%v)", err)
@@ -43,7 +43,7 @@ func main() {
 	}
 	socket := ipc.Socket(dir)
 
-	logFile, err := logging.Open(ipc.DaemonLog(dir))
+	logFile, err := os.OpenFile(ipc.DaemonLog(dir), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		logger.Fatalf("open log failed (%v)", err)
 	}
@@ -63,7 +63,7 @@ func main() {
 		ln, unlock, err := server.Listen(socket)
 		if err != nil {
 			cancel()
-			if strings.Contains(err.Error(), "already listening") {
+			if errors.Is(err, server.ErrRunning) {
 				logger.Printf("shutdown (%v)", err)
 				return
 			}

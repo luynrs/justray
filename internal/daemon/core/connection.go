@@ -121,7 +121,7 @@ func (c *Core) SetTun(ctx context.Context, enable bool) error {
 	return c.finishConnection(ctx, previous, next, before, applyErr)
 }
 
-func (c *Core) finishConnection(ctx context.Context, previous, next store.PersistentState, before ipc.Status, err error) error {
+func (c *Core) finishConnection(ctx context.Context, previous, next store.State, before ipc.Status, err error) error {
 	if cancellation := ctx.Err(); cancellation != nil {
 		err = cancellation
 	}
@@ -145,7 +145,7 @@ func (c *Core) finishConnection(ctx context.Context, previous, next store.Persis
 	return err
 }
 
-func (c *Core) restoreLive(ctx context.Context, state store.PersistentState, before ipc.Status) error {
+func (c *Core) restoreLive(ctx context.Context, state store.State, before ipc.Status) error {
 	status := c.conn.Status()
 	if status.Connected == before.Connected && status.NodeRef == before.NodeRef && status.Tun == before.Tun {
 		return nil
@@ -161,7 +161,7 @@ func (c *Core) restoreLive(ctx context.Context, state store.PersistentState, bef
 	return c.conn.Connect(ctx, node, ref, state.Settings, before.Tun)
 }
 
-func (c *Core) apply(ctx context.Context, state store.PersistentState, tun bool) error {
+func (c *Core) apply(ctx context.Context, state store.State, tun bool) error {
 	status := c.conn.Status()
 	if !status.Connected {
 		return nil

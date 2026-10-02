@@ -18,7 +18,7 @@ type fakeEngine struct {
 	applying, stopping         func()
 }
 
-func (fake *fakeEngine) Apply(_ context.Context, spec engine.SessionSpec) error {
+func (fake *fakeEngine) Apply(_ context.Context, spec engine.Spec) error {
 	if fake.applying != nil {
 		fake.applying()
 	}

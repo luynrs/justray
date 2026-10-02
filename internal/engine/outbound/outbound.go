@@ -53,13 +53,13 @@ func proxy(n domain.Node, tag string, transportOptions *option.V2RayTransportOpt
 	}
 
 	switch n.Protocol {
-	case domain.VLess:
-		pe := packetEncoding(n)
+	case domain.VLESS:
+		encoding := cmp.Or(n.PacketEncoding, "xudp")
 		return &option.Outbound{Type: C.TypeVLESS, Tag: tag, Options: &option.VLESSOutboundOptions{
 			ServerOptions:               server(n),
 			UUID:                        n.Auth.UUID,
 			Flow:                        n.Auth.Flow,
-			PacketEncoding:              &pe,
+			PacketEncoding:              &encoding,
 			OutboundTLSOptionsContainer: option.OutboundTLSOptionsContainer{TLS: tls},
 			Transport:                   transportOptions,
 		}}, nil
@@ -70,7 +70,7 @@ func proxy(n domain.Node, tag string, transportOptions *option.V2RayTransportOpt
 			UUID:                        n.Auth.UUID,
 			Security:                    cmp.Or(n.Auth.Method, "auto"),
 			AlterId:                     n.Auth.AlterID,
-			PacketEncoding:              packetEncoding(n),
+			PacketEncoding:              cmp.Or(n.PacketEncoding, "xudp"),
 			OutboundTLSOptionsContainer: option.OutboundTLSOptionsContainer{TLS: tls},
 			Transport:                   transportOptions,
 		}}, nil
@@ -195,5 +195,3 @@ func wireguard(n domain.Node, tag string) (*option.Endpoint, error) {
 func server(n domain.Node) option.ServerOptions {
 	return option.ServerOptions{Server: n.Server, ServerPort: uint16(n.Port)}
 }
-
-func packetEncoding(n domain.Node) string { return cmp.Or(n.PacketEncoding, "xudp") }

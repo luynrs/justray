@@ -3,7 +3,6 @@ package tui
 import (
 	"errors"
 	"slices"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -18,7 +17,7 @@ func (m Model) activate(r tree.Row) (tea.Model, tea.Cmd) {
 		if m.client == nil {
 			return m, nil
 		}
-		return m, m.actionCmd(false, nil, func() error { return m.client.SetCollapsed(m.watch, id, nil) })
+		return m, action(false, nil, func() error { return m.client.SetCollapsed(m.watch, id, nil) })
 	}
 	if m.busy {
 		return m, nil
@@ -32,7 +31,7 @@ func (m Model) activate(r tree.Row) (tea.Model, tea.Cmd) {
 		ref := r.Node.Ref()
 		act = func() error { return m.awaitConnection(m.client.Connect(m.watch, ref, nil), ref, true) }
 	}
-	return m, m.actionCmd(true, m.start(true), act)
+	return m, action(true, m.start(true), act)
 }
 
 func (m Model) collapse() (tea.Model, tea.Cmd) {
@@ -43,7 +42,7 @@ func (m Model) collapse() (tea.Model, tea.Cmd) {
 	id := r.Sub.SubscriptionID
 	var cmd tea.Cmd
 	if m.client != nil {
-		cmd = m.actionCmd(false, nil, func() error { return m.client.SetCollapsed(m.watch, id, new(true)) })
+		cmd = action(false, nil, func() error { return m.client.SetCollapsed(m.watch, id, new(true)) })
 	}
 	if r.Kind == tree.Node {
 		m.toHeader(id)
@@ -69,7 +68,7 @@ func (m Model) expand() (tea.Model, tea.Cmd) {
 	id := r.Sub.SubscriptionID
 	var cmd tea.Cmd
 	if m.client != nil {
-		cmd = m.actionCmd(false, nil, func() error { return m.client.SetCollapsed(m.watch, id, new(false)) })
+		cmd = action(false, nil, func() error { return m.client.SetCollapsed(m.watch, id, new(false)) })
 	}
 	return m, cmd
 }
@@ -83,13 +82,13 @@ func (m Model) probe() (tea.Model, tea.Cmd) {
 		if r.Node.Probing {
 			return m, nil
 		}
-		return m, m.actionCmd(false, m.start(false), func() error { return m.client.Probe(m.watch, r.Node.SubscriptionID, r.Node.NodeID) })
+		return m, action(false, m.start(false), func() error { return m.client.Probe(m.watch, r.Node.SubscriptionID, r.Node.NodeID) })
 	}
-	return m, m.actionCmd(false, m.start(false), func() error { return m.client.Probe(m.watch, r.Sub.SubscriptionID, "") })
+	return m, action(false, m.start(false), func() error { return m.client.Probe(m.watch, r.Sub.SubscriptionID, "") })
 }
 
 func (m Model) probeAll() (tea.Model, tea.Cmd) {
-	return m, m.actionCmd(false, m.start(false), func() error { return m.client.Probe(m.watch, "", "") })
+	return m, action(false, m.start(false), func() error { return m.client.Probe(m.watch, "", "") })
 }
 
 func (m Model) refresh() (tea.Model, tea.Cmd) {
@@ -101,11 +100,11 @@ func (m Model) refresh() (tea.Model, tea.Cmd) {
 	if !r.Sub.Refreshable {
 		return m, nil
 	}
-	return m, m.actionCmd(false, m.start(false), func() error { return m.client.RefreshSubscription(m.watch, id) })
+	return m, action(false, m.start(false), func() error { return m.client.RefreshSubscription(m.watch, id) })
 }
 
 func (m Model) refreshAll() (tea.Model, tea.Cmd) {
-	return m, m.actionCmd(false, m.start(false), func() error { return m.client.RefreshSubscriptions(m.watch) })
+	return m, action(false, m.start(false), func() error { return m.client.RefreshSubscriptions(m.watch) })
 }
 
 func (m Model) moveSub(dir int) (tea.Model, tea.Cmd) {
@@ -119,7 +118,7 @@ func (m Model) moveSub(dir int) (tea.Model, tea.Cmd) {
 	if i < 0 || j < 0 || j >= len(m.snapshot.Subscriptions) {
 		return m, nil
 	}
-	return m, m.actionCmd(false, m.start(false), func() error { return m.client.MoveSubscription(m.watch, id, dir) })
+	return m, action(false, m.start(false), func() error { return m.client.MoveSubscription(m.watch, id, dir) })
 }
 
 func (m Model) setTun(enable bool) (tea.Model, tea.Cmd) {
@@ -129,14 +128,14 @@ func (m Model) setTun(enable bool) (tea.Model, tea.Cmd) {
 	m.restore = nil
 	m.err = ""
 	m.busy = m.connected()
-	return m, m.actionCmd(m.busy, m.start(true), func() error {
+	return m, action(m.busy, m.start(true), func() error {
 		return m.awaitConnection(m.client.SetTun(m.watch, enable), m.snapshot.Selected, enable)
 	})
 }
 
 func (m Model) awaitConnection(err error, ref domain.NodeRef, tun bool) error {
 	if errors.Is(err, ipc.ErrElevate) {
-		_, err = m.client.AwaitConnection(m.watch, ref, &tun, 30*time.Second)
+		_, err = m.client.AwaitConnection(m.watch, ref, &tun)
 	}
 	return err
 }

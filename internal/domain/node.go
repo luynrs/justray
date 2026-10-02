@@ -13,7 +13,7 @@ type Proto string
 
 const (
 	VMess  Proto = "vmess"
-	VLess  Proto = "vless"
+	VLESS  Proto = "vless"
 	Trojan Proto = "trojan"
 	SS     Proto = "shadowsocks"
 	HY1    Proto = "hysteria"

@@ -21,7 +21,6 @@ import (
 	"github.com/luynrs/justray/internal/client/tui/style"
 	"github.com/luynrs/justray/internal/daemon/store"
 	"github.com/luynrs/justray/internal/ipc"
-	"github.com/luynrs/justray/internal/logger"
 	"github.com/luynrs/justray/internal/platform/elevate"
 	"github.com/luynrs/justray/internal/platform/lock"
 	"github.com/luynrs/justray/internal/version"
@@ -100,7 +99,7 @@ func Execute() error {
 			if err != nil {
 				return err
 			}
-			a.client = ipc.NewClient(ipc.Socket(dir))
+			a.client = ipc.New(ipc.Socket(dir))
 			return nil
 		}
 		if err := a.connectDaemon(cmd.Context(), cmd != statusCmd && cmd != subListCmd && cmd != downCmd, false); err != nil {
@@ -117,14 +116,14 @@ func Execute() error {
 	}
 	upCmd.RunE = a.up
 	downCmd.RunE = a.down
-	stopCmd.RunE = a.stop
+	stopCmd.RunE = stop
 	probeCmd.RunE = a.probe
 	statusCmd.RunE = a.status
 	subAddCmd.RunE = a.subAdd
 	subRemoveCmd.RunE = a.subRemove
 	subRefreshCmd.RunE = a.subRefresh
 	subListCmd.RunE = a.subList
-	logsCmd.RunE = a.logs
+	logsCmd.RunE = logs
 	upCmd.ValidArgsFunction = a.completeNode
 	subRemoveCmd.ValidArgsFunction = a.completeSub
 	subRefreshCmd.ValidArgsFunction = a.completeSub
@@ -174,7 +173,7 @@ func (a *app) connectDaemon(ctx context.Context, startMissing, restore bool) err
 		return fmt.Errorf("resolve config dir: %w", err)
 	}
 	if a.client == nil {
-		a.client = ipc.NewClient(ipc.Socket(dir))
+		a.client = ipc.New(ipc.Socket(dir))
 	}
 	if !startMissing {
 		if _, err := os.Stat(dir); os.IsNotExist(err) {
@@ -236,7 +235,7 @@ func (a *app) connectDaemon(ctx context.Context, startMissing, restore bool) err
 		if err := spawn(bin, dir); err != nil {
 			return fmt.Errorf("start background service: %w", err)
 		}
-		err = wait(ctx, a.client, 10*time.Second)
+		err = wait(ctx, a.client, 8*time.Second)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				return err
@@ -263,7 +262,7 @@ func (a *app) connectDaemon(ctx context.Context, startMissing, restore bool) err
 		if state.Active.NodeID != "" {
 			err := a.client.Connect(ctx, state.Active, &state.Tun)
 			if errors.Is(err, ipc.ErrElevate) {
-				_, err = a.client.AwaitConnection(context.WithoutCancel(ctx), state.Active, &state.Tun, 30*time.Second)
+				_, err = a.client.AwaitConnection(context.WithoutCancel(ctx), state.Active, &state.Tun)
 				if err := caller.Err(); err != nil {
 					return err
 				}
@@ -283,7 +282,7 @@ func spawn(bin, dir string) error {
 	}
 	defer func() { _ = devNull.Close() }()
 
-	errLog, err := logger.Open(ipc.DaemonLog(dir))
+	errLog, err := os.OpenFile(ipc.DaemonLog(dir), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
 	}
@@ -310,7 +309,7 @@ func justrayd(ctx context.Context) (string, error) {
 		if bin == "" {
 			continue
 		}
-		check, cancel := context.WithTimeout(ctx, 3*time.Second)
+		check, cancel := context.WithTimeout(ctx, time.Second)
 		output, err := exec.CommandContext(check, bin, "--version").Output()
 		cancel()
 		if ctx.Err() != nil {
@@ -362,7 +361,7 @@ func wait(ctx context.Context, c *ipc.Client, timeout time.Duration) error {
 func (a *app) daemon() *ipc.Client {
 	if a.client == nil {
 		if d, err := ipc.Dir(); err == nil {
-			a.client = ipc.NewClient(ipc.Socket(d))
+			a.client = ipc.New(ipc.Socket(d))
 		}
 	}
 	return a.client

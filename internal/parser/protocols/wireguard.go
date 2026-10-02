@@ -57,12 +57,19 @@ func ParseWireGuard(uri string) (domain.Node, error) {
 }
 
 func queryAny(u *url.URL, q url.Values, keys ...string) string {
-	for _, k := range keys {
-		if v := rawQuery(u, k); v != "" {
-			return v
+	for _, key := range keys {
+		for pair := range strings.SplitSeq(u.RawQuery, "&") {
+			name, value, found := strings.Cut(pair, "=")
+			if found && name == key {
+				value, _ = url.PathUnescape(value)
+				if value != "" {
+					return value
+				}
+				break
+			}
 		}
-		if v := q.Get(k); v != "" {
-			return v
+		if value := q.Get(key); value != "" {
+			return value
 		}
 	}
 	return ""
@@ -108,15 +115,4 @@ func encodeUserinfoSlash(uri string) string {
 		return uri
 	}
 	return uri[:start] + strings.ReplaceAll(uri[start:end], "/", "%2F") + uri[end:]
-}
-
-func rawQuery(u *url.URL, key string) string {
-	for pair := range strings.SplitSeq(u.RawQuery, "&") {
-		name, value, ok := strings.Cut(pair, "=")
-		if ok && name == key {
-			value, _ = url.PathUnescape(value)
-			return value
-		}
-	}
-	return ""
 }

@@ -22,7 +22,7 @@ type Subscription struct {
 	Warning   string         `json:"warning,omitempty"`
 }
 
-type PersistentState struct {
+type State struct {
 	Subscriptions []Subscription  `json:"subscriptions"`
 	Active        domain.NodeRef  `json:"active,omitzero"`
 	Last          domain.NodeRef  `json:"last,omitzero"`
@@ -40,8 +40,8 @@ type Pending struct {
 // Disk reads and writes the daemon's persistent state.
 type Disk struct{ Dir string }
 
-func (d Disk) Load() (PersistentState, error) {
-	state := PersistentState{
+func (d Disk) Load() (State, error) {
+	state := State{
 		Settings:      domain.Settings{General: domain.General{RefreshEvery: domain.DefaultRefresh}},
 		Subscriptions: []Subscription{},
 	}
@@ -70,7 +70,7 @@ func (d Disk) Load() (PersistentState, error) {
 	return state, nil
 }
 
-func (d Disk) SaveState(state PersistentState) error {
+func (d Disk) SaveState(state State) error {
 	if state.Subscriptions == nil {
 		state.Subscriptions = []Subscription{}
 	}

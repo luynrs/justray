@@ -64,7 +64,7 @@ func (c *Core) publishLocked() {
 	}
 }
 
-func (c *Core) status(state store.PersistentState) ipc.Status {
+func (c *Core) status(state store.State) ipc.Status {
 	status := c.conn.Status()
 	if !status.Connected {
 		status.Port = state.Settings.Port
@@ -88,10 +88,11 @@ func (c *Core) nodes(subscriptions []store.Subscription) []ipc.Node {
 				Server:         node.Server,
 				Port:           node.Port,
 				SubscriptionID: subscription.ID,
-				Probing:        c.probing[ref],
+				Probing:        c.probing[ref] != nil,
 			}
 			if result, ok := c.probes[ref]; ok {
 				item.Probed, item.Alive, item.Duration = true, result.Alive, result.Duration
+				item.Failure, item.Error = result.Failure, result.Error
 			}
 			out = append(out, item)
 		}
@@ -99,11 +100,6 @@ func (c *Core) nodes(subscriptions []store.Subscription) []ipc.Node {
 	for ref := range c.probes {
 		if !live[ref] {
 			delete(c.probes, ref)
-		}
-	}
-	for ref := range c.probing {
-		if !live[ref] {
-			delete(c.probing, ref)
 		}
 	}
 	return out

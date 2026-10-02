@@ -108,11 +108,11 @@ var subRefreshCmd = &cobra.Command{
 }
 
 func (a *app) subRefresh(cmd *cobra.Command, args []string) error {
+	snapshot, err := a.client.Snapshot(cmd.Context())
+	if err != nil {
+		return err
+	}
 	if len(args) == 0 {
-		snapshot, err := a.client.Snapshot(cmd.Context())
-		if err != nil {
-			return err
-		}
 		if len(snapshot.Subscriptions) == 0 {
 			out(style.Dim.Render("No subscriptions yet. Add one: " + cmd.Parent().CommandPath() + " add <url>"))
 			return nil
@@ -134,7 +134,7 @@ func (a *app) subRefresh(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	sub, err := a.resolveSub(cmd.Context(), args[0])
+	sub, err := match(args[0], "subscription", snapshot.Subscriptions, func(sub ipc.Subscription) (string, string) { return sub.SubscriptionID, sub.Name })
 	if err != nil {
 		return err
 	}
@@ -185,6 +185,8 @@ func (a *app) subList(cmd *cobra.Command, args []string) error {
 			Probed   bool   `json:"probed,omitempty"`
 			Alive    bool   `json:"alive,omitempty"`
 			Duration int    `json:"ms,omitempty"`
+			Failure  string `json:"failure,omitempty"`
+			Error    string `json:"error,omitempty"`
 		}
 		type subOut struct {
 			ID      string          `json:"id"`
@@ -198,7 +200,7 @@ func (a *app) subList(cmd *cobra.Command, args []string) error {
 		for i, g := range groups {
 			nodes := make([]nodeOut, len(g.Nodes))
 			for j, n := range g.Nodes {
-				nodes[j] = nodeOut{n.NodeID, n.Name, n.Protocol, n.Server, n.Port, n.Probed, n.Alive, n.Duration}
+				nodes[j] = nodeOut{n.NodeID, n.Name, n.Protocol, n.Server, n.Port, n.Probed, n.Alive, n.Duration, n.Failure, n.Error}
 			}
 			s := subOut{ID: g.Sub.SubscriptionID, Name: g.Sub.Name, Warning: g.Sub.Warning, Nodes: nodes}
 			if tr := g.Sub.Traffic; tr.TotalBytes > 0 || tr.UploadBytes > 0 || tr.DownloadBytes > 0 {
@@ -222,14 +224,6 @@ func (a *app) subList(cmd *cobra.Command, args []string) error {
 func init() {
 	subCmd.AddCommand(subAddCmd, subRemoveCmd, subRefreshCmd, subListCmd)
 	subListCmd.Flags().Bool("json", false, "Output subscriptions as JSON")
-}
-
-func (a *app) resolveSub(ctx context.Context, key string) (ipc.Subscription, error) {
-	snapshot, err := a.client.Snapshot(ctx)
-	if err != nil {
-		return ipc.Subscription{}, err
-	}
-	return match(key, "subscription", snapshot.Subscriptions, func(s ipc.Subscription) (string, string) { return s.SubscriptionID, s.Name })
 }
 
 func (a *app) completeSub(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -296,9 +290,9 @@ func (a *app) nodeLine(n ipc.Node, branch string, nameW, infoW int) string {
 	line := fmt.Sprintf("%s%s  %s  %s", prefix, name, info, id)
 	if n.Probed {
 		if n.Alive {
-			line += "  " + style.Alive.Render(fmt.Sprintf("%dms", n.Duration))
+			line += "  " + style.Alive.Render(n.Latency())
 		} else {
-			line += "  " + style.Dead.Render("t/o")
+			line += "  " + style.Dead.Render(n.Latency())
 		}
 	}
 	return line

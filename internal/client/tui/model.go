@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log"
+	"os"
 	"time"
 
 	"charm.land/bubbles/v2/spinner"
@@ -14,7 +15,6 @@ import (
 	"github.com/luynrs/justray/internal/client/tui/style"
 	"github.com/luynrs/justray/internal/client/tui/tree"
 	"github.com/luynrs/justray/internal/ipc"
-	"github.com/luynrs/justray/internal/logger"
 )
 
 const (
@@ -34,7 +34,7 @@ type Model struct {
 
 	editor  textinput.Model
 	confirm tree.Row
-	dialog  *settings.Settings
+	dialog  *settings.Model
 	filter  textinput.Model
 
 	live    bool
@@ -155,13 +155,12 @@ func Run(c *ipc.Client, start, restore func(context.Context) error) error {
 	defer log.SetOutput(log.Writer())
 	defer log.SetPrefix(log.Prefix())
 	defer log.SetFlags(log.Flags())
-	tuiLog := logger.New(io.Discard, "tui")
-	log.SetOutput(tuiLog.Writer())
-	log.SetPrefix(tuiLog.Prefix())
-	log.SetFlags(tuiLog.Flags())
+	log.SetOutput(io.Discard)
+	log.SetPrefix("tui: ")
+	log.SetFlags(log.LstdFlags)
 
 	if dir, err := ipc.Dir(); err == nil {
-		if f, err := logger.Open(ipc.TUILog(dir)); err == nil {
+		if f, err := os.OpenFile(ipc.TUILog(dir), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
 			defer func() { _ = f.Close() }()
 			log.SetOutput(f)
 		}

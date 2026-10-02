@@ -180,7 +180,7 @@ func ParseXray(raw []byte) ([]domain.Node, map[string]int, error) {
 					case "vmess":
 						node.Protocol, node.Auth = domain.VMess, domain.Auth{UUID: user.ID, AlterID: user.AlterID, Method: cmp.Or(user.Security, "auto")}
 					case "vless":
-						node.Protocol, node.Auth = domain.VLess, domain.Auth{UUID: user.ID, Flow: user.Flow}
+						node.Protocol, node.Auth = domain.VLESS, domain.Auth{UUID: user.ID, Flow: user.Flow}
 					case "trojan":
 						node.Protocol, node.Auth = domain.Trojan, domain.Auth{Password: cmp.Or(user.Password, user.ID)}
 					default:

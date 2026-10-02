@@ -142,7 +142,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		row := m.confirm
 		m.confirm = tree.Row{}
 		if (k == "y" || k == "Y") && row.Removable() {
-			return m, m.actionCmd(false, m.start(false), func() error {
+			return m, action(false, m.start(false), func() error {
 				if row.Kind == tree.Header {
 					return m.client.RemoveSubscription(m.watch, row.Sub.SubscriptionID)
 				}
@@ -162,7 +162,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			if url == "" {
 				return m, nil
 			}
-			return m, m.actionCmd(false, m.start(false), func() error {
+			return m, action(false, m.start(false), func() error {
 				_, err := m.client.AddSubscription(m.watch, url)
 				return err
 			})
@@ -319,7 +319,7 @@ func (m Model) closeSettings() (Model, tea.Cmd) {
 	old := m.snapshot.Settings
 	otherSettings := next
 	otherSettings.Autostart = old.Autostart
-	return m, m.actionCmd(false, m.start(false), func() error {
+	return m, action(false, m.start(false), func() error {
 		if next.Autostart != old.Autostart {
 			if err := m.client.SetAutostart(m.watch, next.Autostart == "on"); err != nil {
 				return err

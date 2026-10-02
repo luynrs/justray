@@ -21,12 +21,12 @@ type Client struct {
 // IdleTimeout bounds how long either side waits on a quiet connection
 const IdleTimeout = 60 * time.Second
 
-func NewClient(socket string) *Client { return &Client{socket: socket} }
+func New(socket string) *Client { return &Client{socket: socket} }
 
 var ErrNoDaemon = errors.New("daemon is not running")
 
 func (c *Client) dial(ctx context.Context) (net.Conn, error) {
-	dialer := net.Dialer{Timeout: 3 * time.Second}
+	dialer := net.Dialer{Timeout: 500 * time.Millisecond}
 	conn, err := dialer.DialContext(ctx, "unix", c.socket)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -75,15 +75,11 @@ func receive[T any](decoder *json.Decoder) (T, error) {
 
 func call[T any](ctx context.Context, c *Client, method string, args Arguments) (T, error) {
 	var out T
-	timeout := 30 * time.Second
+	timeout := 4 * time.Second
 	switch method {
-	case "Ping":
-		timeout = time.Second
-	case "Snapshot":
-		timeout = 3 * time.Second
-	case "Probe":
-		timeout = 5 * time.Minute
-	case "RefreshSubscription", "RefreshSubscriptions":
+	case "Ping", "Snapshot":
+		timeout = 500 * time.Millisecond
+	case "Probe", "AddSubscription", "RefreshSubscription", "RefreshSubscriptions":
 		timeout = 0
 	}
 	if timeout > 0 {
@@ -114,11 +110,11 @@ func (c *Client) Snapshot(ctx context.Context) (Snapshot, error) {
 	return call[Snapshot](ctx, c, "Snapshot", Arguments{})
 }
 
-func (c *Client) AwaitConnection(ctx context.Context, ref domain.NodeRef, want *bool, timeout time.Duration) (Snapshot, error) {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+func (c *Client) AwaitConnection(ctx context.Context, ref domain.NodeRef, want *bool) (Snapshot, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	pending := false
-	for delay := 5 * time.Millisecond; ; delay = min(delay*2, 500*time.Millisecond) {
+	for delay := 5 * time.Millisecond; ; delay = min(delay*2, 100*time.Millisecond) {
 		snapshot, err := c.Snapshot(ctx)
 		status := snapshot.Status
 		switch {

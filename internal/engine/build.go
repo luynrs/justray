@@ -14,11 +14,7 @@ import (
 	"github.com/luynrs/justray/internal/engine/outbound"
 )
 
-const (
-	Tag             = "proxy"
-	maxProbeNodes   = 512
-	maxProbeWorkers = 32
-)
+const proxyTag = "proxy"
 
 var dnsStrategy = map[string]option.DomainStrategy{
 	"ipv4":  option.DomainStrategy(C.DomainStrategyIPv4Only),
@@ -26,8 +22,8 @@ var dnsStrategy = map[string]option.DomainStrategy{
 	"mixed": option.DomainStrategy(C.DomainStrategyPreferIPv4),
 }
 
-func Build(n domain.Node, s domain.Settings, logPath string, tun bool) (*option.Options, error) {
-	ep, obs, err := outbound.New(n, Tag)
+func build(n domain.Node, s domain.Settings, logPath string, tun bool) (*option.Options, error) {
+	ep, obs, err := outbound.New(n, proxyTag)
 	if err != nil {
 		return nil, err
 	}
@@ -61,17 +57,18 @@ func Build(n domain.Node, s domain.Settings, logPath string, tun bool) (*option.
 		opts.DNS.Servers = append(opts.DNS.Servers, dnsServers(s, "", "node")...)
 		opts.Route.DefaultDomainResolver.Server = "node"
 	}
-	attach(opts, ep, obs)
+	if ep != nil {
+		opts.Endpoints = append(opts.Endpoints, *ep)
+	}
+	opts.Outbounds = append(opts.Outbounds, obs...)
 	if tun {
-		opts.Inbounds = append(opts.Inbounds, TunInbound(s))
+		opts.Inbounds = append(opts.Inbounds, tunInbound(s))
 	}
 	return opts, nil
 }
 
-func ProbeTag(i int) string { return "p" + strconv.Itoa(i) }
-
-func ProbeConfig(nodes []domain.Node, s domain.Settings, logPath string) *option.Options {
-	opts := &option.Options{
+func probeConfig(s domain.Settings, logPath string) *option.Options {
+	return &option.Options{
 		Log: &option.LogOptions{Level: s.LogLevel, Output: logPath},
 		Route: &option.RouteOptions{
 			AutoDetectInterface:   true,
@@ -84,23 +81,10 @@ func ProbeConfig(nodes []domain.Node, s domain.Settings, logPath string) *option
 			Final:            "remote",
 		}},
 	}
-	for i, n := range nodes {
-		if ep, obs, err := outbound.New(n, ProbeTag(i)); err == nil {
-			attach(opts, ep, obs)
-		}
-	}
-	return opts
-}
-
-func attach(opts *option.Options, ep *option.Endpoint, obs []option.Outbound) {
-	if ep != nil {
-		opts.Endpoints = append(opts.Endpoints, *ep)
-	}
-	opts.Outbounds = append(opts.Outbounds, obs...)
 }
 
 func detour(s domain.Settings) string {
-	if final(s) != Tag {
+	if final(s) != proxyTag {
 		return ""
 	}
 	host := s.DNS
@@ -115,7 +99,7 @@ func detour(s domain.Settings) string {
 	if addr, err := netip.ParseAddr(host); err == nil && (addr.IsLoopback() || addr.IsLinkLocalUnicast() || (s.BypassLocal == "on" && addr.IsPrivate())) {
 		return ""
 	}
-	return Tag
+	return proxyTag
 }
 
 func dnsServers(s domain.Settings, detourTag, tag string) []option.DNSServerOptions {

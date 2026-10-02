@@ -28,7 +28,7 @@ func TestRefreshSelected(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	app := testCore(t, &fakeEngine{}, store.PersistentState{Subscriptions: []store.Subscription{
+	app := testCore(t, &fakeEngine{}, store.State{Subscriptions: []store.Subscription{
 		{ID: "good", URL: server.URL + "/good", Nodes: []domain.Node{{ID: "old"}}},
 		{ID: "bad", Name: "original", URL: server.URL + "/bad"},
 		{ID: "unselected", URL: server.URL + "/unselected"},
@@ -66,7 +66,7 @@ func TestRefreshCanceled(t *testing.T) {
 		<-request.Context().Done()
 	}))
 	defer server.Close()
-	app := testCore(t, &fakeEngine{}, store.PersistentState{Subscriptions: []store.Subscription{
+	app := testCore(t, &fakeEngine{}, store.State{Subscriptions: []store.Subscription{
 		{ID: "fast", URL: server.URL + "/fast"}, {ID: "slow", URL: server.URL + "/slow"},
 	}})
 	_, updates, stop := app.Watch()
@@ -125,7 +125,7 @@ func TestRefreshOrdering(t *testing.T) {
 	defer srv.Close()
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
-	app := testCore(t, &fakeEngine{}, store.PersistentState{Subscriptions: []store.Subscription{
+	app := testCore(t, &fakeEngine{}, store.State{Subscriptions: []store.Subscription{
 		{ID: "a", URL: srv.URL + "/a"}, {ID: "b", URL: srv.URL + "/b"},
 	}})
 	_, updates, stop := app.Watch()

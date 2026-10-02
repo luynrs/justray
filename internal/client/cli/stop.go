@@ -19,14 +19,14 @@ var stopCmd = &cobra.Command{
 	Args:    cobra.NoArgs,
 }
 
-func (a *app) stop(cmd *cobra.Command, args []string) error {
+func stop(cmd *cobra.Command, args []string) error {
 	dir, err := ipc.Dir()
 	if err != nil {
 		return err
 	}
 	socket := ipc.Socket(dir)
 	ctx := cmd.Context()
-	c := ipc.NewClient(socket)
+	c := ipc.New(socket)
 	if err := c.Ping(ctx); err != nil {
 		if !errors.Is(err, ipc.ErrNoDaemon) && !errors.Is(err, ipc.ErrVersion) {
 			return err

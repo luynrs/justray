@@ -30,9 +30,6 @@ func ParseShadowsocks(uri string) (domain.Node, error) {
 		remark = unescaped
 	}
 	plugin := parsePluginQuery(query)
-	if err := checkPlugin(plugin); err != nil {
-		return domain.Node{}, fmt.Errorf("ss: %w", err)
-	}
 	at := strings.LastIndexByte(rest, '@')
 	if at < 0 {
 		return domain.Node{}, fmt.Errorf("ss: missing host")

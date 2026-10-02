@@ -18,7 +18,7 @@ func TestParseURI(t *testing.T) {
 		server   string
 		port     int
 	}{
-		"vless":       {"vless://11111111-1111-1111-1111-111111111111@example.com:443?security=tls&sni=example.com#node", domain.VLess, "example.com", 443},
+		"vless":       {"vless://11111111-1111-1111-1111-111111111111@example.com:443?security=tls&sni=example.com#node", domain.VLESS, "example.com", 443},
 		"trojan":      {"trojan://secret@example.com:443#node", domain.Trojan, "example.com", 443},
 		"shadowsocks": {"ss://YWVzLTI1Ni1nY206cGFzcw==@example.com:8388#node", domain.SS, "example.com", 8388},
 		"hysteria":    {"hysteria://example.com:443?auth=secret&upmbps=50&downmbps=200#node", domain.HY1, "example.com", 443},
@@ -108,7 +108,7 @@ func TestParseSubscriptionXray(t *testing.T) {
 		t.Fatalf("ParseSubscription Xray: err=%v, nodes=%+v", err, nodes)
 	}
 	node := nodes[0]
-	if node.Name != "Germany VLESS" || node.Protocol != domain.VLess || node.Server != "1.2.3.4" || node.Port != 443 {
+	if node.Name != "Germany VLESS" || node.Protocol != domain.VLESS || node.Server != "1.2.3.4" || node.Port != 443 {
 		t.Fatalf("unexpected node: %+v", node)
 	}
 	if node.Reality == nil || node.Reality.PublicKey != "pubkey" || node.Reality.ShortID != "shortid" {
@@ -186,7 +186,7 @@ func TestParseClashProtocols(t *testing.T) {
 	if len(nodes) != 8 {
 		t.Fatalf("got %d nodes, want 8", len(nodes))
 	}
-	if nodes[0].Protocol != domain.VLess || nodes[0].Reality == nil || nodes[0].Reality.PublicKey != "pub" {
+	if nodes[0].Protocol != domain.VLESS || nodes[0].Reality == nil || nodes[0].Reality.PublicKey != "pub" {
 		t.Fatalf("unexpected vless: %+v", nodes[0])
 	}
 	if nodes[1].Protocol != domain.VMess || nodes[1].TLS == nil {
@@ -252,7 +252,7 @@ func TestParseSingBox(t *testing.T) {
 	if err != nil || len(nodes) != 4 {
 		t.Fatalf("unexpected nodes len %d, err=%v", len(nodes), err)
 	}
-	if nodes[0].Protocol != domain.VLess || nodes[0].Reality == nil || nodes[0].Transport.Network != "ws" {
+	if nodes[0].Protocol != domain.VLESS || nodes[0].Reality == nil || nodes[0].Transport.Network != "ws" {
 		t.Fatalf("unexpected vless: %+v", nodes[0])
 	}
 	if nodes[1].Protocol != domain.SS || nodes[1].ShadowTLS == nil || nodes[1].ShadowTLS.Version != 3 {

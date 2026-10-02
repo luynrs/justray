@@ -16,7 +16,7 @@ import (
 )
 
 func TestActionStartFailure(t *testing.T) {
-	model := New(ipc.NewClient("missing-daemon.sock"), func(context.Context) error {
+	model := New(ipc.New("missing-daemon.sock"), func(context.Context) error {
 		return errors.New("launcher failed")
 	}, nil)
 	defer model.stop()

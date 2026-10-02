@@ -16,7 +16,7 @@ var (
 		RejectOptions: option.RejectActionOptions{Method: C.RuleActionRejectMethodDefault},
 	}
 	toDirect = option.RuleAction{Action: C.RuleActionTypeRoute, RouteOptions: option.RouteActionOptions{Outbound: "direct"}}
-	toProxy  = option.RuleAction{Action: C.RuleActionTypeRoute, RouteOptions: option.RouteActionOptions{Outbound: Tag}}
+	toProxy  = option.RuleAction{Action: C.RuleActionTypeRoute, RouteOptions: option.RouteActionOptions{Outbound: proxyTag}}
 )
 
 func match(list []string, action option.RuleAction) []option.Rule {
@@ -87,7 +87,7 @@ func rules(s domain.Settings) []option.Rule {
 	return out
 }
 
-func TunInbound(s domain.Settings) option.Inbound {
+func tunInbound(s domain.Settings) option.Inbound {
 	var address []netip.Prefix
 	if s.IPVersion != "ipv6" {
 		address = append(address, netip.MustParsePrefix("172.19.0.1/30"))
@@ -115,5 +115,5 @@ func final(s domain.Settings) string {
 	if s.Mode == domain.DirectAll {
 		return "direct"
 	}
-	return Tag
+	return proxyTag
 }

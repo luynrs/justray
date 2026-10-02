@@ -43,11 +43,11 @@ func TestDNSResolution(t *testing.T) {
 		settings, _ := (domain.Settings{}).Normalize()
 		settings.DNS = server
 		settings.IPVersion = "ipv4"
-		options := ProbeConfig(nil, settings, "")
+		options := probeConfig(settings, "")
 		if configure != nil {
 			configure(options)
 		}
-		ctx := Context(t.Context())
+		ctx := withRegistry(t.Context())
 		box, err := startBox(ctx, *options)
 		if err != nil {
 			t.Fatal(err)
@@ -114,7 +114,7 @@ func TestDNSResolution(t *testing.T) {
 		lookup(t, "203.0.113.53", func(options *option.Options) {
 			settings, _ := (domain.Settings{}).Normalize()
 			settings.DNS, settings.IPVersion = "203.0.113.53", "ipv4"
-			built, err := Build(domain.Node{Protocol: domain.HTTP, Server: "proxy.example.test", Port: proxy.Listener.Addr().(*net.TCPAddr).Port}, settings, "", false)
+			built, err := build(domain.Node{Protocol: domain.HTTP, Server: "proxy.example.test", Port: proxy.Listener.Addr().(*net.TCPAddr).Port}, settings, "", false)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -168,7 +168,8 @@ func TestDNSResolution(t *testing.T) {
 
 	settings, _ := (domain.Settings{}).Normalize()
 	settings.DNS = "https://dns.example/dns-query"
-	servers := ProbeConfig(nil, settings, "").DNS.Servers
+	options := probeConfig(settings, "")
+	servers := options.DNS.Servers
 	resolver := servers[0].Options.(*option.RemoteHTTPSDNSServerOptions).DomainResolver
 	if len(servers) != 2 || resolver == nil || resolver.Server != "remote-bootstrap" || servers[1].Type != "local" {
 		t.Fatalf("DoH hostname bootstrap: %+v", servers)
@@ -177,14 +178,14 @@ func TestDNSResolution(t *testing.T) {
 
 func TestDNSRouting(t *testing.T) {
 	settings, _ := (domain.Settings{}).Normalize()
-	node := domain.Node{ID: "node", Protocol: domain.VLess, Server: "node.example", Port: 443, Auth: domain.Auth{UUID: "11111111-1111-1111-1111-111111111111"}}
+	node := domain.Node{ID: "node", Protocol: domain.VLESS, Server: "node.example", Port: 443, Auth: domain.Auth{UUID: "11111111-1111-1111-1111-111111111111"}}
 	settings.DNS = "1.1.1.1"
-	options, err := Build(node, settings, "", true)
+	options, err := build(node, settings, "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	servers := options.DNS.Servers
-	if len(servers) != 2 || servers[0].Type != C.DNSTypeTCP || servers[0].Options.(*option.RemoteDNSServerOptions).Detour != Tag ||
+	if len(servers) != 2 || servers[0].Type != C.DNSTypeTCP || servers[0].Options.(*option.RemoteDNSServerOptions).Detour != proxyTag ||
 		servers[1].Type != C.DNSTypeUDP || servers[1].Options.(*option.RemoteDNSServerOptions).Detour != "" || options.Route.DefaultDomainResolver.Server != "node" {
 		t.Fatalf("proxy DNS routing: %+v", servers)
 	}
@@ -202,7 +203,7 @@ func TestDNSRouting(t *testing.T) {
 	}
 
 	settings.DNS = "https://dns.example/dns-query"
-	options, err = Build(node, settings, "", false)
+	options, err = build(node, settings, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +217,7 @@ func TestDNSRouting(t *testing.T) {
 	}
 
 	settings.Mode = domain.DirectAll
-	options, err = Build(node, settings, "", false)
+	options, err = build(node, settings, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}

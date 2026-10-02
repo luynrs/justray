@@ -13,27 +13,27 @@ import (
 	"github.com/luynrs/justray/internal/platform/elevate"
 )
 
-// Core serializes engine operations. Readers only access the published status.
+// Serialize engine operations
 type Service struct {
-	ctx       context.Context
-	newEngine func(context.Context, string) engine.Engine
-	probeAll  func(context.Context, []domain.Node, domain.Settings, string, func(string, engine.Result)) error
-	log       *log.Logger
-	dir       string
+	ctx        context.Context
+	newEngine  func(context.Context, string) engine.Engine
+	probeBatch func([]engine.Target, domain.Settings, string, func(int, engine.Result, error))
+	log        *log.Logger
+	dir        string
 
 	eng     engine.Engine
 	status  atomic.Pointer[ipc.Status]
 	restart chan struct{}
 }
 
-func New(ctx context.Context, dir string, newEngine func(context.Context, string) engine.Engine, probe func(context.Context, []domain.Node, domain.Settings, string, func(string, engine.Result)) error, logger *log.Logger) *Service {
+func New(ctx context.Context, dir string, newEngine func(context.Context, string) engine.Engine, probe func([]engine.Target, domain.Settings, string, func(int, engine.Result, error)), logger *log.Logger) *Service {
 	return &Service{
-		ctx:       ctx,
-		newEngine: newEngine,
-		probeAll:  probe,
-		log:       logger,
-		dir:       dir,
-		restart:   make(chan struct{}, 1),
+		ctx:        ctx,
+		newEngine:  newEngine,
+		probeBatch: probe,
+		log:        logger,
+		dir:        dir,
+		restart:    make(chan struct{}, 1),
 	}
 }
 
@@ -70,8 +70,8 @@ func (s *Service) Restore(n domain.Node, ref domain.NodeRef, settings domain.Set
 	}
 }
 
-func (s *Service) Probe(ctx context.Context, nodes []domain.Node, settings domain.Settings, onResult func(string, engine.Result)) error {
-	return s.probeAll(ctx, nodes, settings, ipc.EngineLog(s.dir), onResult)
+func (s *Service) Probe(targets []engine.Target, settings domain.Settings, onResult func(int, engine.Result, error)) {
+	s.probeBatch(targets, settings, ipc.EngineLog(s.dir), onResult)
 }
 
 func (s *Service) RestartRequested() <-chan struct{} { return s.restart }
@@ -118,7 +118,7 @@ func (s *Service) apply(ctx context.Context, n domain.Node, ref domain.NodeRef, 
 			return errors.New("initialize engine: engine is nil")
 		}
 	}
-	if err := eng.Apply(ctx, engine.SessionSpec{Node: n, Settings: settings, Tun: tun}); err != nil {
+	if err := eng.Apply(ctx, engine.Spec{Node: n, Settings: settings, Tun: tun}); err != nil {
 		if creating {
 			err = errors.Join(err, eng.Stop())
 		}

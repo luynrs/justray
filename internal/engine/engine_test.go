@@ -23,7 +23,7 @@ func TestRebuilds(t *testing.T) {
 	} {
 		changed := settings
 		change(&changed)
-		if !Rebuilds(settings, changed, true) {
+		if !rebuilds(settings, changed, true) {
 			t.Errorf("%s change did not restart the engine", name)
 		}
 	}
@@ -34,7 +34,7 @@ func TestRebuilds(t *testing.T) {
 	} {
 		changed := settings
 		change(&changed)
-		if Rebuilds(settings, changed, true) {
+		if rebuilds(settings, changed, true) {
 			t.Errorf("%s change restarted the engine", name)
 		}
 	}
@@ -67,14 +67,14 @@ func TestNodeSwitch(t *testing.T) {
 	}
 	first := proxyNode("first", firstProxy.Listener.Addr().String())
 	second := proxyNode("second", secondProxy.Listener.Addr().String())
-	box := &Box{lifetime: t.Context()}
+	box := &box{lifetime: t.Context()}
 	defer func() { _ = box.Stop() }()
-	if err := box.Apply(t.Context(), SessionSpec{Node: first, Settings: settings}); err != nil {
+	if err := box.Apply(t.Context(), Spec{Node: first, Settings: settings}); err != nil {
 		t.Fatal(err)
 	}
 	request := func() {
 		t.Helper()
-		outbound, ok := box.inst.Outbound().Outbound(Tag)
+		outbound, ok := box.inst.Outbound().Outbound(proxyTag)
 		if !ok {
 			t.Fatal("proxy outbound missing")
 		}
@@ -85,7 +85,7 @@ func TestNodeSwitch(t *testing.T) {
 	}
 	request()
 	instance := box.inst
-	if err := box.Apply(t.Context(), SessionSpec{Node: second, Settings: settings}); err != nil {
+	if err := box.Apply(t.Context(), Spec{Node: second, Settings: settings}); err != nil {
 		t.Fatal(err)
 	}
 	request()
@@ -95,7 +95,7 @@ func TestNodeSwitch(t *testing.T) {
 	broken := second
 	broken.ID = "broken"
 	broken.Protocol = "unknown"
-	if err := box.Apply(t.Context(), SessionSpec{Node: broken, Settings: settings}); err == nil {
+	if err := box.Apply(t.Context(), Spec{Node: broken, Settings: settings}); err == nil {
 		t.Fatal("invalid node switch succeeded")
 	}
 	request()
@@ -144,8 +144,8 @@ func TestProbeEngine(t *testing.T) {
 	defer server.Close()
 	nodes := []domain.Node{
 		{ID: "working", Protocol: domain.HTTP, Server: "127.0.0.1", Port: server.Listener.Addr().(*net.TCPAddr).Port},
-		{ID: "valid", Protocol: domain.VLess, Server: "127.0.0.1", Port: 9993, Auth: domain.Auth{UUID: "11111111-1111-1111-1111-111111111111"}},
-		{ID: "invalid", Protocol: domain.VLess, Server: "127.0.0.1", Port: 9994, Auth: domain.Auth{UUID: "11111111-1111-1111-1111-111111111111"}, Reality: &domain.Reality{PublicKey: "invalid-key"}},
+		{ID: "valid", Protocol: domain.VLESS, Server: "127.0.0.1", Port: 9993, Auth: domain.Auth{UUID: "11111111-1111-1111-1111-111111111111"}},
+		{ID: "invalid", Protocol: domain.VLESS, Server: "127.0.0.1", Port: 9994, Auth: domain.Auth{UUID: "11111111-1111-1111-1111-111111111111"}, Reality: &domain.Reality{PublicKey: "invalid-key"}},
 		{
 			ID: "wireguard", Protocol: domain.WG, Server: "127.0.0.1", Port: 51820,
 			WireGuard: &domain.WireGuard{
@@ -155,16 +155,20 @@ func TestProbeEngine(t *testing.T) {
 			},
 		},
 	}
-	var mutex sync.Mutex
 	results := make(map[string]Result)
-	err := Probe(t.Context(), nodes, settings, "", func(nodeID string, result Result) {
-		mutex.Lock()
-		results[nodeID] = result
-		mutex.Unlock()
-	})
-	if err != nil {
-		t.Fatalf("node failures must not fail the probe: %v", err)
+	var targets []Target
+	for _, node := range nodes {
+		targets = append(targets, Target{Context: t.Context(), Node: node})
 	}
+	var mutex sync.Mutex
+	Probe(targets, settings, "", func(index int, result Result, err error) {
+		mutex.Lock()
+		defer mutex.Unlock()
+		if err != nil {
+			t.Errorf("node failures must not fail the probe: %v", err)
+		}
+		results[nodes[index].ID] = result
+	})
 	if len(results) != len(nodes) {
 		t.Fatalf("expected %d results, got %d", len(nodes), len(results))
 	}
@@ -172,7 +176,7 @@ func TestProbeEngine(t *testing.T) {
 		t.Fatalf("probe results: %+v, proxy calls=%d", results, calls.Load())
 	}
 	for _, id := range []string{"valid", "invalid", "wireguard"} {
-		if results[id] != (Result{}) {
+		if results[id].Alive || results[id].Duration != 0 || results[id].Failure == "" || results[id].Error == "" {
 			t.Errorf("failed node %s: %+v", id, results[id])
 		}
 	}

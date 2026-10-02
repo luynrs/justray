@@ -19,11 +19,11 @@ import (
 type fakeEngine struct {
 	closeErr error
 	stopped  bool
-	spec     engine.SessionSpec
+	spec     engine.Spec
 	applies  int
 }
 
-func (fake *fakeEngine) Apply(_ context.Context, spec engine.SessionSpec) error {
+func (fake *fakeEngine) Apply(_ context.Context, spec engine.Spec) error {
 	fake.spec = spec
 	fake.applies++
 	return nil
@@ -31,7 +31,7 @@ func (fake *fakeEngine) Apply(_ context.Context, spec engine.SessionSpec) error 
 func (fake *fakeEngine) Stop() error   { fake.stopped = true; return fake.closeErr }
 func (fake *fakeEngine) Running() bool { return !fake.stopped }
 
-func testCore(t *testing.T, instance engine.Engine, state store.PersistentState) *Core {
+func testCore(t *testing.T, instance engine.Engine, state store.State) *Core {
 	t.Helper()
 	disk := store.Disk{Dir: t.TempDir()}
 	if err := disk.SaveState(state); err != nil {
@@ -52,7 +52,7 @@ func TestConnection(t *testing.T) {
 	settings, _ := (domain.Settings{}).Normalize()
 	settings.Port = 1080
 	engine := &fakeEngine{}
-	app := testCore(t, engine, store.PersistentState{
+	app := testCore(t, engine, store.State{
 		Settings:      settings,
 		Subscriptions: []store.Subscription{{ID: "sub", Nodes: []domain.Node{{ID: "node"}}}},
 	})
@@ -93,7 +93,7 @@ func TestConnection(t *testing.T) {
 
 func TestRestore(t *testing.T) {
 	engine := &fakeEngine{}
-	app := testCore(t, engine, store.PersistentState{
+	app := testCore(t, engine, store.State{
 		Active:        domain.NodeRef{SubscriptionID: "sub", NodeID: "node"},
 		Subscriptions: []store.Subscription{{ID: "sub", Nodes: []domain.Node{{ID: "node"}}}},
 	})
@@ -111,7 +111,7 @@ func TestRestore(t *testing.T) {
 }
 
 func TestDisconnectError(t *testing.T) {
-	app := testCore(t, &fakeEngine{closeErr: io.ErrUnexpectedEOF}, store.PersistentState{
+	app := testCore(t, &fakeEngine{closeErr: io.ErrUnexpectedEOF}, store.State{
 		Subscriptions: []store.Subscription{{ID: "sub", Nodes: []domain.Node{{ID: "node"}}}},
 	})
 	if err := app.Connect(t.Context(), "node", "sub", nil); err != nil {
@@ -127,15 +127,14 @@ func TestDisconnectError(t *testing.T) {
 }
 
 func TestProbeResults(t *testing.T) {
-	app := testCore(t, &fakeEngine{}, store.PersistentState{Subscriptions: []store.Subscription{
+	app := testCore(t, &fakeEngine{}, store.State{Subscriptions: []store.Subscription{
 		{ID: "default", Nodes: []domain.Node{{ID: "first"}}},
 		{ID: "sub", URL: "https://example.com/sub", Nodes: []domain.Node{{ID: "second"}}},
 	}})
-	probe := func(_ context.Context, nodes []domain.Node, _ domain.Settings, _ string, onResult func(string, engine.Result)) error {
-		for _, node := range nodes {
-			onResult(node.ID, engine.Result{Alive: true, Duration: 10})
+	probe := func(targets []engine.Target, _ domain.Settings, _ string, onResult func(int, engine.Result, error)) {
+		for i := range targets {
+			onResult(i, engine.Result{Alive: true, Duration: 10}, nil)
 		}
-		return nil
 	}
 	app.conn = connection.New(t.Context(), t.TempDir(), nil, probe, log.New(io.Discard, "", 0))
 	if err := app.Probe(t.Context(), "default", ""); err != nil {
@@ -156,7 +155,7 @@ func TestProbeResults(t *testing.T) {
 
 func TestSubscriptions(t *testing.T) {
 	engine := &fakeEngine{}
-	app := testCore(t, engine, store.PersistentState{Subscriptions: []store.Subscription{
+	app := testCore(t, engine, store.State{Subscriptions: []store.Subscription{
 		{ID: "first", Nodes: []domain.Node{{ID: "node"}}},
 		{ID: "second"},
 	}})
@@ -207,7 +206,7 @@ func TestFind(t *testing.T) {
 
 func TestContextCancelled(t *testing.T) {
 	settings, _ := domain.Settings{}.Normalize()
-	app := testCore(t, &fakeEngine{}, store.PersistentState{
+	app := testCore(t, &fakeEngine{}, store.State{
 		Settings:      settings,
 		Subscriptions: []store.Subscription{{ID: "sub", Nodes: []domain.Node{{ID: "n1"}}}},
 	})

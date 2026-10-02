@@ -57,7 +57,7 @@ func (d Data) node(n ipc.Node, selected bool) string {
 		name = style.Accent.Render(name)
 	}
 	line := "  " + d.dot(n) + " " + name
-	if lat := latency(n); lat != "" {
+	if lat := n.Latency(); lat != "" {
 		line += " " + style.Dim.Render(lat)
 	}
 	return line
@@ -65,16 +65,6 @@ func (d Data) node(n ipc.Node, selected bool) string {
 
 func info(n ipc.Node) string {
 	return style.Dim.Render(fmt.Sprintf("%s:%d %s %s", style.Sanitize(n.Server, true), n.Port, style.Sep(), n.Protocol))
-}
-
-func latency(n ipc.Node) string {
-	switch {
-	case n.Probing || !n.Probed:
-		return ""
-	case n.Alive:
-		return fmt.Sprintf("%dms", n.Duration)
-	}
-	return "t/o"
 }
 
 func (d Data) dot(n ipc.Node) string {

@@ -11,11 +11,11 @@ import (
 	"github.com/luynrs/justray/internal/version"
 )
 
-func (s *Settings) View(width, height int) string {
+func (s *Model) View(width, height int) string {
 	return strings.Join(s.lines(width, height), "\n")
 }
 
-func (s *Settings) Hints() [][2]string {
+func (s *Model) Hints() [][2]string {
 	enter := style.Enter()
 	if s.input.Focused() {
 		return [][2]string{{enter, "Apply"}, {"esc", "Cancel"}}
@@ -49,7 +49,7 @@ type hit struct {
 	choice string
 }
 
-func (s *Settings) lines(width, height int) []string {
+func (s *Model) lines(width, height int) []string {
 	w := max(width-2, 20)
 	s.input.SetWidth(max(w-6, 12))
 
@@ -82,20 +82,20 @@ func (s *Settings) lines(width, height int) []string {
 	return lines
 }
 
-func (s *Settings) scrollTo(blocks [][]string, h int) {
+func (s *Model) scrollTo(blocks [][]string, h int) {
 	s.scroll = min(max(s.scroll, 0), max(len(blocks)-1, 0))
 	if s.cursor < s.scroll {
 		s.scroll = s.cursor
 	}
-	for s.scroll < s.cursor && s.span(blocks, s.scroll, s.cursor) > h {
+	for s.scroll < s.cursor && span(blocks, s.scroll, s.cursor) > h {
 		s.scroll++
 	}
-	for s.scroll > 0 && s.span(blocks, s.scroll-1, s.cursor) <= h {
+	for s.scroll > 0 && span(blocks, s.scroll-1, s.cursor) <= h {
 		s.scroll--
 	}
 }
 
-func (s *Settings) span(blocks [][]string, from, to int) int {
+func span(blocks [][]string, from, to int) int {
 	total := 0
 	for i := from; i <= to && i < len(blocks); i++ {
 		total += len(blocks[i])
@@ -103,7 +103,7 @@ func (s *Settings) span(blocks [][]string, from, to int) int {
 	return total
 }
 
-func (s *Settings) TabBar(width int) string {
+func (s *Model) TabBar(width int) string {
 	var b strings.Builder
 	for i, t := range tabs {
 		b.WriteString(style.Segment(" "+t.name+" ", i == s.tab))
@@ -115,7 +115,7 @@ func (s *Settings) TabBar(width int) string {
 	return style.Segment(" "+tabs[s.tab].name+" ", true) + style.Dim.Render(fmt.Sprintf(" %d/%d", s.tab+1, len(tabs)))
 }
 
-func (s *Settings) tabAt(x int) (int, bool) {
+func (s *Model) tabAt(x int) (int, bool) {
 	pos := lipgloss.Width(style.Title.Render("JustRay")+" "+style.Dim.Render(version.String())) + 2
 	if s.compactTabs {
 		width := lipgloss.Width(style.Segment(" "+tabs[s.tab].name+" ", true))
@@ -132,7 +132,7 @@ func (s *Settings) tabAt(x int) (int, bool) {
 }
 
 // fieldBlock renders one row, blank line above non-list rows
-func (s *Settings) fieldBlock(f field, i int) (lines, choices []string) {
+func (s *Model) fieldBlock(f field, i int) (lines, choices []string) {
 	selected := i == s.cursor
 
 	bar := "  "
@@ -179,7 +179,7 @@ func (s *Settings) fieldBlock(f field, i int) (lines, choices []string) {
 	return lines, choices
 }
 
-func (s *Settings) valueLines(f field, selected bool, bar string) (lines, choices []string) {
+func (s *Model) valueLines(f field, selected bool, bar string) (lines, choices []string) {
 	if selected && s.input.Focused() {
 		return []string{bar + s.input.View()}, []string{""}
 	}

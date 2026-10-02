@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/url"
 	"strconv"
@@ -62,24 +61,6 @@ func Unbase64(s string) ([]byte, error) {
 		return b, nil
 	}
 	return base64.RawStdEncoding.DecodeString(s)
-}
-
-func NodeKey(n domain.Node) string {
-	n.ID, n.Name = "", ""
-	if n.Transport.Network == "" {
-		n.Transport.Network = "tcp"
-	}
-	if n.Transport.Extra != "" {
-		decoder := json.NewDecoder(strings.NewReader(n.Transport.Extra))
-		decoder.UseNumber()
-		var extra any
-		if decoder.Decode(&extra) == nil && decoder.Decode(new(any)) == io.EOF {
-			data, _ := json.Marshal(extra)
-			n.Transport.Extra = string(data)
-		}
-	}
-	data, _ := json.Marshal(n)
-	return string(data)
 }
 
 func parseURL(proto, uri string) (*url.URL, string, int, error) {

@@ -50,6 +50,12 @@ func (s *Server) handle(conn net.Conn) {
 		_ = reply(conn, nil, ipc.ErrVersion)
 		return
 	}
+	ctx, cancel := context.WithCancel(s.ctx)
+	defer cancel()
+	go func() {
+		_, _ = io.Copy(io.Discard, conn) // blocks until the client disconnects
+		cancel()
+	}()
 	if req.Method == "Watch" {
 		select {
 		case s.watchSem <- struct{}{}:
@@ -59,16 +65,10 @@ func (s *Server) handle(conn net.Conn) {
 		}
 		<-s.sem
 		semHeld = false
-		s.watch(conn)
+		s.watch(ctx, conn)
 		return
 	}
 	_ = conn.SetDeadline(time.Time{})
-	ctx, cancel := context.WithCancel(s.ctx)
-	defer cancel()
-	go func() {
-		_, _ = conn.Read(make([]byte, 1))
-		cancel()
-	}()
 	result, err := s.dispatch(ctx, req)
 	_ = conn.SetDeadline(time.Now().Add(ipc.IdleTimeout))
 	if reply(conn, result, err) == nil {
@@ -120,26 +120,18 @@ func (s *Server) dispatch(ctx context.Context, req ipc.Request) (any, error) {
 	return nil, fmt.Errorf("unknown method %q", req.Method)
 }
 
-func (s *Server) watch(conn net.Conn) {
+func (s *Server) watch(ctx context.Context, conn net.Conn) {
 	_ = conn.SetDeadline(time.Time{}) // stays open
 
-	initial, ch, cancel := s.core.Watch()
-	defer cancel()
-
-	gone := make(chan struct{})
-	go func() {
-		_, _ = conn.Read(make([]byte, 1)) // blocks until the client disconnects
-		close(gone)
-	}()
+	initial, ch, stop := s.core.Watch()
+	defer stop()
 
 	if err := reply(conn, initial, nil); err != nil {
 		return
 	}
 	for {
 		select {
-		case <-s.ctx.Done():
-			return
-		case <-gone:
+		case <-ctx.Done():
 			return
 		case changed := <-ch:
 			if err := reply(conn, changed, nil); err != nil {

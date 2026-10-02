@@ -137,7 +137,7 @@ func TestStop(t *testing.T) {
 			case <-ctx.Done():
 				t.Fatal("daemon did not exit after stop")
 			}
-			if err := ipc.NewClient(ipc.Socket(dir)).Ping(ctx); !errors.Is(err, ipc.ErrNoDaemon) {
+			if err := ipc.New(ipc.Socket(dir)).Ping(ctx); !errors.Is(err, ipc.ErrNoDaemon) {
 				t.Fatalf("daemon still responds: %v", err)
 			}
 		})

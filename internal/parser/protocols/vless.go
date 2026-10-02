@@ -9,7 +9,7 @@ import (
 )
 
 // vless://uuid@host:port?...#remark
-func ParseVLess(uri string) (domain.Node, error) {
+func ParseVLESS(uri string) (domain.Node, error) {
 	u, host, port, err := parseURL("vless", uri)
 	if err != nil {
 		return domain.Node{}, err
@@ -21,7 +21,7 @@ func ParseVLess(uri string) (domain.Node, error) {
 	q := u.Query()
 	n := domain.Node{
 		Name:           cmp.Or(u.Fragment, host),
-		Protocol:       domain.VLess,
+		Protocol:       domain.VLESS,
 		Server:         host,
 		Port:           port,
 		Auth:           domain.Auth{UUID: u.User.Username(), Flow: q.Get("flow")},

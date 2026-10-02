@@ -48,20 +48,19 @@ func TestMatch(t *testing.T) {
 	}
 }
 
-func TestLookupNode(t *testing.T) {
-	a := &app{}
+func TestLookup(t *testing.T) {
 	nodes := []ipc.Node{
 		{NodeID: "node1", SubscriptionID: "sub1", Name: "Node 1"},
 		{NodeID: "node2", SubscriptionID: "sub2", Name: "Node 2"},
 	}
-	if n := a.lookupNode(domain.NodeRef{SubscriptionID: "sub1", NodeID: "node1"}, nodes); n.Name != "Node 1" {
-		t.Fatalf("lookupNode = %+v, want Node 1", n)
+	if n := lookup(domain.NodeRef{SubscriptionID: "sub1", NodeID: "node1"}, nodes); n.Name != "Node 1" {
+		t.Fatalf("lookup = %+v, want Node 1", n)
 	}
-	if n := a.lookupNode(domain.NodeRef{SubscriptionID: "", NodeID: "node2"}, nodes); n.Name != "Node 2" {
-		t.Fatalf("lookupNode without sub = %+v, want Node 2", n)
+	if n := lookup(domain.NodeRef{SubscriptionID: "", NodeID: "node2"}, nodes); n.Name != "Node 2" {
+		t.Fatalf("lookup without sub = %+v, want Node 2", n)
 	}
-	if n := a.lookupNode(domain.NodeRef{SubscriptionID: "sub1", NodeID: "unknown"}, nodes); n.NodeID != "" {
-		t.Fatalf("lookupNode unknown = %+v, want empty", n)
+	if n := lookup(domain.NodeRef{SubscriptionID: "sub1", NodeID: "unknown"}, nodes); n.NodeID != "" {
+		t.Fatalf("lookup unknown = %+v, want empty", n)
 	}
 }
 

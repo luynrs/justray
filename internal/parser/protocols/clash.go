@@ -150,7 +150,7 @@ func clashNode(p clashProxy) (domain.Node, error) {
 
 	switch strings.ToLower(p.Type) {
 	case "vless":
-		n.Protocol = domain.VLess
+		n.Protocol = domain.VLESS
 		n.Auth = domain.Auth{UUID: p.UUID, Flow: p.Flow}
 		n.Transport = clashTransport(p)
 		n.PacketEncoding = p.PacketEncoding

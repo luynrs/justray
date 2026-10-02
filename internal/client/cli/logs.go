@@ -25,7 +25,7 @@ func init() {
 	logsCmd.Flags().BoolP("follow", "f", false, "Follow log output")
 }
 
-func (a *app) logs(cmd *cobra.Command, args []string) error {
+func logs(cmd *cobra.Command, args []string) error {
 	target := "daemon"
 	if len(args) > 0 {
 		target = strings.ToLower(args[0])

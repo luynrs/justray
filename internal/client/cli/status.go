@@ -38,14 +38,14 @@ func (a *app) status(cmd *cobra.Command, args []string) error {
 		}
 		out := statusOut{Connected: st.Connected}
 		if st.Connected {
-			n := a.lookupNode(st.NodeRef, snapshot.Nodes)
+			n := lookup(st.NodeRef, snapshot.Nodes)
 			out.Mode, out.Node = modeWord(st.Tun), a.clean(st.NodeName)
 			out.Server, out.Port, out.Protocol = a.clean(n.Server), n.Port, n.Protocol
 			out.Uptime = int64(st.Uptime().Seconds())
 			if !st.Tun && st.Port > 0 {
 				out.ProxyPort = st.Port
 			}
-		} else if n := a.lookupNode(snapshot.Selected, snapshot.Nodes); n.NodeID != "" {
+		} else if n := lookup(snapshot.Selected, snapshot.Nodes); n.NodeID != "" {
 			out.LastNode = a.clean(n.Name)
 		}
 		enc := json.NewEncoder(cmd.OutOrStdout())
@@ -64,7 +64,7 @@ func (a *app) status(cmd *cobra.Command, args []string) error {
 	if ref.NodeID == "" {
 		return nil
 	}
-	n := a.lookupNode(ref, snapshot.Nodes)
+	n := lookup(ref, snapshot.Nodes)
 	if n.NodeID == "" {
 		return nil
 	}

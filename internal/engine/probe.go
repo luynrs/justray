@@ -3,81 +3,166 @@ package engine
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"os"
-	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	sbox "github.com/sagernet/sing-box"
-	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing-box/adapter"
+	boxoutbound "github.com/sagernet/sing-box/adapter/outbound"
+	"github.com/sagernet/sing/common"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
+	"github.com/sagernet/sing/service"
 
 	"github.com/luynrs/justray/internal/domain"
+	"github.com/luynrs/justray/internal/engine/outbound"
 )
 
-func Probe(ctx context.Context, nodes []domain.Node, s domain.Settings, logPath string, onResult func(string, Result)) error {
-	if len(nodes) > maxProbeNodes {
-		return fmt.Errorf("too many nodes to probe: %d (maximum %d)", len(nodes), maxProbeNodes)
+const maxWorkers = 8
+
+var queue = struct {
+	sync.Mutex
+	active  int
+	servers map[string]int
+	changed chan struct{}
+}{servers: make(map[string]int), changed: make(chan struct{})}
+
+type Target struct {
+	Context context.Context
+	Node    domain.Node
+}
+
+func Probe(targets []Target, settings domain.Settings, logPath string, onResult func(int, Result, error)) {
+	if len(targets) == 0 {
+		return
 	}
-	if len(nodes) == 0 {
-		return nil
+	runtimeCtx, cancel := context.WithCancel(withRegistry(context.WithoutCancel(targets[0].Context)))
+	defer cancel()
+	startup := time.AfterFunc(4*time.Second, cancel)
+	settings, err := settings.Normalize()
+	var instance *sbox.Box
+	if err == nil {
+		instance, err = sbox.New(sbox.Options{Options: *probeConfig(settings, logPath), Context: runtimeCtx})
 	}
-	if ctx.Err() != nil {
-		return ctx.Err()
+	if err == nil {
+		defer func() { _ = instance.Close() }()
+		err = instance.Start()
 	}
-	opts := ProbeConfig(nodes, s, logPath)
-	if ctx.Err() != nil {
-		return ctx.Err()
+	if !startup.Stop() && err == nil {
+		err = context.DeadlineExceeded
 	}
-	inst, err := startProbeEngine(ctx, opts)
+	if err == nil {
+		err = runtimeCtx.Err()
+	}
 	if err != nil {
-		return err
+		for i := range targets {
+			onResult(i, Result{}, err)
+		}
+		return
 	}
-	defer func() { _ = inst.Close() }()
-
-	sem := make(chan struct{}, min(len(nodes), maxProbeWorkers))
-	var wg sync.WaitGroup
-	for i, n := range nodes {
-		tag := ProbeTag(i)
-		var dialer N.Dialer
-		if ob, ok := inst.Outbound().Outbound(tag); ok {
-			dialer = ob
-		} else if ep, ok := inst.Endpoint().Get(tag); ok {
-			dialer = ep
-		}
-		if dialer == nil {
-			onResult(n.ID, Result{})
-			continue
-		}
-		select {
-		case sem <- struct{}{}:
-		case <-ctx.Done():
-			wg.Wait()
-			return ctx.Err()
-		}
-		wg.Go(func() {
-			defer func() { <-sem }()
-
-			ms, err := delay(ctx, dialer, s.ProbeURL)
-			if err != nil {
-				ms = 0
-			}
-			onResult(n.ID, Result{Alive: err == nil, Duration: ms})
+	var workers sync.WaitGroup
+	for i, target := range targets {
+		workers.Go(func() {
+			ctx := service.ContextWithRegistry(target.Context, service.RegistryFromContext(runtimeCtx))
+			result, err := probe(ctx, target.Node, instance, "p"+strconv.Itoa(i), settings.ProbeURL)
+			onResult(i, result, err)
 		})
 	}
-	wg.Wait()
-	return ctx.Err()
+	workers.Wait()
+}
+
+func probe(ctx context.Context, node domain.Node, instance *sbox.Box, tag, url string) (Result, error) {
+	server := net.JoinHostPort(strings.ToLower(node.Server), strconv.Itoa(node.Port))
+	queue.Lock()
+	for ctx.Err() == nil && (queue.active >= maxWorkers || queue.servers[server] >= 2) {
+		changed := queue.changed
+		queue.Unlock()
+		select {
+		case <-changed:
+		case <-ctx.Done():
+		}
+		queue.Lock()
+	}
+	if err := ctx.Err(); err != nil {
+		queue.Unlock()
+		return Result{}, err
+	}
+	queue.active++
+	queue.servers[server]++
+	queue.Unlock()
+	defer func() {
+		queue.Lock()
+		defer queue.Unlock()
+		queue.active--
+		queue.servers[server]--
+		if queue.servers[server] == 0 {
+			delete(queue.servers, server)
+		}
+		close(queue.changed)
+		queue.changed = make(chan struct{})
+	}()
+
+	requestCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+	requestCtx = adapter.WithContext(requestCtx, &adapter.InboundContext{Outbound: tag})
+	endpoint, outbounds, err := outbound.New(node, tag)
+	logger := instance.LogFactory().NewLogger("probe/" + tag)
+	var dialer adapter.Outbound
+	if err == nil && endpoint != nil {
+		dialer, err = endpointReg.Create(requestCtx, instance.Router(), logger, tag, endpoint.Type, endpoint.Options)
+	} else if err == nil {
+		if len(outbounds) > 1 {
+			requestCtx = service.ExtendContext(requestCtx)
+			helpers := boxoutbound.NewManager(logger, outboundReg, instance.Endpoint(), "")
+			service.MustRegister[adapter.OutboundManager](requestCtx, helpers)
+			for _, helper := range outbounds[:len(outbounds)-1] {
+				err = helpers.Create(requestCtx, instance.Router(), logger, helper.Tag, helper.Type, helper.Options)
+				if err != nil {
+					break
+				}
+			}
+		}
+		if err == nil {
+			options := outbounds[len(outbounds)-1]
+			dialer, err = outboundReg.CreateOutbound(requestCtx, instance.Router(), logger, tag, options.Type, options.Options)
+		}
+	}
+	if dialer != nil {
+		defer func() { _ = common.Close(dialer) }()
+	}
+	for _, stage := range adapter.ListStartStages {
+		if err == nil {
+			err = requestCtx.Err()
+		}
+		if err == nil {
+			err = adapter.LegacyStart(dialer, stage)
+		}
+	}
+	var milliseconds int
+	if err == nil {
+		milliseconds, err = delay(requestCtx, dialer, url)
+	}
+	if ctx.Err() != nil {
+		return Result{}, ctx.Err()
+	}
+	if err == nil {
+		return Result{Alive: true, Duration: milliseconds}, nil
+	}
+	result := Result{Failure: "failed", Error: err.Error()}
+	if os.IsTimeout(err) || errors.Is(requestCtx.Err(), context.DeadlineExceeded) {
+		result.Failure = "t/o"
+	}
+	return result, nil
 }
 
 func delay(ctx context.Context, dialer N.Dialer, url string) (int, error) {
-	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
-	defer cancel()
 	client := &http.Client{
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		Transport: &http.Transport{
 			DisableKeepAlives: true,
 			DialContext: func(ctx context.Context, _, addr string) (net.Conn, error) {
@@ -101,66 +186,5 @@ func delay(ctx context.Context, dialer N.Dialer, url string) (int, error) {
 		return ms, err
 	}
 	_ = resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		return ms, fmt.Errorf("http %d", resp.StatusCode)
-	}
 	return ms, nil
-}
-
-func startProbeEngine(ctx context.Context, opts *option.Options) (*sbox.Box, error) {
-	inst, err := sbox.New(sbox.Options{Options: *opts, Context: Context(ctx)})
-	if err == nil {
-		if inst.Start() == nil {
-			return inst, nil
-		}
-		_ = inst.Close()
-	}
-
-	byTag := make(map[string]option.Outbound, len(opts.Outbounds))
-	for _, ob := range opts.Outbounds {
-		byTag[ob.Tag] = ob
-	}
-	opts.Outbounds = slices.DeleteFunc(opts.Outbounds, func(ob option.Outbound) bool {
-		if strings.HasSuffix(ob.Tag, "-stls") || ob.Tag == "direct" {
-			return false
-		}
-		obs := []option.Outbound{ob}
-		if helper, ok := byTag[ob.Tag+"-stls"]; ok {
-			obs = append(obs, helper)
-		}
-		return !canStart(ctx, option.Options{Route: opts.Route, DNS: opts.DNS, Outbounds: obs})
-	})
-	kept := make(map[string]bool, len(opts.Outbounds))
-	for _, ob := range opts.Outbounds {
-		kept[ob.Tag] = true
-	}
-	opts.Outbounds = slices.DeleteFunc(opts.Outbounds, func(ob option.Outbound) bool {
-		if base, ok := strings.CutSuffix(ob.Tag, "-stls"); ok {
-			return !kept[base]
-		}
-		return false
-	})
-	opts.Endpoints = slices.DeleteFunc(opts.Endpoints, func(ep option.Endpoint) bool {
-		return !canStart(ctx, option.Options{Route: opts.Route, DNS: opts.DNS, Endpoints: []option.Endpoint{ep}})
-	})
-
-	inst, err = sbox.New(sbox.Options{Options: *opts, Context: Context(ctx)})
-	if err != nil {
-		return nil, fmt.Errorf("build probe engine: %w", err)
-	}
-	if err := inst.Start(); err != nil {
-		_ = inst.Close()
-		return nil, fmt.Errorf("start probe engine: %w", err)
-	}
-	return inst, nil
-}
-
-func canStart(ctx context.Context, testOpts option.Options) bool {
-	testOpts.Log = &option.LogOptions{Output: os.DevNull}
-	inst, err := sbox.New(sbox.Options{Options: testOpts, Context: Context(ctx)})
-	if err != nil {
-		return false
-	}
-	defer func() { _ = inst.Close() }()
-	return inst.Start() == nil
 }

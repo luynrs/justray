@@ -13,13 +13,13 @@ import (
 
 func TestRoundtrip(t *testing.T) {
 	disk := Disk{Dir: t.TempDir()}
-	state := PersistentState{
+	state := State{
 		Subscriptions: []Subscription{{
 			ID: "a", Name: "test", URL: "https://example.com/sub",
 			UpdatedAt: time.Now().Truncate(time.Second).UTC(),
 			Traffic:   domain.Traffic{UploadBytes: 1, DownloadBytes: 2, TotalBytes: 3},
 			Nodes: []domain.Node{{
-				ID: "n1", Name: "node", Protocol: domain.VLess,
+				ID: "n1", Name: "node", Protocol: domain.VLESS,
 				Server: "1.2.3.4", Port: 443, Auth: domain.Auth{UUID: "uuid"},
 			}},
 		}},

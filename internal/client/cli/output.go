@@ -53,7 +53,7 @@ func stateHeadline(st ipc.Status) {
 }
 
 func (a *app) nodeDetails(st ipc.Status, nodes []ipc.Node) {
-	n := a.lookupNode(st.NodeRef, nodes)
+	n := lookup(st.NodeRef, nodes)
 	pairs := [][2]string{{"Node", a.nodeName(st.NodeName, st.NodeRef.NodeID)}}
 	if !st.Tun && st.Port > 0 {
 		pairs = append(pairs, [2]string{"Proxy", fmt.Sprintf("127.0.0.1:%d", st.Port)})
@@ -61,7 +61,7 @@ func (a *app) nodeDetails(st ipc.Status, nodes []ipc.Node) {
 	fields(append(pairs, a.nodeFields(n)...)...)
 }
 
-func (a *app) lookupNode(ref domain.NodeRef, nodes []ipc.Node) ipc.Node {
+func lookup(ref domain.NodeRef, nodes []ipc.Node) ipc.Node {
 	for _, n := range nodes {
 		if n.NodeID == ref.NodeID && (ref.SubscriptionID == "" || n.SubscriptionID == ref.SubscriptionID) {
 			return n

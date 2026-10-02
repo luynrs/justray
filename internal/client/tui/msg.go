@@ -23,7 +23,7 @@ type pushed struct {
 	err      error
 }
 
-func (m Model) actionCmd(connection bool, start, fn func() error) tea.Cmd {
+func action(connection bool, start, fn func() error) tea.Cmd {
 	return func() tea.Msg {
 		if start != nil {
 			if err := start(); err != nil {
@@ -54,7 +54,7 @@ func watch(ctx context.Context, c *ipc.Client, ch chan<- pushed) tea.Cmd {
 				return nil
 			}
 			select {
-			case <-time.After(time.Second):
+			case <-time.After(100 * time.Millisecond):
 			case <-ctx.Done():
 				return nil
 			}

@@ -18,7 +18,7 @@ import (
 
 var parsers = map[string]func(string) (domain.Node, error){
 	"vmess":      protocols.ParseVMess,
-	"vless":      protocols.ParseVLess,
+	"vless":      protocols.ParseVLESS,
 	"trojan":     protocols.ParseTrojan,
 	"ss":         protocols.ParseShadowsocks,
 	"hysteria":   protocols.ParseHysteria,
@@ -139,7 +139,7 @@ func validateNode(node domain.Node) error {
 		return errors.New("missing host or valid port")
 	}
 	switch node.Protocol {
-	case domain.VLess, domain.VMess, domain.TUIC:
+	case domain.VLESS, domain.VMess, domain.TUIC:
 		if node.Auth.UUID == "" {
 			return fmt.Errorf("%s: missing uuid", node.Protocol)
 		}

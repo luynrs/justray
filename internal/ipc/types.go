@@ -3,6 +3,7 @@ package ipc
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/luynrs/justray/internal/domain"
@@ -70,6 +71,18 @@ type Node struct {
 	Alive    bool
 	Duration int // milliseconds
 	Probing  bool
+	Failure  string
+	Error    string
+}
+
+func (n Node) Latency() string {
+	if n.Probing || !n.Probed {
+		return ""
+	}
+	if n.Alive {
+		return fmt.Sprintf("%dms", n.Duration)
+	}
+	return n.Failure
 }
 
 func (n Node) Ref() domain.NodeRef {

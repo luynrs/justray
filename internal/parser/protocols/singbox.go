@@ -105,7 +105,7 @@ func (transport *singboxTransportConfig) UnmarshalJSON(data []byte) error {
 }
 
 var singboxProtos = map[string]domain.Proto{
-	"vless": domain.VLess, "vmess": domain.VMess, "trojan": domain.Trojan,
+	"vless": domain.VLESS, "vmess": domain.VMess, "trojan": domain.Trojan,
 	"shadowsocks": domain.SS, "hysteria": domain.HY1, "hysteria2": domain.HY2,
 	"tuic": domain.TUIC, "anytls": domain.AnyTLS, "wireguard": domain.WG,
 	"shadowtls": domain.Shadow, "socks": domain.SOCKS, "http": domain.HTTP,
@@ -151,7 +151,7 @@ func ParseSingBox(raw []byte) ([]domain.Node, map[string]int, error) {
 		case "direct", "block", "dns", "selector", "urltest":
 			continue
 		}
-		node, err := parseSingBoxOutbound(ob, stlsByTag)
+		node, err := singboxNode(ob, stlsByTag)
 		if errors.Is(err, errUnsupported) {
 			skipped["unsupported"]++
 			continue
@@ -168,7 +168,7 @@ func ParseSingBox(raw []byte) ([]domain.Node, map[string]int, error) {
 	return nodes, skipped, nil
 }
 
-func parseSingBoxOutbound(ob singboxOutbound, stlsByTag map[string]singboxOutbound) (domain.Node, error) {
+func singboxNode(ob singboxOutbound, stlsByTag map[string]singboxOutbound) (domain.Node, error) {
 	proto, ok := singboxProtos[strings.ToLower(ob.Type)]
 	if !ok {
 		return domain.Node{}, errUnsupported
@@ -187,7 +187,7 @@ func parseSingBoxOutbound(ob singboxOutbound, stlsByTag map[string]singboxOutbou
 	n.TLS, n.Reality = singboxTLS(ob.TLS, server)
 
 	switch proto {
-	case domain.VLess:
+	case domain.VLESS:
 		n.Auth = domain.Auth{UUID: ob.UUID, Flow: ob.Flow}
 	case domain.VMess:
 		n.Auth = domain.Auth{UUID: ob.UUID, AlterID: ob.AlterID, Method: cmp.Or(ob.Security, "auto")}

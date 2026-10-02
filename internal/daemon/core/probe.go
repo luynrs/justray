@@ -2,14 +2,23 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"sync/atomic"
 	"time"
 
 	"github.com/luynrs/justray/internal/daemon/store"
 	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/engine"
 )
+
+type probeCall struct {
+	ctx     context.Context
+	cancel  context.CancelFunc
+	done    chan struct{}
+	refs    []domain.NodeRef
+	waiters int
+	err     error
+}
 
 func (c *Core) Probe(ctx context.Context, sub, id string) error {
 	if err := ctx.Err(); err != nil {
@@ -20,71 +29,106 @@ func (c *Core) Probe(ctx context.Context, sub, id string) error {
 	if err != nil {
 		return err
 	}
-
+	if len(nodes) > 512 {
+		return fmt.Errorf("too many nodes to probe: %d (maximum 512)", len(nodes))
+	}
+	pending := make(map[string]*probeCall)
+	var calls []*probeCall
+	var targets []engine.Target
+	var started []*probeCall
 	c.stMu.Lock()
-	var targets []domain.Node
-	pending := make(map[string][]domain.NodeRef)
 	for i, ref := range refs {
-		if !c.probing[ref] {
-			c.probing[ref] = true
-			if len(pending[ref.NodeID]) == 0 {
-				targets = append(targets, nodes[i])
+		call := c.probing[ref]
+		if call == nil {
+			call = pending[ref.NodeID]
+			if call == nil {
+				nodeCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+				call = &probeCall{ctx: nodeCtx, cancel: cancel, done: make(chan struct{})}
+				pending[ref.NodeID] = call
+				targets = append(targets, engine.Target{Context: nodeCtx, Node: nodes[i]})
+				started = append(started, call)
 			}
-			pending[ref.NodeID] = append(pending[ref.NodeID], ref)
+			call.refs = append(call.refs, ref)
+			c.probing[ref] = call
 		}
+		call.waiters++
+		calls = append(calls, call)
+	}
+	if len(pending) > 0 {
+		c.publishLocked()
 	}
 	c.stMu.Unlock()
-
-	if len(targets) == 0 {
-		return nil
-	}
-	c.publish()
-
-	// inter. res
-	var dirty atomic.Bool
-	done, flushed := make(chan struct{}), make(chan struct{})
-	go func() {
-		defer close(flushed)
-		ticker := time.NewTicker(100 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-done:
-				return
-			case <-ticker.C:
-				if dirty.Swap(false) {
-					c.publish()
+	defer func() {
+		c.stMu.Lock()
+		defer c.stMu.Unlock()
+		changed := false
+		for _, call := range calls {
+			call.waiters--
+			if call.waiters == 0 {
+				call.cancel()
+				for _, ref := range call.refs {
+					if c.probing[ref] == call {
+						delete(c.probing, ref)
+						changed = true
+					}
 				}
 			}
 		}
+		if changed {
+			c.publishLocked()
+		}
 	}()
-
-	defer func() {
-		close(done)
-		<-flushed
-		c.stMu.Lock()
-		for _, refs := range pending {
-			for _, ref := range refs {
-				delete(c.probing, ref)
+	if len(targets) > 0 {
+		go c.conn.Probe(targets, state.Settings, func(index int, result engine.Result, err error) {
+			call := started[index]
+			c.stMu.Lock()
+			defer c.stMu.Unlock()
+			if call.ctx.Err() != nil {
+				return
 			}
-		}
-		c.publishLocked()
-		c.stMu.Unlock()
-	}()
-
-	onResult := func(nodeID string, res engine.Result) {
-		c.stMu.Lock()
-		for _, ref := range pending[nodeID] {
-			c.probes[ref] = res
-			delete(c.probing, ref)
-		}
-		delete(pending, nodeID)
-		c.stMu.Unlock()
-
-		dirty.Store(true)
+			call.err = err
+			if err == nil {
+				for _, ref := range call.refs {
+					c.probes[ref] = result
+				}
+			}
+			call.cancel()
+			// inter. res
+			if c.probeTimer == nil {
+				c.probeTimer = time.AfterFunc(100*time.Millisecond, func() {
+					c.stMu.Lock()
+					defer c.stMu.Unlock()
+					var finished []*probeCall
+					for _, call := range c.probing {
+						if call.ctx.Err() == nil {
+							continue
+						}
+						for _, ref := range call.refs {
+							if c.probing[ref] == call {
+								delete(c.probing, ref)
+							}
+						}
+						finished = append(finished, call)
+					}
+					c.publishLocked()
+					for _, call := range finished {
+						close(call.done)
+					}
+					c.probeTimer = nil
+				})
+			}
+		})
 	}
-
-	return c.conn.Probe(ctx, targets, state.Settings, onResult)
+	var result error
+	for _, call := range calls {
+		select {
+		case <-call.done:
+			result = errors.Join(result, call.err)
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return errors.Join(result, ctx.Err())
 }
 
 func probeTargets(subscriptions []store.Subscription, subID, nodeID string) ([]domain.NodeRef, []domain.Node, error) {

@@ -5,6 +5,7 @@ import (
 	"slices"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/luynrs/justray/internal/daemon/connection"
 	"github.com/luynrs/justray/internal/daemon/store"
@@ -20,13 +21,14 @@ type Core struct {
 	opMu    sync.Mutex
 	stMu    sync.Mutex
 	store   store.Disk
-	state   store.PersistentState
+	state   store.State
 	probes  map[domain.NodeRef]engine.Result
-	probing map[domain.NodeRef]bool
+	probing map[domain.NodeRef]*probeCall
 	conn    *connection.Service
 	subs    *subscription.Service
 
-	refreshes map[string]*refreshCall
+	refreshes  map[string]*refreshCall
+	probeTimer *time.Timer
 
 	snapshot atomic.Pointer[ipc.Snapshot]
 	watchers map[chan ipc.Snapshot]struct{}
@@ -52,7 +54,7 @@ func New(st store.Disk, conn *connection.Service, subs *subscription.Service) (*
 	c := &Core{
 		store: st, state: state, conn: conn, subs: subs,
 		probes:    map[domain.NodeRef]engine.Result{},
-		probing:   map[domain.NodeRef]bool{},
+		probing:   map[domain.NodeRef]*probeCall{},
 		refreshes: map[string]*refreshCall{},
 		watchers:  map[chan ipc.Snapshot]struct{}{},
 	}
@@ -67,7 +69,7 @@ func (c *Core) Shutdown() {
 	c.publish()
 }
 
-func (c *Core) current() store.PersistentState {
+func (c *Core) current() store.State {
 	c.stMu.Lock()
 	defer c.stMu.Unlock()
 	state := c.state
@@ -77,7 +79,7 @@ func (c *Core) current() store.PersistentState {
 	return state
 }
 
-func (c *Core) commit(state store.PersistentState) error {
+func (c *Core) commit(state store.State) error {
 	if err := c.store.SaveState(state); err != nil {
 		return err
 	}

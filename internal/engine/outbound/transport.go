@@ -22,7 +22,7 @@ func transport(n domain.Node) (*option.V2RayTransportOptions, error) {
 		}
 		return nil, nil
 	}
-	if n.Protocol != domain.VLess && n.Protocol != domain.VMess && n.Protocol != domain.Trojan {
+	if n.Protocol != domain.VLESS && n.Protocol != domain.VMess && n.Protocol != domain.Trojan {
 		return nil, fmt.Errorf("%s: unsupported transport %q", n.Protocol, n.Transport.Network)
 	}
 	if n.Transport.Network == "xhttp" || n.Transport.Network == "splithttp" {
