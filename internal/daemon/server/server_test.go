@@ -36,7 +36,7 @@ type switchEngine struct {
 	failTun error
 }
 
-func (instance *switchEngine) Apply(_ context.Context, spec engine.SessionSpec) error {
+func (instance *switchEngine) Apply(_ context.Context, spec engine.Spec) error {
 	if spec.Node.ID == "b" && instance.failB != nil {
 		instance.running = false
 		return instance.failB
@@ -66,7 +66,7 @@ func TestWatchLifecycle(t *testing.T) {
 	serveDone := make(chan error, 1)
 	go func() { serveDone <- server.Serve(listener) }()
 
-	client := ipc.NewClient(listener.Addr().String())
+	client := ipc.New(listener.Addr().String())
 	updates := make(chan ipc.Snapshot, 8)
 	watchDone := make(chan error, 1)
 	go func() { watchDone <- client.Watch(t.Context(), func(snapshot ipc.Snapshot) { updates <- snapshot }) }()
@@ -196,7 +196,7 @@ func TestSubscriptionRefresh(t *testing.T) {
 		}
 	}()
 
-	client := ipc.NewClient(listener.Addr().String())
+	client := ipc.New(listener.Addr().String())
 	added, err := client.AddSubscription(t.Context(), source.URL)
 	if err != nil {
 		t.Fatal(err)
@@ -352,14 +352,14 @@ func TestSubscriptionRefresh(t *testing.T) {
 func TestSwitch(t *testing.T) {
 	directory := t.TempDir()
 	disk := store.Disk{Dir: directory}
-	if err := disk.SaveState(store.PersistentState{Subscriptions: []store.Subscription{{ID: "sub", Nodes: []domain.Node{
+	if err := disk.SaveState(store.State{Subscriptions: []store.Subscription{{ID: "sub", Nodes: []domain.Node{
 		{ID: "a", Name: "A", Server: "a.example"}, {ID: "b", Name: "B", Server: "b.example"},
 	}}}}); err != nil {
 		t.Fatal(err)
 	}
 	logger := log.New(io.Discard, "", 0)
 	socket := filepath.Join(directory, "daemon.sock")
-	client := ipc.NewClient(socket)
+	client := ipc.New(socket)
 	a := domain.NodeRef{SubscriptionID: "sub", NodeID: "a"}
 	b := domain.NodeRef{SubscriptionID: "sub", NodeID: "b"}
 	tun := true

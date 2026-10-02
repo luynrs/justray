@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -186,5 +187,8 @@ func delay(ctx context.Context, dialer N.Dialer, url string) (int, error) {
 		return ms, err
 	}
 	_ = resp.Body.Close()
+	if resp.StatusCode >= http.StatusBadRequest {
+		return ms, fmt.Errorf("http %d", resp.StatusCode)
+	}
 	return ms, nil
 }

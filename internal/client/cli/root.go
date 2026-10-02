@@ -94,14 +94,6 @@ func Execute() error {
 				return nil
 			}
 		}
-		if cmd == rootCmd {
-			dir, err := ipc.Dir()
-			if err != nil {
-				return err
-			}
-			a.client = ipc.New(ipc.Socket(dir))
-			return nil
-		}
 		if err := a.connectDaemon(cmd.Context(), cmd != statusCmd && cmd != subListCmd && cmd != downCmd, false); err != nil {
 			return err
 		}
