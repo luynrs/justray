@@ -24,31 +24,19 @@ function clear_line() {
 	}
 }
 
-function step($msg) {
-	if ($isTty) {
-		clear_line
-		Write-Host "• $msg" -NoNewline
-	} else {
-		Write-Host "• $msg"
-	}
+function step($message) {
+	clear_line
+	Write-Host "• $message" -NoNewline:$isTty
 }
 
-function done($msg) {
+function done($message) {
 	clear_line
-	Write-Host "✓ $msg"
+	Write-Host "✓ $message"
 }
 
-function fail($msg) {
+function fail($message) {
 	clear_line
-	if ($msg.Length -gt 0) {
-		$msg = $msg.Substring(0, 1).ToUpper() + $msg.Substring(1)
-	}
-	[Console]::Error.WriteLine("✗ $msg")
-	if ($isTty -and -not [Console]::IsInputRedirected) {
-		Write-Host "`nPress Enter to exit..." -NoNewline
-		try { [Console]::ReadLine() | Out-Null } catch {}
-	}
-	exit 1
+	throw "✗ $message"
 }
 
 $nativeArch = if ($env:PROCESSOR_ARCHITEW6432) {
@@ -60,19 +48,17 @@ $nativeArch = if ($env:PROCESSOR_ARCHITEW6432) {
 $arch = switch ($nativeArch) {
 	"AMD64" { "amd64" }
 	"ARM64" { "arm64" }
-	default { fail "unsupported arch: $nativeArch" }
+	default { fail "Unsupported architecture: $nativeArch" }
 }
 
-$tag = switch -Regex ($version) {
-	'^latest$' { 'latest' }
-	'^\d'      { "v$version" }
-	default    { $version }
+if ($version -match '^\d') {
+	$version = "v$version"
 }
 
-$base = if ($tag -eq "latest") {
+$base = if ($version -eq "latest") {
 	"$repo/releases/latest/download"
 } else {
-	"$repo/releases/download/$tag"
+	"$repo/releases/download/$version"
 }
 
 if ($PSVersionTable.PSVersion.Major -lt 6) {
@@ -91,7 +77,8 @@ function download($uri, $out) {
 	}
 }
 
-$tmp = Join-Path ([IO.Path]::GetTempPath()) ("justray-" + [guid]::NewGuid())
+$dir = (New-Item -ItemType Directory -Force -Path $dir).FullName
+$tmp = Join-Path $dir (".justray." + [guid]::NewGuid().ToString("N"))
 $restart = $false
 
 New-Item -ItemType Directory -Path $tmp | Out-Null
@@ -100,97 +87,83 @@ try {
 	step "Fetching release..."
 
 	$checksums = Join-Path $tmp "checksums.txt"
-	try {
-		download "$base/checksums.txt" $checksums
-	} catch {
-		fail "failed to fetch release metadata"
-	}
+	download "$base/checksums.txt" $checksums
 
 	$lines = @(
 		Get-Content -LiteralPath $checksums |
 			Where-Object {
-				$_ -match "^[0-9A-Fa-f]{64}\s+\*?justray_.*_windows_$arch\.zip$"
+				$_ -match "^[0-9A-Fa-f]{64}\s+\*?justray_[^/\\\s]+_windows_$arch\.zip$"
 			}
 	)
 
 	if ($lines.Count -ne 1) {
-		fail "expected exactly one release for windows_$arch"
+		throw "Expected exactly one release for windows_$arch"
 	}
 
 	$hash, $archive = $lines[0].Trim() -split '\s+', 2
 	$archive = $archive.TrimStart("*")
 
-	$tag = if ($archive -match "^justray_(.+)_[^_]+_[^_]+\.zip$") { $Matches[1] } else { $version }
-	done "Found v$tag for windows/$arch"
+	$version = $archive -replace "^justray_(.+)_windows_$arch\.zip$", '$1'
+	done "Found v$version for windows/$arch"
 
 	step "Downloading $archive..."
 
 	$zip = Join-Path $tmp $archive
-	try {
-		download "$base/$archive" $zip
-	} catch {
-		fail "failed to download $archive"
-	}
+	download "$base/$archive" $zip
 
-	if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne $hash.ToLowerInvariant()) {
-		fail "checksum mismatch"
+	if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash -ne $hash) {
+		throw "Checksum mismatch"
 	}
 
 	done "Verified checksum"
 
 	$out = Join-Path $tmp "out"
-	try {
-		Expand-Archive -LiteralPath $zip -DestinationPath $out -Force
-	} catch {
-		fail "failed to extract archive"
-	}
+	Expand-Archive -LiteralPath $zip -DestinationPath $out -Force
 
 	foreach ($exe in "justray.exe", "justrayd.exe") {
 		if (-not (Test-Path -LiteralPath (Join-Path $out $exe) -PathType Leaf)) {
-			fail "archive is missing $exe"
+			throw "Archive is missing $exe"
+		}
+	}
+
+	Copy-Item -LiteralPath "$out\justray.exe" -Destination "$out\jray.exe"
+	foreach ($exe in "justray.exe", "justrayd.exe", "jray.exe") {
+		if (Test-Path -LiteralPath "$dir\$exe" -PathType Container) {
+			throw "$dir\$exe is a directory"
 		}
 	}
 
 	step "Installing..."
 
-	New-Item -ItemType Directory -Force -Path $dir | Out-Null
-
-	$daemonPath = [IO.Path]::GetFullPath((Join-Path $dir "justrayd.exe"))
-	$running = @(Get-CimInstance Win32_Process -Filter "Name = 'justrayd.exe'" | Where-Object {
-		if (-not $_.ExecutablePath) {
-			throw "Cannot determine justrayd's location. Stop it before updating."
-		}
-		$_.ExecutablePath -eq $daemonPath
-	} | ForEach-Object {
-		Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue
-	})
-	$restart = $running.Count -gt 0
-	if ($restart) {
-		if (Test-Path -LiteralPath "$dir\justray.exe") {
-			try { & "$dir\justray.exe" stop *>$null } catch {}
-		}
-		$running | Wait-Process -Timeout 5 -ErrorAction SilentlyContinue
-		$running | Stop-Process -Force -ErrorAction SilentlyContinue
+	$restart = (& "$out\justray.exe" stop) -match 'Daemon stopped'
+	if ($LASTEXITCODE) {
+		throw "Failed to stop daemon"
 	}
 
 	# Windows allows renaming running binaries away, but forbids overwriting them in place
+	$backup = [guid]::NewGuid().ToString("N")
+	try {
+		foreach ($exe in "justrayd.exe", "justray.exe", "jray.exe") {
+			if (Test-Path -LiteralPath "$dir\$exe") {
+				Move-Item -LiteralPath "$dir\$exe" -Destination "$dir\$exe.old.$backup"
+			}
+			Move-Item -LiteralPath "$out\$exe" -Destination "$dir\$exe"
+		}
+	} catch {
+		foreach ($exe in "justrayd.exe", "justray.exe", "jray.exe") {
+			if (-not (Test-Path -LiteralPath "$out\$exe")) {
+				Remove-Item -LiteralPath "$dir\$exe" -Force -ErrorAction SilentlyContinue
+			}
+			if (Test-Path -LiteralPath "$dir\$exe.old.$backup") {
+				Move-Item -LiteralPath "$dir\$exe.old.$backup" -Destination "$dir\$exe"
+			}
+		}
+		throw
+	}
+
 	Get-ChildItem -LiteralPath $dir -File -Filter *.exe.old.* -ErrorAction SilentlyContinue | Where-Object Name -Match '^(justray|jray|justrayd)\.exe\.old\.[0-9a-f]{32}$' | Remove-Item -Force -ErrorAction SilentlyContinue
 
-	function install_file($src, $dst) {
-		if (Test-Path -LiteralPath $dst) {
-			Move-Item -LiteralPath $dst -Destination ("$dst.old." + [guid]::NewGuid().ToString("N")) -Force -ErrorAction SilentlyContinue
-		}
-		Copy-Item -LiteralPath $src -Destination $dst -Force
-	}
-
-	install_file "$out\justray.exe" "$dir\justray.exe"
-	install_file "$out\justray.exe" "$dir\jray.exe"
-	install_file "$out\justrayd.exe" "$dir\justrayd.exe"
-
-	$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-	if ($null -eq $userPath) {
-		$userPath = ""
-	}
+	$userPath = [string][Environment]::GetEnvironmentVariable("Path", "User")
 
 	if (($userPath -split ";") -notcontains $dir) {
 		$userPath = "$($userPath.TrimEnd(";"));$dir".TrimStart(";")
@@ -202,11 +175,13 @@ try {
 	}
 
 	done "Installed to $dir"
-	Write-Host "`nTo get started, run jray in a new terminal window"
+	Write-Host "`nRun jray in a new terminal window."
+}
+catch {
+	fail $_.Exception.Message
 }
 finally {
 	Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
-	Get-ChildItem -LiteralPath $dir -File -Filter *.exe.old.* -ErrorAction SilentlyContinue | Where-Object Name -Match '^(justray|jray|justrayd)\.exe\.old\.[0-9a-f]{32}$' | Remove-Item -Force -ErrorAction SilentlyContinue
 
 	if ($restart -and (Test-Path -LiteralPath "$dir\justrayd.exe")) {
 		Start-Process "$dir\justrayd.exe" -WindowStyle Hidden
