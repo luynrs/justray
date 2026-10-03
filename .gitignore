@@ -1,4 +1,5 @@
 /result
 /dist
+/.direnv
 
 *.tape
