@@ -74,7 +74,7 @@ func TestNodeSwitch(t *testing.T) {
 	}
 	request := func() {
 		t.Helper()
-		outbound, ok := box.inst.Outbound().Outbound(proxyTag)
+		outbound, ok := box.inst.Outbound().Outbound("proxy")
 		if !ok {
 			t.Fatal("proxy outbound missing")
 		}

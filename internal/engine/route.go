@@ -16,7 +16,7 @@ var (
 		RejectOptions: option.RejectActionOptions{Method: C.RuleActionRejectMethodDefault},
 	}
 	toDirect = option.RuleAction{Action: C.RuleActionTypeRoute, RouteOptions: option.RouteActionOptions{Outbound: "direct"}}
-	toProxy  = option.RuleAction{Action: C.RuleActionTypeRoute, RouteOptions: option.RouteActionOptions{Outbound: proxyTag}}
+	toProxy  = option.RuleAction{Action: C.RuleActionTypeRoute, RouteOptions: option.RouteActionOptions{Outbound: "proxy"}}
 )
 
 func match(list []string, action option.RuleAction) []option.Rule {
@@ -84,6 +84,9 @@ func rules(s domain.Settings) []option.Rule {
 			RuleAction:     toDirect,
 		}})
 	}
+	out = append(out, option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{
+		RuleAction: option.RuleAction{Action: C.RuleActionTypeRoute, RouteOptions: option.RouteActionOptions{Outbound: final(s)}},
+	}})
 	return out
 }
 
@@ -115,5 +118,5 @@ func final(s domain.Settings) string {
 	if s.Mode == domain.DirectAll {
 		return "direct"
 	}
-	return proxyTag
+	return "proxy"
 }

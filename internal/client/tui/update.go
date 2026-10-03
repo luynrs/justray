@@ -3,11 +3,9 @@ package tui
 import (
 	"fmt"
 	"slices"
-	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/spinner"
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
@@ -20,24 +18,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.w, m.h = msg.Width, msg.Height
-		m.editor.SetWidth(max(msg.Width-12, 10))
+		m.resizeModal()
 		m.clamp()
-
-	case tea.KeyPressMsg:
-		switch {
-		case msg.String() == "ctrl+c":
-			m.dialog = nil
-			return m.quit()
-		case m.dialog != nil:
-			return m.updateSettings(msg)
-		}
-		return m.key(msg)
-
-	case tea.MouseMsg:
-		if m.dialog != nil {
-			return m.updateSettings(msg)
-		}
-		return m.mouse(msg)
+		return m, nil
 
 	case tick:
 		if m.err != "" && time.Since(m.errAt) > 10*time.Second {
@@ -56,7 +39,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.err != nil {
 			m.err, m.errAt = msg.err.Error(), time.Now()
-			return m, nil
 		}
 		return m, nil
 
@@ -90,6 +72,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.snapshot = msg.snapshot
 		m.syncTTY()
+		if m.activeModal == modalHelp {
+			m.help.SetContent(m.shortcuts())
+		}
 		m.live = true
 		rows := m.rows()
 		switch {
@@ -114,16 +99,40 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.cursor, m.scroll = tree.Clamp(rows, m.cursor, m.scroll, m.height())
 		return m, next(m.watch, m.updates)
-
+	}
+	if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "ctrl+c" {
+		return m.quit()
+	}
+	if m.activeModal != modalNone {
+		return m.updateModal(msg)
+	}
+	showHelp := false
+	switch message := msg.(type) {
+	case tea.KeyPressMsg:
+		showHelp = message.String() == "f1" || message.String() == "?" && !m.editing()
+	case tea.MouseClickMsg:
+		showHelp = message.Button == tea.MouseLeft && m.h >= topLines+footerLines+1 && message.Y == m.h-1 && message.X >= m.w-len(m.helpHint()) && message.X < m.w
+	}
+	if showHelp {
+		m.activeModal = modalHelp
+		m.resizeModal()
+		m.help.GotoTop()
+		return m, nil
+	}
+	if m.dialog != nil {
+		closed, command := m.dialog.Update(msg)
+		m.syncTTY()
+		if closed {
+			return m.closeSettings()
+		}
+		return m, command
+	}
+	switch msg := msg.(type) {
+	case tea.KeyPressMsg:
+		return m.key(msg)
+	case tea.MouseMsg:
+		return m.mouse(msg)
 	default:
-		if m.dialog != nil {
-			return m.updateSettings(msg)
-		}
-		if m.editor.Focused() {
-			var cmd tea.Cmd
-			m.editor, cmd = m.editor.Update(msg)
-			return m, cmd
-		}
 		if m.filter.Focused() {
 			var cmd tea.Cmd
 			m.filter, cmd = m.filter.Update(msg)
@@ -137,48 +146,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	k := msg.String()
 
-	switch {
-	case m.confirm.Sub.SubscriptionID != "":
-		row := m.confirm
-		m.confirm = tree.Row{}
-		if (k == "y" || k == "Y") && row.Removable() {
-			return m, action(false, m.start(false), func() error {
-				if row.Kind == tree.Header {
-					return m.client.RemoveSubscription(m.watch, row.Sub.SubscriptionID)
-				}
-				return m.client.RemoveNode(m.watch, row.Node.Ref())
-			})
-		}
-		return m, nil
-
-	case m.editor.Focused():
+	if m.filter.Focused() {
 		switch k {
-		case "esc":
-			m.editor.Blur()
-			return m, nil
-		case "enter":
-			m.editor.Blur()
-			url := strings.TrimSpace(m.editor.Value())
-			if url == "" {
-				return m, nil
+		case "esc", "enter":
+			if k == "esc" {
+				m.filter.SetValue("")
 			}
-			return m, action(false, m.start(false), func() error {
-				_, err := m.client.AddSubscription(m.watch, url)
-				return err
-			})
-		}
-		var cmd tea.Cmd
-		m.editor, cmd = m.editor.Update(msg)
-		return m, cmd
-
-	case m.filter.Focused():
-		switch k {
-		case "esc":
-			m.filter.SetValue("")
-			m.filter.Blur()
-			m.clamp()
-			return m, nil
-		case "enter":
 			m.filter.Blur()
 			m.clamp()
 			return m, nil
@@ -209,16 +182,18 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "t":
 		return m.probe()
 	case "T", "shift+t":
-		return m.probeAll()
+		return m, action(false, m.start(false), func() error { return m.client.Probe(m.watch, "", "") })
 	case "r":
 		return m.refresh()
 	case "R", "shift+r":
-		return m.refreshAll()
+		return m, action(false, m.start(false), func() error { return m.client.RefreshSubscriptions(m.watch) })
 	case "m":
 		return m.setTun(!m.snapshot.Status.Tun)
 	case "a":
+		m.activeModal = modalAdd
 		m.editor.SetValue("")
-		return m, tea.Batch(m.editor.Focus(), textinput.Blink)
+		m.resizeModal()
+		return m, m.editor.Focus()
 	case "o":
 		if m.snapshot.Settings.Port == 0 {
 			return m, nil
@@ -228,10 +203,12 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "/":
 		m.filter.CursorEnd()
-		return m, tea.Batch(m.filter.Focus(), textinput.Blink)
+		return m, m.filter.Focus()
 	case "d":
 		if r, ok := m.at(); ok && r.Removable() {
-			m.confirm = r
+			m.deleteTarget = r
+			m.activeModal = modalDelete
+			m.resizeModal()
 		}
 	case "q":
 		return m.quit()
@@ -245,9 +222,6 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	if m.editor.Focused() || m.confirm.Sub.SubscriptionID != "" {
-		return m, nil
-	}
 	mouse := msg.Mouse()
 	switch msg.(type) {
 	case tea.MouseClickMsg:
@@ -293,15 +267,6 @@ func (m Model) click(x, y int) (tea.Model, tea.Cmd) {
 		return m.activate(r)
 	}
 	return m, nil
-}
-
-func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
-	closed, cmd := m.dialog.Update(msg)
-	m.syncTTY()
-	if !closed {
-		return m, cmd
-	}
-	return m.closeSettings()
 }
 
 // closeSettings saves on the way out

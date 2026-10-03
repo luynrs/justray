@@ -1,11 +1,9 @@
 package cli
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"slices"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -113,28 +111,4 @@ func (a *app) probe(cmd *cobra.Command, args []string) error {
 	}
 	a.showTree(subs, nodes)
 	return probeErr
-}
-
-func (a *app) completeProbe(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	if len(args) > 0 {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-	c := a.daemon()
-	if c == nil {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-	ctx, cancel := context.WithTimeout(cmd.Context(), time.Second)
-	defer cancel()
-	snap, err := c.Snapshot(ctx)
-	if err != nil {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-	names := make([]string, 0, len(snap.Subscriptions)+len(snap.Nodes))
-	for _, s := range snap.Subscriptions {
-		names = append(names, s.Name)
-	}
-	for _, n := range snap.Nodes {
-		names = append(names, n.Name)
-	}
-	return names, cobra.ShellCompDirectiveNoFileComp
 }

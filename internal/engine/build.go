@@ -14,8 +14,6 @@ import (
 	"github.com/luynrs/justray/internal/engine/outbound"
 )
 
-const proxyTag = "proxy"
-
 var dnsStrategy = map[string]option.DomainStrategy{
 	"ipv4":  option.DomainStrategy(C.DomainStrategyIPv4Only),
 	"ipv6":  option.DomainStrategy(C.DomainStrategyIPv6Only),
@@ -23,7 +21,7 @@ var dnsStrategy = map[string]option.DomainStrategy{
 }
 
 func build(n domain.Node, s domain.Settings, logPath string, tun bool) (*option.Options, error) {
-	ep, obs, err := outbound.New(n, proxyTag)
+	ep, obs, err := outbound.New(n, "proxy-node")
 	if err != nil {
 		return nil, err
 	}
@@ -40,6 +38,7 @@ func build(n domain.Node, s domain.Settings, logPath string, tun bool) (*option.
 		},
 		Outbounds: []option.Outbound{
 			{Type: C.TypeDirect, Tag: "direct", Options: &option.DirectOutboundOptions{}},
+			{Type: C.TypeSelector, Tag: "proxy", Options: &option.SelectorOutboundOptions{Outbounds: []string{"proxy-node"}}},
 		},
 		DNS: &option.DNSOptions{RawDNSOptions: option.RawDNSOptions{
 			DNSClientOptions: option.DNSClientOptions{Strategy: dnsStrategy[s.IPVersion]},
@@ -84,7 +83,7 @@ func probeConfig(s domain.Settings, logPath string) *option.Options {
 }
 
 func detour(s domain.Settings) string {
-	if final(s) != proxyTag {
+	if final(s) != "proxy" {
 		return ""
 	}
 	host := s.DNS
@@ -99,7 +98,7 @@ func detour(s domain.Settings) string {
 	if addr, err := netip.ParseAddr(host); err == nil && (addr.IsLoopback() || addr.IsLinkLocalUnicast() || (s.BypassLocal == "on" && addr.IsPrivate())) {
 		return ""
 	}
-	return proxyTag
+	return "proxy"
 }
 
 func dnsServers(s domain.Settings, detourTag, tag string) []option.DNSServerOptions {

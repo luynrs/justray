@@ -119,7 +119,7 @@ func (c *Client) AwaitConnection(ctx context.Context, ref domain.NodeRef, want *
 		status := snapshot.Status
 		switch {
 		case err != nil:
-			pending = true
+			pending = pending || errors.Is(err, ErrNoDaemon)
 		case status.Connected && status.NodeRef == ref && (want == nil || status.Tun == *want):
 			return snapshot, nil
 		case pending:

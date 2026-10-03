@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -116,10 +117,10 @@ func Execute() error {
 	subRefreshCmd.RunE = a.subRefresh
 	subListCmd.RunE = a.subList
 	logsCmd.RunE = logs
-	upCmd.ValidArgsFunction = a.completeNode
-	subRemoveCmd.ValidArgsFunction = a.completeSub
-	subRefreshCmd.ValidArgsFunction = a.completeSub
-	probeCmd.ValidArgsFunction = a.completeProbe
+	upCmd.ValidArgsFunction = a.complete
+	subRemoveCmd.ValidArgsFunction = a.complete
+	subRefreshCmd.ValidArgsFunction = a.complete
+	probeCmd.ValidArgsFunction = a.complete
 
 	rootCmd.SetOut(lipgloss.Writer)
 	rootCmd.InitDefaultVersionFlag()
@@ -388,13 +389,32 @@ func match[T any](key, noun string, items []T, idName func(T) (id, name string))
 	}
 }
 
-func completeNames[T any](items []T, err error, name func(T) string) ([]string, cobra.ShellCompDirective) {
+func (application *app) complete(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	client := application.daemon()
+	if client == nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	ctx, cancel := context.WithTimeout(cmd.Context(), time.Second)
+	defer cancel()
+	snapshot, err := client.Snapshot(ctx)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	names := make([]string, len(items))
-	for i, it := range items {
-		names[i] = name(it)
+	names := make([]string, 0, len(snapshot.Subscriptions)+len(snapshot.Nodes))
+	for _, sub := range snapshot.Subscriptions {
+		if cmd != upCmd && (cmd != subRefreshCmd || sub.Refreshable) {
+			names = append(names, sub.Name)
+		}
+	}
+	for _, node := range snapshot.Nodes {
+		if cmd == upCmd || cmd == probeCmd || cmd == subRemoveCmd && slices.ContainsFunc(snapshot.Subscriptions, func(sub ipc.Subscription) bool {
+			return sub.SubscriptionID == node.SubscriptionID && !sub.Refreshable
+		}) {
+			names = append(names, node.Name)
+		}
 	}
 	return names, cobra.ShellCompDirectiveNoFileComp
 }

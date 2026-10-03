@@ -161,18 +161,6 @@ func (c *Core) restoreLive(ctx context.Context, state store.State, before ipc.St
 	return c.conn.Connect(ctx, node, ref, state.Settings, before.Tun)
 }
 
-func (c *Core) apply(ctx context.Context, state store.State, tun bool) error {
-	status := c.conn.Status()
-	if !status.Connected {
-		return nil
-	}
-	node, ref, err := find(state.Subscriptions, status.NodeRef)
-	if err != nil {
-		return err
-	}
-	return c.conn.Apply(ctx, node, ref, state.Settings, tun)
-}
-
 func find(subs []store.Subscription, query domain.NodeRef) (domain.Node, domain.NodeRef, error) {
 	if query.NodeID == "" {
 		return domain.Node{}, domain.NodeRef{}, fmt.Errorf("node not found")

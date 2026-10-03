@@ -208,9 +208,15 @@ func xrayNode(node domain.Node, stream xrayStreamSettings) (domain.Node, error) 
 	if err != nil {
 		return domain.Node{}, err
 	}
-	node.TLS = xrayTLS(stream)
-	if node.Protocol != domain.VMess {
-		node.Reality = xrayReality(stream)
+	switch strings.ToLower(stream.Security) {
+	case "reality":
+		node.TLS = &domain.TLS{SNI: stream.RealitySettings.ServerName, Fingerprint: stream.RealitySettings.Fingerprint}
+		if node.Protocol != domain.VMess {
+			node.Reality = &domain.Reality{PublicKey: stream.RealitySettings.PublicKey, ShortID: stream.RealitySettings.ShortID}
+		}
+	case "tls":
+		fingerprint, insecure := cleanFingerprint(stream.TLSSettings.Fingerprint, stream.TLSSettings.AllowInsecure)
+		node.TLS = &domain.TLS{SNI: stream.TLSSettings.ServerName, Insecure: insecure, ALPN: stream.TLSSettings.ALPN, Fingerprint: fingerprint}
 	}
 	if node.Protocol == domain.Trojan && node.TLS == nil && stream.Security == "" {
 		node.TLS = &domain.TLS{SNI: node.Server}
@@ -242,22 +248,4 @@ func xrayTransport(s xrayStreamSettings) (domain.Transport, error) {
 	default:
 		return domain.Transport{}, fmt.Errorf("unsupported xray transport: %s", network)
 	}
-}
-
-func xrayTLS(s xrayStreamSettings) *domain.TLS {
-	switch strings.ToLower(s.Security) {
-	case "reality":
-		return &domain.TLS{SNI: s.RealitySettings.ServerName, Fingerprint: s.RealitySettings.Fingerprint}
-	case "tls":
-		fp, insecure := cleanFingerprint(s.TLSSettings.Fingerprint, s.TLSSettings.AllowInsecure)
-		return &domain.TLS{SNI: s.TLSSettings.ServerName, Insecure: insecure, ALPN: s.TLSSettings.ALPN, Fingerprint: fp}
-	}
-	return nil
-}
-
-func xrayReality(s xrayStreamSettings) *domain.Reality {
-	if !strings.EqualFold(s.Security, "reality") {
-		return nil
-	}
-	return &domain.Reality{PublicKey: s.RealitySettings.PublicKey, ShortID: s.RealitySettings.ShortID}
 }

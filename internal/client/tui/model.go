@@ -8,8 +8,11 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/luynrs/justray/internal/client/tui/settings"
 	"github.com/luynrs/justray/internal/client/tui/style"
@@ -19,7 +22,7 @@ import (
 
 const (
 	topLines    = 2 // title + gap
-	footerLines = 3 // status + help
+	footerLines = 2 // status + help
 )
 
 type Model struct {
@@ -32,10 +35,12 @@ type Model struct {
 	scroll int
 	wheel  time.Time
 
-	editor  textinput.Model
-	confirm tree.Row
-	dialog  *settings.Model
-	filter  textinput.Model
+	editor       textarea.Model
+	deleteTarget tree.Row
+	dialog       *settings.Model
+	filter       textinput.Model
+	help         viewport.Model
+	activeModal  modalKind
 
 	live    bool
 	updates chan pushed
@@ -55,10 +60,16 @@ type Model struct {
 func New(c *ipc.Client, start, restore func(context.Context) error) Model {
 	watch, stop := context.WithCancel(context.Background())
 	ctx, cancel := context.WithCancel(watch)
-	editor := textinput.New()
-	editor.Prompt = "Add:  "
-	editor.Placeholder = "subscription URL, or a vless://, vmess://, trojan://, ss://, etc. link"
+	editor := textarea.New()
+	editor.Prompt = ""
+	editor.ShowLineNumbers = false
+	editor.Placeholder = "Paste a subscription or node link..."
 	editor.CharLimit = 2048
+	editor.KeyMap.InsertNewline.SetEnabled(false)
+	editorStyles := editor.Styles()
+	editorStyles.Focused.CursorLine = lipgloss.NewStyle()
+	editorStyles.Focused.Placeholder = style.Dim
+	editor.SetStyles(editorStyles)
 	filter := textinput.New()
 	filter.Prompt = ""
 	filter.CharLimit = 128
@@ -67,6 +78,7 @@ func New(c *ipc.Client, start, restore func(context.Context) error) Model {
 		spin:    spinner.New(),
 		editor:  editor,
 		filter:  filter,
+		help:    viewport.New(),
 		updates: make(chan pushed),
 		watch:   watch,
 		stop:    stop,
@@ -80,6 +92,7 @@ func New(c *ipc.Client, start, restore func(context.Context) error) Model {
 			return func() error { return start(watch) }
 		},
 	}
+	m.help.SoftWrap = true
 	if restore != nil {
 		m.restore = func() tea.Msg {
 			defer cancel()
@@ -97,22 +110,23 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m *Model) syncTTY() {
-	style.TTY = style.DetectTTY(m.forceTTY())
+	force := m.snapshot.Settings.ForceTTY
+	if m.dialog != nil {
+		force = m.dialog.Current().ForceTTY
+	}
+	style.TTY = style.DetectTTY(force)
 	m.spin.Spinner = spinner.MiniDot
 	if style.TTY {
 		m.spin.Spinner = spinner.Line
 	}
 }
 
-func (m Model) forceTTY() string {
-	if m.dialog != nil {
-		return m.dialog.Current().ForceTTY
-	}
-	return m.snapshot.Settings.ForceTTY
-}
-
 func (m Model) emoji() bool {
 	return !style.TTY && m.snapshot.Settings.Emoji == "on"
+}
+
+func (m Model) editing() bool {
+	return m.filter.Focused() || m.dialog != nil && m.dialog.Editing()
 }
 
 func (m Model) data() tree.Data {

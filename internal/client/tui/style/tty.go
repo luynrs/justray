@@ -27,12 +27,10 @@ func pick(tty, rich string) string {
 	return rich
 }
 
-func Bar() string   { return pick("| ", "▎ ") }
-func Sep() string   { return pick("-", "·") }
-func Move() string  { return pick("j/k", "↑/↓") }
-func Fold() string  { return pick("h/l", "←/→") }
-func Enter() string { return pick("enter", "↵") }
-func Tab() string   { return pick("tab", "⇥") }
+func Bar() string  { return pick("| ", "▎ ") }
+func Sep() string  { return pick("-", "·") }
+func Move() string { return pick("j/k", "↑/↓") }
+func Fold() string { return pick("h/l", "←/→") }
 
 func Arrow(collapsed bool) string {
 	if collapsed {

@@ -1,13 +1,11 @@
 package cli
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
 	"strconv"
-	"time"
 
 	"charm.land/lipgloss/v2"
 	"github.com/spf13/cobra"
@@ -224,31 +222,6 @@ func (a *app) subList(cmd *cobra.Command, args []string) error {
 func init() {
 	subCmd.AddCommand(subAddCmd, subRemoveCmd, subRefreshCmd, subListCmd)
 	subListCmd.Flags().Bool("json", false, "Output subscriptions as JSON")
-}
-
-func (a *app) completeSub(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	if len(args) > 0 {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-	c := a.daemon()
-	if c == nil {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-	ctx, cancel := context.WithTimeout(cmd.Context(), time.Second)
-	defer cancel()
-	snapshot, err := c.Snapshot(ctx)
-	if err == nil && cmd == subRefreshCmd {
-		snapshot.Subscriptions = slices.DeleteFunc(snapshot.Subscriptions, func(s ipc.Subscription) bool { return !s.Refreshable })
-	}
-	names, directive := completeNames(snapshot.Subscriptions, err, func(s ipc.Subscription) string { return s.Name })
-	if err == nil && cmd == subRemoveCmd {
-		for _, node := range snapshot.Nodes {
-			if slices.ContainsFunc(snapshot.Subscriptions, func(sub ipc.Subscription) bool { return sub.SubscriptionID == node.SubscriptionID && !sub.Refreshable }) {
-				names = append(names, node.Name)
-			}
-		}
-	}
-	return names, directive
 }
 
 func (a *app) showTree(subs []ipc.Subscription, nodes []ipc.Node) {

@@ -185,7 +185,7 @@ func TestDNSRouting(t *testing.T) {
 		t.Fatal(err)
 	}
 	servers := options.DNS.Servers
-	if len(servers) != 2 || servers[0].Type != C.DNSTypeTCP || servers[0].Options.(*option.RemoteDNSServerOptions).Detour != proxyTag ||
+	if len(servers) != 2 || servers[0].Type != C.DNSTypeTCP || servers[0].Options.(*option.RemoteDNSServerOptions).Detour != "proxy" ||
 		servers[1].Type != C.DNSTypeUDP || servers[1].Options.(*option.RemoteDNSServerOptions).Detour != "" || options.Route.DefaultDomainResolver.Server != "node" {
 		t.Fatalf("proxy DNS routing: %+v", servers)
 	}

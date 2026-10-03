@@ -7,6 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/luynrs/justray/internal/client/tui/style"
 	"github.com/luynrs/justray/internal/client/tui/tree"
@@ -39,26 +40,24 @@ func (m Model) View() tea.View {
 }
 
 func (m Model) content() string {
-	switch {
-	case m.quitting, m.w == 0:
+	if m.quitting || m.w <= 0 || m.h <= 0 {
 		return ""
-	case m.dialog != nil:
-		body := m.titleLine() + "\n\n" + m.dialog.View(m.w, max(m.h-topLines-footerLines, 1))
-		status := ""
-		if e := cmp.Or(m.dialog.Err(), m.err); e != "" {
-			errLine, _, _ := strings.Cut(e, "\n")
-			status = style.Err.Render(style.Sanitize(errLine, true))
-		}
-		return style.Fit(body, m.h-footerLines) + "\n\n" + m.clip(status) + "\n" + m.clip(m.hints(m.w))
-	case m.h < topLines+footerLines+1:
-		return m.titleLine()
 	}
 
-	body := m.tree()
-	if m.editor.Focused() {
-		body = m.titleLine() + "\n\n" + m.editor.View()
+	content := m.titleLine()
+	if m.h >= topLines+footerLines+1 {
+		var body string
+		if m.dialog != nil {
+			body = m.dialog.View(m.w, m.height())
+		} else {
+			body = m.tree()
+		}
+		content = style.Fit(content+"\n\n"+body, m.h-footerLines) + "\n\n" + m.footer()
 	}
-	return style.Fit(body, m.h-footerLines) + "\n" + m.footer()
+	if m.activeModal != modalNone {
+		return m.modalView(content)
+	}
+	return content
 }
 
 func (m Model) titleLeft() string {
@@ -84,8 +83,7 @@ func (m Model) tree() string {
 	rows := data.Rows()
 	h := m.height()
 
-	lines := make([]string, 0, topLines+h)
-	lines = append(lines, m.titleLine(), "")
+	lines := make([]string, 0, h)
 
 	switch {
 	case len(rows) > 0:
@@ -107,38 +105,35 @@ func (m Model) tree() string {
 	return strings.Join(lines, "\n")
 }
 
-func (m Model) keys() [][2]string {
+func (m Model) shortcuts() string {
+	var keys [][2]string
 	switch {
 	case m.dialog != nil:
-		return m.dialog.Hints()
-	case m.confirm.Sub.SubscriptionID != "":
-		return [][2]string{{"y", "Delete"}, {"any", "Cancel"}}
-	case m.editor.Focused():
-		return [][2]string{{style.Enter(), "Add"}, {"esc", "Cancel"}}
-	}
-	keys := [][2]string{
-		{style.Move(), "Move"}, {style.Fold(), "Fold"}, {style.Enter(), "Toggle"}, {"t/T", "Ping"}, {"r/R", "Refresh"},
-		{"m", "Mode"}, {"/", "Filter"}, {"a", "Add"},
-	}
-	if row, ok := m.at(); ok && row.Removable() {
-		keys = append(keys, [2]string{"d", "Delete"})
-	}
-	return append(keys, [2]string{"o", "Settings"}, [2]string{"q", "Quit"})
-}
-
-func (m Model) hints(maxW int) string {
-	out, w := "", 0
-	for _, k := range m.keys() {
-		hint := style.Strong.Render(k[0]) + " " + style.Dim.Render(k[1])
-		if out != "" {
-			hint = "  " + hint
+		keys = m.dialog.Hints()
+	case m.filter.Focused():
+		keys = [][2]string{{"enter", "Apply"}, {"esc", "Cancel"}}
+	default:
+		keys = [][2]string{
+			{style.Move(), "Move"}, {style.Fold(), "Fold"}, {"t/T", "Ping"}, {"r/R", "Refresh"}, {"enter", "Toggle"},
+			{"a/d", "Add / Delete"}, {"m", "Mode"}, {"/", "Filter"}, {"o", "Settings"}, {"q", "Quit"},
 		}
-		if w += lipgloss.Width(hint); w > maxW {
-			break
-		}
-		out += hint
 	}
-	return out
+	lines := make([]string, len(keys))
+	columnWidth := 0
+	for i, key := range keys {
+		lines[i] = style.Strong.Render(style.Pad(key[0], 6)) + " " + key[1]
+		columnWidth = max(columnWidth, lipgloss.Width(lines[i]))
+	}
+	if width := m.help.Width(); width >= columnWidth*2+2 {
+		rows := (len(lines) + 1) / 2
+		for i := range rows {
+			if i+rows < len(lines) {
+				lines[i] = style.Pad(lines[i], width/2) + lines[i+rows]
+			}
+		}
+		lines = lines[:rows]
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m Model) footer() string {
@@ -165,25 +160,35 @@ func (m Model) footer() string {
 	default:
 		status = style.Dim.Render(icon) + " " + style.Dim.Render("disconnected")
 	}
-	if m.err != "" {
-		errLine, _, _ := strings.Cut(m.err, "\n")
-		status += "   " + style.Err.Render(style.Sanitize(errLine, true))
-	} else if r, ok := m.at(); ok && r.Sub.Warning != "" {
+	err := m.err
+	if m.dialog != nil {
+		err = cmp.Or(m.dialog.Err(), err)
+	}
+	if err != "" {
+		status += "  " + style.Dead.Render(style.Sanitize(err, true))
+	} else if r, ok := m.at(); m.dialog == nil && ok && r.Sub.Warning != "" {
 		warnLine, _, _ := strings.Cut(r.Sub.Warning, "\n")
 		status += "   " + style.Pending.Render(style.Sanitize(warnLine, true))
 	}
 
-	hints := m.hints(m.w)
-	if m.confirm.Sub.SubscriptionID != "" {
-		question := m.confirm.Sub.Name
-		if m.confirm.Kind == tree.Node {
-			question = m.confirm.Node.Name
-		}
-		question = style.Err.Render(style.Sanitize("Delete "+question+"?", true))
-		hints = question + "  " + m.hints(max(m.w-lipgloss.Width(question)-2, 0))
-	}
+	hint := m.helpHint()
+	width := max(m.w-len(hint)-2, 0)
+	status = ansi.Truncate(status, width, strings.Repeat(".", min(3, width)))
+	return style.Pad(status, max(m.w-len(hint), 0)) + style.Dim.Render(hint)
+}
 
-	return "\n" + m.clip(status) + "\n" + m.clip(hints)
+func (m Model) helpHint() string {
+	key := "?"
+	if m.editing() {
+		key = "f1"
+	}
+	if m.w < len(key) {
+		return ""
+	}
+	if m.w < len(key+" for help")+4 {
+		return key
+	}
+	return key + " for help"
 }
 
 func (m Model) clip(s string) string { return style.Clip(s, m.w) }

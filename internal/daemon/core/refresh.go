@@ -127,8 +127,12 @@ func (c *Core) refresh(ctx context.Context, sub store.Subscription) (err error) 
 	if dropConn {
 		return c.conn.Disconnect(ctx)
 	}
-	if c.conn.Status().NodeRef.SubscriptionID == sub.ID {
-		return c.apply(ctx, next, c.conn.Status().Tun)
+	if status := c.conn.Status(); status.Connected && status.NodeRef.SubscriptionID == sub.ID {
+		node, ref, err := find(next.Subscriptions, status.NodeRef)
+		if err != nil {
+			return err
+		}
+		return c.conn.Apply(ctx, node, ref, next.Settings, status.Tun)
 	}
 	return nil
 }

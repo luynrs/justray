@@ -199,15 +199,11 @@ func cleanFingerprint(fp string, insecure bool) (string, bool) {
 
 // TLS block shared by vless/trojan/anytls links
 func tlsFrom(q url.Values, host string) *domain.TLS {
-	clientFP := cmp.Or(q.Get("client-fingerprint"), q.Get("clientFingerprint"))
 	fp, insecure := cleanFingerprint(cmp.Or(q.Get("fp"), q.Get("fingerprint")), insecureFlag(q) || cmp.Or(q.Get("pinSHA256"), q.Get("pinsha256")) != "")
-	if clientFP == "" {
-		clientFP = fp
-	}
 	return &domain.TLS{
 		SNI:         cmp.Or(q.Get("sni"), q.Get("peer"), q.Get("server_name"), q.Get("serverName"), host),
 		ALPN:        splitComma(q.Get("alpn")),
-		Fingerprint: clientFP,
+		Fingerprint: cmp.Or(q.Get("client-fingerprint"), q.Get("clientFingerprint"), fp),
 		Insecure:    insecure,
 	}
 }
@@ -236,12 +232,7 @@ type stringOrSlice []string
 
 func (s *stringOrSlice) UnmarshalJSON(b []byte) error {
 	if len(b) > 0 && b[0] == '[' {
-		var list []string
-		if err := json.Unmarshal(b, &list); err != nil {
-			return err
-		}
-		*s = list
-		return nil
+		return json.Unmarshal(b, (*[]string)(s))
 	}
 	var str string
 	if err := json.Unmarshal(b, &str); err != nil {

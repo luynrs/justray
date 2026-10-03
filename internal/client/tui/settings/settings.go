@@ -225,6 +225,8 @@ func (s *Model) Current() domain.Settings { return s.cur }
 
 func (s *Model) Err() string { return s.err }
 
+func (s *Model) Editing() bool { return s.input.Focused() }
+
 func (s *Model) Update(msg tea.Msg) (closed bool, cmd tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:

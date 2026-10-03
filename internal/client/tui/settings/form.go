@@ -11,37 +11,28 @@ import (
 	"github.com/luynrs/justray/internal/version"
 )
 
-func (s *Model) View(width, height int) string {
-	return strings.Join(s.lines(width, height), "\n")
-}
-
 func (s *Model) Hints() [][2]string {
-	enter := style.Enter()
 	if s.input.Focused() {
-		return [][2]string{{enter, "Apply"}, {"esc", "Cancel"}}
+		return [][2]string{{"enter", "Apply"}, {"esc", "Cancel"}}
 	}
 	out := [2]string{"esc", "Back"}
 	switch {
 	case s.err != "":
-		out = [2]string{"esc", "Discard"}
+		out = [2]string{"esc", "Quit"}
 	case s.dirty():
 		out = [2]string{"esc", "Apply"}
 	}
-	move, tab := style.Move(), style.Tab()
+	keys := [][2]string{{style.Move(), "Move"}, {"tab", "Next tab"}, {"enter", "Edit"}}
 	f, ok := s.at()
 	switch {
 	case ok && len(f.enum) > 0:
-		return [][2]string{{move, "Move"}, {style.Fold(), "Cycle"}, {enter, "Choose"}, {tab, "Tab"}, out}
+		keys = [][2]string{{style.Move(), "Move"}, {style.Fold(), "Cycle"}, {"enter", "Choose"}, {"tab", "Next tab"}}
 	case ok && f.removable():
-		return [][2]string{
-			{move, "Move"}, {tab, "Tab"}, {enter, "Edit"}, {"d", "Remove"}, out,
-		}
+		keys = append(keys, [2]string{"d", "Remove"})
 	case ok && f.bare:
-		return [][2]string{
-			{move, "Move"}, {tab, "Tab"}, {enter, "Add"}, out,
-		}
+		keys[2][1] = "Add"
 	}
-	return [][2]string{{move, "Move"}, {tab, "Tab"}, {enter, "Edit"}, out}
+	return append(keys, out, [2]string{"q", "Quit"})
 }
 
 type hit struct {
@@ -49,7 +40,7 @@ type hit struct {
 	choice string
 }
 
-func (s *Model) lines(width, height int) []string {
+func (s *Model) View(width, height int) string {
 	w := max(width-2, 20)
 	s.input.SetWidth(max(w-6, 12))
 
@@ -79,7 +70,7 @@ func (s *Model) lines(width, height int) []string {
 		}
 	}
 	s.hits = hits
-	return lines
+	return strings.Join(lines, "\n")
 }
 
 func (s *Model) scrollTo(blocks [][]string, h int) {

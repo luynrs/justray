@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -119,18 +118,4 @@ func (a *app) switchMode(ctx context.Context, st ipc.Status, tun bool) error {
 func (a *app) report(snapshot ipc.Snapshot) {
 	done(upperFirst(state(snapshot.Status)))
 	a.nodeDetails(snapshot.Status, snapshot.Nodes)
-}
-
-func (a *app) completeNode(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	if len(args) > 0 {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-	c := a.daemon()
-	if c == nil {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-	ctx, cancel := context.WithTimeout(cmd.Context(), time.Second)
-	defer cancel()
-	snapshot, err := c.Snapshot(ctx)
-	return completeNames(snapshot.Nodes, err, func(n ipc.Node) string { return n.Name })
 }

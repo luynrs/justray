@@ -43,7 +43,7 @@ func (e *box) Apply(ctx context.Context, spec Spec) error {
 	nodeChanged := e.node.ID != spec.Node.ID
 	tunChanged := spec.Tun != e.tun
 
-	if rebuilds(e.settings, spec.Settings, spec.Tun) || (nodeChanged && tunChanged) {
+	if rebuilds(e.settings, spec.Settings, spec.Tun) || nodeChanged && tunChanged {
 		if err := e.Stop(); err != nil {
 			return err
 		}
@@ -115,27 +115,30 @@ func (e *box) swap(n domain.Node) error {
 }
 
 func (e *box) apply(n domain.Node) error {
-	ep, obs, err := outbound.New(n, proxyTag)
+	endpoint, outbounds, err := outbound.New(n, "proxy-node")
 	if err != nil {
 		return err
 	}
 
 	router := e.inst.Router()
-	logger := e.inst.LogFactory().NewLogger("outbound/" + proxyTag)
+	logger := e.inst.LogFactory().NewLogger("outbound/proxy")
 
-	_ = e.inst.Endpoint().Remove(proxyTag)
-	_ = e.inst.Outbound().Remove(proxyTag)
-	_ = e.inst.Outbound().Remove(proxyTag + "-stls")
-	if ep != nil {
-		if err := e.inst.Endpoint().Create(e.runtime, router, logger, ep.Tag, ep.Type, ep.Options); err != nil {
+	_ = e.inst.Outbound().Remove("proxy")
+	_ = e.inst.Endpoint().Remove("proxy-node")
+	_ = e.inst.Outbound().Remove("proxy-node")
+	_ = e.inst.Outbound().Remove("proxy-node-stls")
+	if endpoint != nil {
+		if err := e.inst.Endpoint().Create(e.runtime, router, logger, endpoint.Tag, endpoint.Type, endpoint.Options); err != nil {
 			return err
 		}
-	} else {
-		for _, ob := range obs {
-			if err := e.inst.Outbound().Create(e.runtime, router, logger, ob.Tag, ob.Type, ob.Options); err != nil {
-				return err
-			}
+	}
+	for _, ob := range outbounds {
+		if err := e.inst.Outbound().Create(e.runtime, router, logger, ob.Tag, ob.Type, ob.Options); err != nil {
+			return err
 		}
+	}
+	if err := e.inst.Outbound().Create(e.runtime, router, logger, "proxy", C.TypeSelector, &option.SelectorOutboundOptions{Outbounds: []string{"proxy-node"}}); err != nil {
+		return err
 	}
 	if detour(e.settings) != "" {
 		servers := dnsServers(e.settings, detour(e.settings), "remote")

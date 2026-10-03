@@ -3,6 +3,7 @@ package subscription
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -31,7 +32,7 @@ func (s *Service) Refresh(ctx context.Context, sub store.Subscription) (store.Su
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sub.URL, nil)
 	if err != nil || req.URL.Host == "" || (req.URL.Scheme != "https" && req.URL.Scheme != "http") {
-		return sub, fmt.Errorf("%q is not a valid URL or share link", sub.URL)
+		return sub, fmt.Errorf("a valid URL or share link is required")
 	}
 	if s.device.Get("X-Hwid") == "" {
 		return sub, fmt.Errorf("device id unavailable")
@@ -62,7 +63,7 @@ func (s *Service) Refresh(ctx context.Context, sub store.Subscription) (store.Su
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return sub, err
+		return sub, fmt.Errorf("fetch subscription: %w", errors.Unwrap(err))
 	}
 	defer func() { _ = resp.Body.Close() }()
 
