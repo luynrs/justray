@@ -119,4 +119,4 @@ Package manager and script installations also provide `jray` as a short alias fo
 | `Tab`        | Switch panel            | `q`, `Ctrl+C` | Exit TUI                |
 
 ### License
-[GPL-3.0](LICENSE)
+[GPL-3.0-or-later](LICENSE)
