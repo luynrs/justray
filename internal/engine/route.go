@@ -39,7 +39,14 @@ func match(list []string, action option.RuleAction) []option.Rule {
 }
 
 func rules(s domain.Settings) []option.Rule {
-	var out []option.Rule
+	// Deprecated: wlbe in 1.7.1 with new port settings
+	out := []option.Rule{{
+		Type: C.RuleTypeDefault,
+		DefaultOptions: option.DefaultRule{
+			RawDefaultRule: option.RawDefaultRule{Inbound: []string{"mixed-in"}},
+			RuleAction:     toProxy,
+		},
+	}}
 
 	if s.DNSHijack == "on" {
 		out = append(out, option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{
