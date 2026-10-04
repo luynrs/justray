@@ -11,30 +11,6 @@ import (
 	"github.com/luynrs/justray/internal/version"
 )
 
-func (s *Model) Hints() [][2]string {
-	if s.input.Focused() {
-		return [][2]string{{"enter", "Apply"}, {"esc", "Cancel"}}
-	}
-	out := [2]string{"esc", "Back"}
-	switch {
-	case s.err != "":
-		out = [2]string{"esc", "Quit"}
-	case s.dirty():
-		out = [2]string{"esc", "Apply"}
-	}
-	keys := [][2]string{{style.Move(), "Move"}, {"tab", "Next tab"}, {"enter", "Edit"}}
-	f, ok := s.at()
-	switch {
-	case ok && len(f.enum) > 0:
-		keys = [][2]string{{style.Move(), "Move"}, {style.Fold(), "Cycle"}, {"enter", "Choose"}, {"tab", "Next tab"}}
-	case ok && f.removable():
-		keys = append(keys, [2]string{"d", "Remove"})
-	case ok && f.bare:
-		keys[2][1] = "Add"
-	}
-	return append(keys, out, [2]string{"q", "Quit"})
-}
-
 type hit struct {
 	row    int
 	choice string
@@ -45,27 +21,37 @@ func (s *Model) View(width, height int) string {
 	s.input.SetWidth(max(w-6, 12))
 
 	rows := s.rows()
-	blocks := make([][]string, len(rows))
-	picks := make([][]string, len(rows))
+	heights := make([]int, len(rows))
 	for i, f := range rows {
-		blocks[i], picks[i] = s.fieldBlock(f, i)
+		heights[i] = 1
+		if f.editable() && !f.bare {
+			if i == s.cursor && !s.input.Focused() {
+				heights[i] += max(len(f.enum), 1)
+			} else {
+				heights[i]++
+			}
+		}
+		if i > 0 && !f.bare {
+			heights[i]++
+		}
 	}
 
 	h := max(height, 1)
-	s.scrollTo(blocks, h)
+	s.scrollTo(heights, h)
 
-	lines := make([]string, 0, len(rows))
+	lines := make([]string, 0, h)
 	hits := map[int]hit{}
-	for i := s.scroll; i < len(blocks); i++ {
-		if len(lines)+len(blocks[i]) > h && i > s.scroll {
+	for i := s.scroll; i < len(rows); i++ {
+		if len(lines)+heights[i] > h && i > s.scroll {
 			break
 		}
-		for j, line := range blocks[i] {
+		block, choices := s.fieldBlock(rows[i], i)
+		for j, line := range block {
 			if len(lines) >= h {
 				break
 			}
 			line = style.Clip(line, width)
-			hits[len(lines)] = hit{row: i, choice: picks[i][j]}
+			hits[len(lines)] = hit{row: i, choice: choices[j]}
 			lines = append(lines, line)
 		}
 	}
@@ -73,25 +59,23 @@ func (s *Model) View(width, height int) string {
 	return strings.Join(lines, "\n")
 }
 
-func (s *Model) scrollTo(blocks [][]string, h int) {
-	s.scroll = min(max(s.scroll, 0), max(len(blocks)-1, 0))
+func (s *Model) scrollTo(heights []int, h int) {
+	s.scroll = min(max(s.scroll, 0), max(len(heights)-1, 0))
 	if s.cursor < s.scroll {
 		s.scroll = s.cursor
 	}
-	for s.scroll < s.cursor && span(blocks, s.scroll, s.cursor) > h {
+	visibleHeight := 0
+	for _, height := range heights[s.scroll : s.cursor+1] {
+		visibleHeight += height
+	}
+	for s.scroll < s.cursor && visibleHeight > h {
+		visibleHeight -= heights[s.scroll]
 		s.scroll++
 	}
-	for s.scroll > 0 && span(blocks, s.scroll-1, s.cursor) <= h {
+	for s.scroll > 0 && visibleHeight+heights[s.scroll-1] <= h {
 		s.scroll--
+		visibleHeight += heights[s.scroll]
 	}
-}
-
-func span(blocks [][]string, from, to int) int {
-	total := 0
-	for i := from; i <= to && i < len(blocks); i++ {
-		total += len(blocks[i])
-	}
-	return total
 }
 
 func (s *Model) TabBar(width int) string {

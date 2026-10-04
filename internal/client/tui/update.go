@@ -29,6 +29,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tickCmd()
 
 	case spinner.TickMsg:
+		if !m.needsSpinner() {
+			m.spinnerActive = false
+			return m, nil
+		}
 		var cmd tea.Cmd
 		m.spin, cmd = m.spin.Update(msg)
 		return m, cmd
@@ -76,6 +80,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.help.SetContent(m.shortcuts())
 		}
 		m.live = true
+		spinnerCommand := m.startSpinner()
 		rows := m.rows()
 		switch {
 		case initial && m.snapshot.Status.Connected:
@@ -98,26 +103,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.cursor, m.scroll = tree.Clamp(rows, m.cursor, m.scroll, m.height())
-		return m, next(m.watch, m.updates)
+		return m, tea.Batch(next(m.watch, m.updates), spinnerCommand)
 	}
 	if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "ctrl+c" {
 		return m.quit()
 	}
-	if m.activeModal != modalNone {
-		return m.updateModal(msg)
-	}
 	showHelp := false
 	switch message := msg.(type) {
 	case tea.KeyPressMsg:
-		showHelp = message.String() == "f1" || message.String() == "?" && !m.editing()
+		showHelp = m.activeModal != modalHelp && (message.String() == "f1" || message.String() == "?" && !m.editing() && m.activeModal != modalAdd)
 	case tea.MouseClickMsg:
-		showHelp = message.Button == tea.MouseLeft && m.h >= topLines+footerLines+1 && message.Y == m.h-1 && message.X >= m.w-len(m.helpHint()) && message.X < m.w
+		showHelp = m.activeModal == modalNone && !m.editing() && message.Button == tea.MouseLeft && m.h >= topLines+footerLines+1 && message.Y == m.h-1 && message.X >= m.w-lipgloss.Width(m.helpHint()) && message.X < m.w
 	}
 	if showHelp {
+		m.helpReturn = m.activeModal
 		m.activeModal = modalHelp
 		m.resizeModal()
 		m.help.GotoTop()
 		return m, nil
+	}
+	if m.activeModal != modalNone {
+		return m.updateModal(msg)
 	}
 	if m.dialog != nil {
 		closed, command := m.dialog.Update(msg)
@@ -134,10 +140,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.mouse(msg)
 	default:
 		if m.filter.Focused() {
-			var cmd tea.Cmd
-			m.filter, cmd = m.filter.Update(msg)
-			m.clamp()
-			return m, cmd
+			return m.updateFilter(msg)
 		}
 	}
 	return m, nil
@@ -156,10 +159,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.clamp()
 			return m, nil
 		}
-		var cmd tea.Cmd
-		m.filter, cmd = m.filter.Update(msg)
-		m.clamp()
-		return m, cmd
+		return m.updateFilter(msg)
 	}
 
 	switch k {
@@ -219,6 +219,16 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+func (m Model) updateFilter(msg tea.Msg) (tea.Model, tea.Cmd) {
+	query := m.filter.Value()
+	var command tea.Cmd
+	m.filter, command = m.filter.Update(msg)
+	if m.filter.Value() != query {
+		m.clamp()
+	}
+	return m, command
 }
 
 func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {

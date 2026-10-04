@@ -47,12 +47,14 @@ func (m Model) content() string {
 	content := m.titleLine()
 	if m.h >= topLines+footerLines+1 {
 		var body string
+		var rows []tree.Row
 		if m.dialog != nil {
 			body = m.dialog.View(m.w, m.height())
 		} else {
-			body = m.tree()
+			rows = m.rows()
+			body = m.tree(rows)
 		}
-		content = style.Fit(content+"\n\n"+body, m.h-footerLines) + "\n\n" + m.footer()
+		content = style.Fit(content+"\n\n"+body, m.h-footerLines) + "\n\n" + m.footer(rows)
 	}
 	if m.activeModal != modalNone {
 		return m.modalView(content)
@@ -78,9 +80,8 @@ func (m Model) titleLine() string {
 	return m.clip(style.Flush(m.titleLeft(), right, m.w))
 }
 
-func (m Model) tree() string {
+func (m Model) tree(rows []tree.Row) string {
 	data := m.data()
-	rows := data.Rows()
 	h := m.height()
 
 	lines := make([]string, 0, h)
@@ -88,8 +89,15 @@ func (m Model) tree() string {
 	switch {
 	case len(rows) > 0:
 		cursor := -1
-		if sel := tree.Selectable(rows); m.cursor < len(sel) {
-			cursor = sel[m.cursor]
+		selection := 0
+		for i, row := range rows {
+			if row.Selectable() {
+				if selection == m.cursor {
+					cursor = i
+					break
+				}
+				selection++
+			}
 		}
 		for i, r := range rows[m.scroll:min(m.scroll+h, len(rows))] {
 			idx := m.scroll + i
@@ -106,17 +114,9 @@ func (m Model) tree() string {
 }
 
 func (m Model) shortcuts() string {
-	var keys [][2]string
-	switch {
-	case m.dialog != nil:
-		keys = m.dialog.Hints()
-	case m.filter.Focused():
-		keys = [][2]string{{"enter", "Apply"}, {"esc", "Cancel"}}
-	default:
-		keys = [][2]string{
-			{style.Move(), "Move"}, {style.Fold(), "Fold"}, {"t/T", "Ping"}, {"r/R", "Refresh"}, {"enter", "Toggle"},
-			{"a/d", "Add / Delete"}, {"m", "Mode"}, {"/", "Filter"}, {"o", "Settings"}, {"q", "Quit"},
-		}
+	keys := [][2]string{
+		{style.Move(), "Move"}, {style.Fold(), "Fold"}, {"t/T", "Ping"}, {"r/R", "Refresh"}, {style.Enter(), "Toggle"},
+		{"a/d", "Add / Delete"}, {"m", "Mode"}, {"/", "Filter"}, {"o", "Settings"}, {"q", "Quit"},
 	}
 	lines := make([]string, len(keys))
 	columnWidth := 0
@@ -136,7 +136,7 @@ func (m Model) shortcuts() string {
 	return strings.Join(lines, "\n")
 }
 
-func (m Model) footer() string {
+func (m Model) footer(rows []tree.Row) string {
 	icon := style.Dot(false)
 	if m.connected() {
 		icon = style.Dot(true)
@@ -166,29 +166,40 @@ func (m Model) footer() string {
 	}
 	if err != "" {
 		status += "  " + style.Dead.Render(style.Sanitize(err, true))
-	} else if r, ok := m.at(); m.dialog == nil && ok && r.Sub.Warning != "" {
+	} else if r, ok := tree.At(rows, m.cursor); m.dialog == nil && ok && r.Sub.Warning != "" {
 		warnLine, _, _ := strings.Cut(r.Sub.Warning, "\n")
 		status += "   " + style.Pending.Render(style.Sanitize(warnLine, true))
 	}
 
 	hint := m.helpHint()
-	width := max(m.w-len(hint)-2, 0)
+	switch {
+	case m.editing():
+		hint = ansi.Truncate(style.Key.Render(style.Enter())+style.Dim.Render(" apply · ")+style.Key.Render("esc")+style.Dim.Render(" cancel"), m.w, "")
+	case m.dialog != nil && m.dialog.Dirty():
+		action := "apply"
+		if m.dialog.Err() != "" {
+			action = "cancel"
+		}
+		prefix := style.Key.Render("esc") + style.Dim.Render(" "+action+" · ")
+		if lipgloss.Width(prefix)+lipgloss.Width(hint) <= m.w {
+			hint = prefix + hint
+		}
+	}
+	hintWidth := lipgloss.Width(hint)
+	width := max(m.w-hintWidth-2, 0)
 	status = ansi.Truncate(status, width, strings.Repeat(".", min(3, width)))
-	return style.Pad(status, max(m.w-len(hint), 0)) + style.Dim.Render(hint)
+	return style.Pad(status, max(m.w-hintWidth, 0)) + hint
 }
 
 func (m Model) helpHint() string {
 	key := "?"
-	if m.editing() {
-		key = "f1"
-	}
 	if m.w < len(key) {
 		return ""
 	}
-	if m.w < len(key+" for help")+4 {
-		return key
+	if m.w < len(key+" shortcuts")+4 {
+		return style.Key.Render(key)
 	}
-	return key + " for help"
+	return style.Key.Render(key) + style.Dim.Render(" shortcuts")
 }
 
 func (m Model) clip(s string) string { return style.Clip(s, m.w) }

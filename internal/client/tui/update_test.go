@@ -72,7 +72,7 @@ func TestReconnectSnapshot(t *testing.T) {
 	updated, _ = model.Update(pushed{})
 	model = updated.(Model)
 	model.w = 80
-	if model.live || !strings.Contains(model.footer(), "disconnected") {
+	if model.live || !strings.Contains(model.footer(model.rows()), "disconnected") {
 		t.Fatal("lost daemon is still live or not disconnected")
 	}
 	restarted := ipc.Snapshot{Nodes: []ipc.Node{{NodeID: "new"}}}
@@ -94,24 +94,24 @@ func TestCollapseSnapshot(t *testing.T) {
 	}
 	updated, _ := model.Update(pushed{live: true, snapshot: snapshot})
 	model = updated.(Model)
-	if !strings.Contains(model.tree(), "visible-node") {
+	if !strings.Contains(model.tree(model.rows()), "visible-node") {
 		t.Fatal("node hidden before collapse")
 	}
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	if !strings.Contains(model.tree(), "visible-node") {
+	if !strings.Contains(model.tree(model.rows()), "visible-node") {
 		t.Fatal("collapse applied before daemon confirmation")
 	}
 	snapshot.Collapsed = []string{"sub"}
 	updated, _ = model.Update(pushed{live: true, snapshot: snapshot})
 	model = updated.(Model)
-	if strings.Contains(model.tree(), "visible-node") {
+	if strings.Contains(model.tree(model.rows()), "visible-node") {
 		t.Fatal("daemon collapse was not applied")
 	}
 	snapshot.Collapsed = nil
 	updated, _ = model.Update(pushed{live: true, snapshot: snapshot})
 	model = updated.(Model)
-	if !strings.Contains(model.tree(), "visible-node") {
+	if !strings.Contains(model.tree(model.rows()), "visible-node") {
 		t.Fatal("daemon expansion was not applied")
 	}
 	snapshot.Subscriptions = append(snapshot.Subscriptions, ipc.Subscription{SubscriptionID: "other", Name: "Other"})

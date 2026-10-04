@@ -108,21 +108,35 @@ func Selectable(rows []Row) []int {
 }
 
 func At(rows []Row, cursor int) (Row, bool) {
-	sel := Selectable(rows)
-	if cursor < 0 || cursor >= len(sel) {
+	if cursor < 0 {
 		return Row{}, false
 	}
-	return rows[sel[cursor]], true
+	for _, row := range rows {
+		if row.Selectable() {
+			if cursor == 0 {
+				return row, true
+			}
+			cursor--
+		}
+	}
+	return Row{}, false
 }
 
 func Clamp(rows []Row, cursor, scroll, height int) (int, int) {
-	sel := Selectable(rows)
-	if len(sel) == 0 {
+	cursor = max(cursor, 0)
+	count, pos := 0, 0
+	for i, row := range rows {
+		if row.Selectable() {
+			if count <= cursor {
+				pos = i
+			}
+			count++
+		}
+	}
+	if count == 0 {
 		return 0, 0
 	}
-	cursor = min(max(cursor, 0), len(sel)-1)
-
-	pos := sel[cursor]
+	cursor = min(cursor, count-1)
 	if pos < scroll {
 		scroll = pos
 	}
@@ -144,5 +158,10 @@ func Point(rows []Row, scroll, height, top, y int) (cursor int, ok bool) {
 	if !rows[i].Selectable() {
 		return 0, false
 	}
-	return len(Selectable(rows[:i])), true
+	for _, row := range rows[:i] {
+		if row.Selectable() {
+			cursor++
+		}
+	}
+	return cursor, true
 }

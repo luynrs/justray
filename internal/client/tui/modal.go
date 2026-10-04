@@ -26,7 +26,6 @@ const (
 type modalLayout struct {
 	bounds image.Rectangle
 	body   image.Rectangle
-	close  image.Rectangle
 }
 
 func (model Model) modalLayout() modalLayout {
@@ -42,9 +41,6 @@ func (model Model) modalLayout() modalLayout {
 	}
 	paddingX, paddingY := min(2, (width-3)/2), min(1, (height-3)/2)
 	layout.body = image.Rect(left+1+paddingX, top+1+paddingY, left+width-1-paddingX, top+height-1-paddingY)
-	if width >= 14 {
-		layout.close = image.Rect(left+width-7, top, left+width-4, top+1)
-	}
 	return layout
 }
 
@@ -60,6 +56,14 @@ func (model *Model) resizeModal() {
 }
 
 func (model *Model) closeModal() tea.Cmd {
+	if model.activeModal == modalHelp {
+		model.activeModal, model.helpReturn = model.helpReturn, modalNone
+		model.resizeModal()
+		if model.activeModal == modalAdd || model.editing() {
+			return cursor.Blink
+		}
+		return nil
+	}
 	model.activeModal = modalNone
 	model.deleteTarget = tree.Row{}
 	model.editor.Blur()
@@ -100,10 +104,6 @@ func (model Model) updateModal(message tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseMsg:
 		layout := model.modalLayout()
 		mouse := message.Mouse()
-		if _, clicked := message.(tea.MouseClickMsg); clicked && mouse.Button == tea.MouseLeft && image.Pt(mouse.X, mouse.Y).In(layout.close) {
-			command := model.closeModal()
-			return model, command
-		}
 		if model.activeModal != modalHelp || !image.Pt(mouse.X, mouse.Y).In(layout.body) {
 			return model, nil
 		}
@@ -159,19 +159,17 @@ func (model Model) modalView(background string) string {
 		Width(width).Height(height).Render(content)
 	edge := lipgloss.NewStyle().Foreground(lipgloss.Color("4"))
 	frame := strings.Split(window, "\n")
-	if !layout.close.Empty() {
-		title = ansi.Truncate(title, width-13, "")
-		frame[0] = edge.Render(border.TopLeft+strings.Repeat(border.Top, 2)+" ") + style.Name.Render(title) +
-			edge.Render(" "+strings.Repeat(border.Top, width-13-lipgloss.Width(title))+" ") + style.Dim.Render("esc") +
-			edge.Render(" "+strings.Repeat(border.Top, 2)+border.TopRight)
-	} else {
-		title = ansi.Truncate(title, width-4, "")
-		frame[0] = edge.Render(border.TopLeft+" ") + style.Name.Render(title) +
-			edge.Render(" "+strings.Repeat(border.Top, width-4-lipgloss.Width(title))+border.TopRight)
-	}
-	if !layout.close.Empty() && (model.activeModal == modalAdd || model.activeModal == modalDelete) {
-		frame[height-1] = edge.Render(border.BottomLeft+strings.Repeat(border.Bottom, width-11)+" ") +
-			style.Dim.Render("enter") + edge.Render(" "+strings.Repeat(border.Bottom, 2)+border.BottomRight)
+	titlePadding := min(2, width-4)
+	title = ansi.Truncate(title, width-4-titlePadding, "")
+	frame[0] = edge.Render(border.TopLeft+strings.Repeat(border.Top, titlePadding)+" ") + style.Name.Render(title) +
+		edge.Render(" "+strings.Repeat(border.Top, width-4-titlePadding-lipgloss.Width(title))+border.TopRight)
+	if model.activeModal == modalAdd || model.activeModal == modalDelete {
+		hint := style.Key.Render(style.Enter()) + style.Dim.Render(" submit")
+		hintWidth := lipgloss.Width(hint)
+		if width >= hintWidth+6 {
+			frame[height-1] = edge.Render(border.BottomLeft+strings.Repeat(border.Bottom, width-hintWidth-6)+" ") +
+				hint + edge.Render(" "+strings.Repeat(border.Bottom, 2)+border.BottomRight)
+		}
 	}
 	canvas := lipgloss.NewCanvas(model.w, model.h).Compose(lipgloss.NewLayer(background))
 	subduedAccent := lipgloss.Color("#3d4a52")

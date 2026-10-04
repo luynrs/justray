@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"slices"
 	"time"
 
 	"charm.land/bubbles/v2/spinner"
@@ -30,10 +31,11 @@ type Model struct {
 
 	snapshot ipc.Snapshot
 
-	spin   spinner.Model
-	cursor int
-	scroll int
-	wheel  time.Time
+	spin          spinner.Model
+	spinnerActive bool
+	cursor        int
+	scroll        int
+	wheel         time.Time
 
 	editor       textarea.Model
 	deleteTarget tree.Row
@@ -41,6 +43,7 @@ type Model struct {
 	filter       textinput.Model
 	help         viewport.Model
 	activeModal  modalKind
+	helpReturn   modalKind
 
 	live    bool
 	updates chan pushed
@@ -74,14 +77,15 @@ func New(c *ipc.Client, start, restore func(context.Context) error) Model {
 	filter.Prompt = ""
 	filter.CharLimit = 128
 	m := Model{
-		client:  c,
-		spin:    spinner.New(),
-		editor:  editor,
-		filter:  filter,
-		help:    viewport.New(),
-		updates: make(chan pushed),
-		watch:   watch,
-		stop:    stop,
+		client:        c,
+		spin:          spinner.New(),
+		spinnerActive: true,
+		editor:        editor,
+		filter:        filter,
+		help:          viewport.New(),
+		updates:       make(chan pushed),
+		watch:         watch,
+		stop:          stop,
 		start: func(manual bool) func() error {
 			if manual {
 				cancel()
@@ -107,6 +111,20 @@ func New(c *ipc.Client, start, restore func(context.Context) error) Model {
 
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(watch(m.watch, m.client, m.updates), next(m.watch, m.updates), tickCmd(), m.spin.Tick, m.restore)
+}
+
+func (m Model) needsSpinner() bool {
+	return m.busy || m.restore != nil ||
+		slices.ContainsFunc(m.snapshot.Nodes, func(node ipc.Node) bool { return node.Probing }) ||
+		slices.ContainsFunc(m.snapshot.Subscriptions, func(subscription ipc.Subscription) bool { return subscription.Refreshing })
+}
+
+func (m *Model) startSpinner() tea.Cmd {
+	if m.spinnerActive || !m.needsSpinner() {
+		return nil
+	}
+	m.spinnerActive = true
+	return m.spin.Tick
 }
 
 func (m *Model) syncTTY() {

@@ -22,12 +22,13 @@ func (m Model) activate(r tree.Row) (tea.Model, tea.Cmd) {
 	m.err = ""
 
 	m.busy = true
+	spinnerCommand := m.startSpinner()
 	act := func() error { return m.client.Disconnect(m.watch) }
 	if !m.connected() || m.snapshot.Status.NodeRef != r.Node.Ref() {
 		ref := r.Node.Ref()
 		act = func() error { return m.awaitConnection(m.client.Connect(m.watch, ref, nil), ref, true) }
 	}
-	return m, action(true, m.start(true), act)
+	return m, tea.Batch(spinnerCommand, action(true, m.start(true), act))
 }
 
 func (m Model) collapse() (tea.Model, tea.Cmd) {
@@ -107,9 +108,10 @@ func (m Model) setTun(enable bool) (tea.Model, tea.Cmd) {
 	m.restore = nil
 	m.err = ""
 	m.busy = m.connected()
-	return m, action(m.busy, m.start(true), func() error {
+	spinnerCommand := m.startSpinner()
+	return m, tea.Batch(spinnerCommand, action(m.busy, m.start(true), func() error {
 		return m.awaitConnection(m.client.SetTun(m.watch, enable), m.snapshot.Selected, enable)
-	})
+	}))
 }
 
 func (m Model) awaitConnection(err error, ref domain.NodeRef, tun bool) error {

@@ -214,7 +214,7 @@ func New(s domain.Settings, top int) *Model {
 }
 
 func (s *Model) Result() (domain.Settings, bool, error) {
-	if s.abandon || !s.dirty() {
+	if s.abandon || !s.Dirty() {
 		return s.orig, false, nil
 	}
 	next, err := s.cur.Normalize()
@@ -410,6 +410,9 @@ func (s *Model) assign(f field, v string) {
 
 func (s *Model) rows() []field {
 	t := &tabs[s.tab]
+	if len(t.lists) == 0 {
+		return t.fields
+	}
 	out := slices.Clone(t.fields)
 	for i := range t.lists {
 		out = append(out, s.listRows(&t.lists[i])...)
@@ -486,7 +489,7 @@ func (s *Model) at() (field, bool) {
 	return rows[s.cursor], true
 }
 
-func (s *Model) dirty() bool {
+func (s *Model) Dirty() bool {
 	return !s.cur.Equal(s.orig)
 }
 
