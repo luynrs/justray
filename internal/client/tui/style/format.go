@@ -47,7 +47,7 @@ func Sanitize(s string, emoji bool) string {
 		if r < 0x20 || r == 0x7f {
 			return -1
 		}
-		if !emoji {
+		if !emoji || TTY {
 			switch {
 			case r >= 0x1f000 && r <= 0x1ffff,
 				r >= 0x2600 && r <= 0x27bf,

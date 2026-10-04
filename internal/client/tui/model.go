@@ -127,16 +127,24 @@ func (m *Model) startSpinner() tea.Cmd {
 	return m.spin.Tick
 }
 
-func (m *Model) syncTTY() {
+func (m *Model) syncTTY() tea.Cmd {
 	force := m.snapshot.Settings.ForceTTY
 	if m.dialog != nil {
 		force = m.dialog.Current().ForceTTY
 	}
 	style.TTY = style.DetectTTY(force)
-	m.spin.Spinner = spinner.MiniDot
+	animation := spinner.MiniDot
 	if style.TTY {
-		m.spin.Spinner = spinner.Line
+		animation = spinner.Line
 	}
+	if slices.Equal(m.spin.Spinner.Frames, animation.Frames) {
+		return nil
+	}
+	m.spin = spinner.New(spinner.WithSpinner(animation))
+	if m.spinnerActive {
+		return m.spin.Tick
+	}
+	return nil
 }
 
 func (m Model) emoji() bool {

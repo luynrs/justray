@@ -174,13 +174,13 @@ func (m Model) footer(rows []tree.Row) string {
 	hint := m.helpHint()
 	switch {
 	case m.editing():
-		hint = ansi.Truncate(style.Key.Render(style.Enter())+style.Dim.Render(" apply · ")+style.Key.Render("esc")+style.Dim.Render(" cancel"), m.w, "")
+		hint = ansi.Truncate(style.Key.Render(style.Enter())+style.Dim.Render(" apply "+style.Sep()+" ")+style.Key.Render("esc")+style.Dim.Render(" cancel"), m.w, "")
 	case m.dialog != nil && m.dialog.Dirty():
 		action := "apply"
 		if m.dialog.Err() != "" {
 			action = "cancel"
 		}
-		prefix := style.Key.Render("esc") + style.Dim.Render(" "+action+" · ")
+		prefix := style.Key.Render("esc") + style.Dim.Render(" "+action+" "+style.Sep()+" ")
 		if lipgloss.Width(prefix)+lipgloss.Width(hint) <= m.w {
 			hint = prefix + hint
 		}

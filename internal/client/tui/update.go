@@ -75,12 +75,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.snapshot = msg.snapshot
-		m.syncTTY()
+		spinnerCommand := m.syncTTY()
 		if m.activeModal == modalHelp {
 			m.help.SetContent(m.shortcuts())
 		}
 		m.live = true
-		spinnerCommand := m.startSpinner()
+		spinnerCommand = tea.Batch(spinnerCommand, m.startSpinner())
 		rows := m.rows()
 		switch {
 		case initial && m.snapshot.Status.Connected:
@@ -127,11 +127,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	if m.dialog != nil {
 		closed, command := m.dialog.Update(msg)
-		m.syncTTY()
 		if closed {
 			return m.closeSettings()
 		}
-		return m, command
+		spinnerCommand := m.syncTTY()
+		return m, tea.Batch(command, spinnerCommand)
 	}
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
@@ -199,8 +199,8 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.dialog = settings.New(m.snapshot.Settings, topLines)
-		m.syncTTY()
-		return m, nil
+		spinnerCommand := m.syncTTY()
+		return m, spinnerCommand
 	case "/":
 		m.filter.CursorEnd()
 		return m, m.filter.Focus()
@@ -283,18 +283,18 @@ func (m Model) click(x, y int) (tea.Model, tea.Cmd) {
 func (m Model) closeSettings() (Model, tea.Cmd) {
 	next, changed, err := m.dialog.Result()
 	m.dialog = nil
-	m.syncTTY()
+	spinnerCommand := m.syncTTY()
 	switch {
 	case err != nil:
 		m.err, m.errAt = err.Error(), time.Now()
-		return m, nil
+		return m, spinnerCommand
 	case !changed:
-		return m, nil
+		return m, spinnerCommand
 	}
 	old := m.snapshot.Settings
 	otherSettings := next
 	otherSettings.Autostart = old.Autostart
-	return m, action(false, m.start(false), func() error {
+	return m, tea.Batch(spinnerCommand, action(false, m.start(false), func() error {
 		if next.Autostart != old.Autostart {
 			if err := m.client.SetAutostart(m.watch, next.Autostart == "on"); err != nil {
 				return err
@@ -308,5 +308,5 @@ func (m Model) closeSettings() (Model, tea.Cmd) {
 			return fmt.Errorf("autostart changed; settings: %w", err)
 		}
 		return err
-	})
+	}))
 }
