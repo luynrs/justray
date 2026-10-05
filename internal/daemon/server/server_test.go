@@ -159,12 +159,12 @@ func TestWatchLifecycle(t *testing.T) {
 func TestSubscriptionRefresh(t *testing.T) {
 	var body atomic.Value
 	var slow atomic.Bool
-	started, release := make(chan struct{}, 1), make(chan struct{})
+	started, release := make(chan context.Context, 1), make(chan struct{})
 	first, second := "trojan://secret@example.com:443#first", "trojan://secret@example.com:443#second"
 	body.Store(first + "\n" + second)
 	source := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, req *http.Request) {
 		if slow.Load() {
-			started <- struct{}{}
+			started <- req.Context()
 			select {
 			case <-release:
 			case <-req.Context().Done():
@@ -326,20 +326,34 @@ func TestSubscriptionRefresh(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
+	ownerCtx, cancelOwner := context.WithCancel(ctx)
+	defer cancelOwner()
 	body.Store(first)
 	slow.Store(true)
 	done := make(chan error, 1)
-	go func() { done <- client.RefreshSubscription(ctx, added.SubscriptionID) }()
+	go func() { done <- client.RefreshSubscription(ownerCtx, added.SubscriptionID) }()
+	var providerCtx context.Context
 	select {
-	case <-started:
+	case providerCtx = <-started:
 	case <-ctx.Done():
 		t.Fatal("refresh did not start")
 	}
+	followerDone := make(chan error, 1)
+	go func() { followerDone <- client.RefreshSubscription(ctx, added.SubscriptionID) }()
 	if err := client.SetCollapsed(ctx, added.SubscriptionID, new(true)); err != nil {
 		t.Fatalf("mutation blocked on refresh: %v", err)
 	}
+	cancelOwner()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled refresh: %v", err)
+	}
+	select {
+	case <-providerCtx.Done():
+	case <-ctx.Done():
+		t.Fatal("canceled refresh did not stop its HTTP request")
+	}
 	close(release)
-	if err := <-done; err != nil {
+	if err := <-followerDone; err != nil {
 		t.Fatal(err)
 	}
 	snap, err := client.Snapshot(ctx)

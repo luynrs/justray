@@ -2,11 +2,8 @@ package core
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"slices"
-	"strings"
 
 	"github.com/luynrs/justray/internal/daemon/store"
 	"github.com/luynrs/justray/internal/domain"
@@ -49,13 +46,13 @@ func assignNodeIDs(nodes, previous []domain.Node) []domain.Node {
 	byName := make(map[nodeMatch][]string, len(previous))
 	byConfig := make(map[string][]string, len(previous))
 	for _, node := range previous {
-		key := nodeMatch{nodeKey(node), node.Name}
+		key := nodeMatch{node.ConfigKey(), node.Name}
 		byName[key] = append(byName[key], node.ID)
 		byConfig[key.config] = append(byConfig[key.config], node.ID)
 	}
 	used := make(map[string]bool, len(previous))
 	for i := range nodes {
-		key := nodeMatch{nodeKey(nodes[i]), nodes[i].Name}
+		key := nodeMatch{nodes[i].ConfigKey(), nodes[i].Name}
 		if ids := byName[key]; len(ids) > 0 {
 			nodes[i].ID = ids[0]
 			byName[key] = ids[1:]
@@ -66,7 +63,7 @@ func assignNodeIDs(nodes, previous []domain.Node) []domain.Node {
 		if nodes[i].ID != "" {
 			continue
 		}
-		key := nodeKey(nodes[i])
+		key := nodes[i].ConfigKey()
 		ids := byConfig[key]
 		for len(ids) > 0 && used[ids[0]] {
 			ids = ids[1:]
@@ -81,24 +78,6 @@ func assignNodeIDs(nodes, previous []domain.Node) []domain.Node {
 		used[nodes[i].ID] = true
 	}
 	return nodes
-}
-
-func nodeKey(node domain.Node) string {
-	node.ID, node.Name = "", ""
-	if node.Transport.Network == "" {
-		node.Transport.Network = "tcp"
-	}
-	if node.Transport.Extra != "" {
-		decoder := json.NewDecoder(strings.NewReader(node.Transport.Extra))
-		decoder.UseNumber()
-		var extra any
-		if decoder.Decode(&extra) == nil && decoder.Decode(new(any)) == io.EOF {
-			data, _ := json.Marshal(extra)
-			node.Transport.Extra = string(data)
-		}
-	}
-	data, _ := json.Marshal(node)
-	return string(data)
 }
 
 func (c *Core) RemoveSubscription(ctx context.Context, id string) error {
