@@ -1,6 +1,11 @@
 package domain
 
-import "time"
+import (
+	"encoding/json"
+	"io"
+	"strings"
+	"time"
+)
 
 type Traffic struct {
 	UploadBytes   int64     `json:"upload_bytes,omitempty"`
@@ -50,6 +55,24 @@ type Node struct {
 type NodeRef struct {
 	SubscriptionID string
 	NodeID         string
+}
+
+func (node Node) ConfigKey() string {
+	node.ID, node.Name = "", ""
+	if node.Transport.Network == "" {
+		node.Transport.Network = "tcp"
+	}
+	if node.Transport.Extra != "" {
+		decoder := json.NewDecoder(strings.NewReader(node.Transport.Extra))
+		decoder.UseNumber()
+		var extra any
+		if decoder.Decode(&extra) == nil && decoder.Decode(new(any)) == io.EOF {
+			data, _ := json.Marshal(extra)
+			node.Transport.Extra = string(data)
+		}
+	}
+	data, _ := json.Marshal(node)
+	return string(data)
 }
 
 func ValidPort(port int) bool { return port >= 1 && port <= 65535 }
