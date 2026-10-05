@@ -76,7 +76,7 @@ func (model *Model) closeModal() tea.Cmd {
 func (model Model) updateModal(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch message := message.(type) {
 	case tea.KeyPressMsg:
-		if message.String() == "esc" || ((message.String() == "?" || message.String() == "f1") && model.activeModal == modalHelp) {
+		if message.String() == "esc" || (message.String() == "?" && model.activeModal == modalHelp) {
 			command := model.closeModal()
 			return model, command
 		}

@@ -18,7 +18,7 @@ var (
 	Accent = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 	Strong = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
 	Name   = lipgloss.NewStyle().Bold(true)
-	Key    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#ffffff"))
+	Key    = lipgloss.NewStyle().Bold(true)
 	Dim    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	Err    = lipgloss.NewStyle().Bold(true).Foreground(red)
 

@@ -111,7 +111,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	showHelp := false
 	switch message := msg.(type) {
 	case tea.KeyPressMsg:
-		showHelp = m.activeModal != modalHelp && (message.String() == "f1" || message.String() == "?" && !m.editing() && m.activeModal != modalAdd)
+		showHelp = m.activeModal != modalHelp && message.String() == "?" && !m.editing() && m.activeModal != modalAdd
 	case tea.MouseClickMsg:
 		showHelp = m.activeModal == modalNone && !m.editing() && message.Button == tea.MouseLeft && m.h >= topLines+footerLines+1 && message.Y == m.h-1 && message.X >= m.w-lipgloss.Width(m.helpHint()) && message.X < m.w
 	}
