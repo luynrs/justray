@@ -3,7 +3,6 @@ package subscription
 import (
 	"context"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -63,7 +62,9 @@ func (s *Service) Refresh(ctx context.Context, sub store.Subscription) (store.Su
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return sub, fmt.Errorf("fetch subscription: %w", errors.Unwrap(err))
+		// Keep the full error chain (URL + dial/TLS details). Unwrapping here
+		// produced "%!w(<nil>)" for unwrapped errors and dropped useful context.
+		return sub, fmt.Errorf("fetch subscription: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
