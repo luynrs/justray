@@ -66,37 +66,54 @@ func (c *Core) sanitizeRefs(state *store.State, updated store.Subscription) bool
 		return slices.ContainsFunc(updated.Nodes, func(n domain.Node) bool { return n.ID == ref.NodeID })
 	}
 	status := c.conn.Status()
-	dropConn := status.Connected && status.NodeRef.SubscriptionID == updated.ID && !nodeExists(status.NodeRef)
-	if state.Active.SubscriptionID == updated.ID && state.Active.NodeID != "" && !nodeExists(state.Active) {
-		state.Active = domain.NodeRef{}
+	for _, ref := range []*domain.NodeRef{&state.Active, &state.Last} {
+		if ref.SubscriptionID == updated.ID && ref.NodeID != "" && !nodeExists(*ref) {
+			*ref = domain.NodeRef{}
+		}
 	}
-	if state.Last.SubscriptionID == updated.ID && state.Last.NodeID != "" && !nodeExists(state.Last) {
-		state.Last = domain.NodeRef{}
+	if state.Pending != nil && state.Pending.Ref.SubscriptionID == updated.ID && !nodeExists(state.Pending.Ref) {
+		state.Pending = nil
 	}
-	return dropConn
+	return status.Connected && status.NodeRef.SubscriptionID == updated.ID && !nodeExists(status.NodeRef)
 }
 
 func (c *Core) refresh(ctx context.Context, sub store.Subscription) (err error) {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	c.stMu.Lock()
-	if call := c.refreshes[sub.ID]; call != nil {
+	var call *refreshCall
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		c.stMu.Lock()
+		call = c.refreshes[sub.ID]
+		if call == nil {
+			index := slices.IndexFunc(c.state.Subscriptions, func(current store.Subscription) bool { return current.ID == sub.ID })
+			if index < 0 {
+				c.stMu.Unlock()
+				return fmt.Errorf("subscription %q not found", sub.ID)
+			}
+			sub = c.state.Subscriptions[index]
+			call = &refreshCall{done: make(chan struct{})}
+			c.refreshes[sub.ID] = call
+			c.publishLocked()
+			c.stMu.Unlock()
+			break
+		}
 		c.stMu.Unlock()
 		select {
 		case <-call.done:
-			return call.err
+			if call.err != context.Canceled && call.err != context.DeadlineExceeded {
+				return call.err
+			}
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 	}
-	call := &refreshCall{done: make(chan struct{})}
-	c.refreshes[sub.ID] = call
-	c.publishLocked()
-	c.stMu.Unlock()
 	defer func() {
 		c.stMu.Lock()
 		call.err = err
+		if err != nil && ctx.Err() != nil {
+			call.err = ctx.Err()
+		}
 		delete(c.refreshes, sub.ID)
 		c.publishLocked()
 		close(call.done)

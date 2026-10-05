@@ -15,7 +15,7 @@ type probeCall struct {
 	ctx     context.Context
 	cancel  context.CancelFunc
 	done    chan struct{}
-	refs    []domain.NodeRef
+	ref     domain.NodeRef
 	waiters int
 	err     error
 }
@@ -32,7 +32,6 @@ func (c *Core) Probe(ctx context.Context, sub, id string) error {
 	if len(nodes) > 512 {
 		return fmt.Errorf("too many nodes to probe: %d (maximum 512)", len(nodes))
 	}
-	pending := make(map[string]*probeCall)
 	var calls []*probeCall
 	var targets []engine.Target
 	var started []*probeCall
@@ -40,21 +39,16 @@ func (c *Core) Probe(ctx context.Context, sub, id string) error {
 	for i, ref := range refs {
 		call := c.probing[ref]
 		if call == nil {
-			call = pending[ref.NodeID]
-			if call == nil {
-				nodeCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-				call = &probeCall{ctx: nodeCtx, cancel: cancel, done: make(chan struct{})}
-				pending[ref.NodeID] = call
-				targets = append(targets, engine.Target{Context: nodeCtx, Node: nodes[i]})
-				started = append(started, call)
-			}
-			call.refs = append(call.refs, ref)
+			nodeCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+			call = &probeCall{ctx: nodeCtx, cancel: cancel, done: make(chan struct{}), ref: ref}
+			targets = append(targets, engine.Target{Context: nodeCtx, Node: nodes[i]})
+			started = append(started, call)
 			c.probing[ref] = call
 		}
 		call.waiters++
 		calls = append(calls, call)
 	}
-	if len(pending) > 0 {
+	if len(started) > 0 {
 		c.publishLocked()
 	}
 	c.stMu.Unlock()
@@ -66,11 +60,9 @@ func (c *Core) Probe(ctx context.Context, sub, id string) error {
 			call.waiters--
 			if call.waiters == 0 {
 				call.cancel()
-				for _, ref := range call.refs {
-					if c.probing[ref] == call {
-						delete(c.probing, ref)
-						changed = true
-					}
+				if c.probing[call.ref] == call {
+					delete(c.probing, call.ref)
+					changed = true
 				}
 			}
 		}
@@ -88,9 +80,7 @@ func (c *Core) Probe(ctx context.Context, sub, id string) error {
 			}
 			call.err = err
 			if err == nil {
-				for _, ref := range call.refs {
-					c.probes[ref] = result
-				}
+				c.probes[call.ref] = result
 			}
 			call.cancel()
 			// inter. res
@@ -98,22 +88,14 @@ func (c *Core) Probe(ctx context.Context, sub, id string) error {
 				c.probeTimer = time.AfterFunc(100*time.Millisecond, func() {
 					c.stMu.Lock()
 					defer c.stMu.Unlock()
-					var finished []*probeCall
-					for _, call := range c.probing {
+					for ref, call := range c.probing {
 						if call.ctx.Err() == nil {
 							continue
 						}
-						for _, ref := range call.refs {
-							if c.probing[ref] == call {
-								delete(c.probing, ref)
-							}
-						}
-						finished = append(finished, call)
-					}
-					c.publishLocked()
-					for _, call := range finished {
+						delete(c.probing, ref)
 						close(call.done)
 					}
+					c.publishLocked()
 					c.probeTimer = nil
 				})
 			}

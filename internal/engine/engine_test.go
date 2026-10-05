@@ -4,12 +4,12 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
 
 	"github.com/luynrs/justray/internal/domain"
+	"github.com/luynrs/justray/internal/parser"
 )
 
 func TestRebuilds(t *testing.T) {
@@ -54,19 +54,12 @@ func TestNodeSwitch(t *testing.T) {
 	settings.Port = listener.Addr().(*net.TCPAddr).Port
 	_ = listener.Close()
 
-	proxyNode := func(id, address string) domain.Node {
-		host, port, err := net.SplitHostPort(address)
-		if err != nil {
-			t.Fatal(err)
-		}
-		number, err := strconv.Atoi(port)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return domain.Node{ID: id, Protocol: domain.HTTP, Server: host, Port: number}
+	nodes, _, err := parser.ParseSubscription([]byte(firstProxy.URL + "#first\n" + secondProxy.URL + "#second"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	first := proxyNode("first", firstProxy.Listener.Addr().String())
-	second := proxyNode("second", secondProxy.Listener.Addr().String())
+	first, second := nodes[0], nodes[1]
+	first.ID, second.ID = "first", "second"
 	box := &box{lifetime: t.Context()}
 	defer func() { _ = box.Stop() }()
 	if err := box.Apply(t.Context(), Spec{Node: first, Settings: settings}); err != nil {
@@ -85,11 +78,14 @@ func TestNodeSwitch(t *testing.T) {
 	}
 	request()
 	instance := box.inst
-	if err := box.Apply(t.Context(), Spec{Node: second, Settings: settings}); err != nil {
-		t.Fatal(err)
+	for _, nodeID := range []string{first.ID, second.ID} {
+		second.ID = nodeID
+		if err := box.Apply(t.Context(), Spec{Node: second, Settings: settings}); err != nil {
+			t.Fatal(err)
+		}
+		request()
 	}
-	request()
-	if box.inst != instance || firstCalls.Load() != 1 || secondCalls.Load() != 1 {
+	if box.inst != instance || firstCalls.Load() != 1 || secondCalls.Load() != 2 {
 		t.Fatalf("node switch used wrong proxy: first=%d, second=%d", firstCalls.Load(), secondCalls.Load())
 	}
 	broken := second
@@ -99,7 +95,7 @@ func TestNodeSwitch(t *testing.T) {
 		t.Fatal("invalid node switch succeeded")
 	}
 	request()
-	if box.node.ID != second.ID || secondCalls.Load() != 2 {
+	if box.node.ID != second.ID || secondCalls.Load() != 3 {
 		t.Fatal("failed node switch lost the working proxy")
 	}
 }

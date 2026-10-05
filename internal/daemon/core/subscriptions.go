@@ -115,12 +115,7 @@ func (c *Core) RemoveSubscription(ctx context.Context, id string) error {
 	if len(next.Subscriptions) == count {
 		return fmt.Errorf("subscription %q not found", id)
 	}
-	if next.Active.SubscriptionID == id {
-		next.Active = domain.NodeRef{}
-	}
-	if next.Last.SubscriptionID == id {
-		next.Last = domain.NodeRef{}
-	}
+	dropConn := c.sanitizeRefs(&next, store.Subscription{ID: id})
 	next.Collapsed = slices.DeleteFunc(next.Collapsed, func(s string) bool {
 		return s == id
 	})
@@ -128,7 +123,7 @@ func (c *Core) RemoveSubscription(ctx context.Context, id string) error {
 		return err
 	}
 	var cleanupErr error
-	if c.conn.Status().NodeRef.SubscriptionID == id {
+	if dropConn {
 		cleanupErr = c.conn.Disconnect(context.WithoutCancel(ctx))
 	}
 	c.publish()
@@ -149,19 +144,13 @@ func (c *Core) RemoveNode(ctx context.Context, ref domain.NodeRef) error {
 	if i < 0 {
 		return fmt.Errorf("node %q not found", ref.NodeID)
 	}
-	ref.SubscriptionID = next.Subscriptions[i].ID
 	next.Subscriptions[i].Nodes = slices.DeleteFunc(slices.Clone(next.Subscriptions[i].Nodes), func(node domain.Node) bool { return node.ID == ref.NodeID })
-	if next.Active == ref {
-		next.Active = domain.NodeRef{}
-	}
-	if next.Last == ref {
-		next.Last = domain.NodeRef{}
-	}
+	dropConn := c.sanitizeRefs(&next, next.Subscriptions[i])
 	if err := c.commit(next); err != nil {
 		return err
 	}
 	var cleanupErr error
-	if c.conn.Status().NodeRef == ref {
+	if dropConn {
 		cleanupErr = c.conn.Disconnect(context.WithoutCancel(ctx))
 	}
 	c.publish()

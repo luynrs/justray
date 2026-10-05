@@ -140,13 +140,15 @@ func text(name string, v *string, def, want string, ok func(string) bool) error 
 
 func canon(list *[]string) error {
 	out := make([]string, 0, len(*list))
+	seen := make(map[string]struct{}, len(*list))
 	for _, raw := range *list {
 		rule, err := ParseRule(raw)
 		if err != nil {
 			return err
 		}
-		if !slices.Contains(out, rule) {
+		if _, exists := seen[rule]; !exists {
 			out = append(out, rule)
+			seen[rule] = struct{}{}
 		}
 	}
 	*list = out
@@ -154,9 +156,16 @@ func canon(list *[]string) error {
 }
 
 func disjoint(a, b []string) error {
-	for _, x := range a {
-		if slices.Contains(b, x) {
-			return fmt.Errorf("rule %q is defined in both direct and proxy", x)
+	if len(a) == 0 || len(b) == 0 {
+		return nil
+	}
+	rules := make(map[string]struct{}, len(b))
+	for _, rule := range b {
+		rules[rule] = struct{}{}
+	}
+	for _, rule := range a {
+		if _, exists := rules[rule]; exists {
+			return fmt.Errorf("rule %q is defined in both direct and proxy", rule)
 		}
 	}
 	return nil

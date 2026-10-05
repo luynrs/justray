@@ -173,6 +173,8 @@ func (m Model) footer(rows []tree.Row) string {
 
 	hint := m.helpHint()
 	switch {
+	case m.activeModal != modalNone:
+		hint = ansi.Truncate(style.Key.Render("esc")+style.Dim.Render(" cancel"), m.w, "")
 	case m.editing():
 		hint = ansi.Truncate(style.Key.Render(style.Enter())+style.Dim.Render(" apply "+style.Sep()+" ")+style.Key.Render("esc")+style.Dim.Render(" cancel"), m.w, "")
 	case m.dialog != nil && m.dialog.Dirty():
@@ -192,14 +194,11 @@ func (m Model) footer(rows []tree.Row) string {
 }
 
 func (m Model) helpHint() string {
-	key := "?"
-	if m.w < len(key) {
-		return ""
+	hint := style.Key.Render("?")
+	if m.w >= len("? shortcuts")+4 {
+		hint += style.Dim.Render(" shortcuts")
 	}
-	if m.w < len(key+" shortcuts")+4 {
-		return style.Key.Render(key)
-	}
-	return style.Key.Render(key) + style.Dim.Render(" shortcuts")
+	return hint
 }
 
 func (m Model) clip(s string) string { return style.Clip(s, m.w) }

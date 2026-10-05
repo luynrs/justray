@@ -208,7 +208,7 @@ func xrayNode(node domain.Node, stream xrayStreamSettings) (domain.Node, error) 
 	if err != nil {
 		return domain.Node{}, err
 	}
-	switch strings.ToLower(stream.Security) {
+	switch security := strings.ToLower(stream.Security); security {
 	case "reality":
 		node.TLS = &domain.TLS{SNI: stream.RealitySettings.ServerName, Fingerprint: stream.RealitySettings.Fingerprint}
 		if node.Protocol != domain.VMess {
@@ -217,6 +217,9 @@ func xrayNode(node domain.Node, stream xrayStreamSettings) (domain.Node, error) 
 	case "tls":
 		fingerprint, insecure := cleanFingerprint(stream.TLSSettings.Fingerprint, stream.TLSSettings.AllowInsecure)
 		node.TLS = &domain.TLS{SNI: stream.TLSSettings.ServerName, Insecure: insecure, ALPN: stream.TLSSettings.ALPN, Fingerprint: fingerprint}
+	case "", "none":
+	default:
+		return domain.Node{}, fmt.Errorf("unsupported xray security: %s", security)
 	}
 	if node.Protocol == domain.Trojan && node.TLS == nil && stream.Security == "" {
 		node.TLS = &domain.TLS{SNI: node.Server}

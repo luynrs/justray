@@ -44,6 +44,9 @@ func ParseVLESS(uri string) (domain.Node, error) {
 		fallthrough
 	case "tls", "xtls":
 		n.TLS = tlsFrom(q, host)
+	case "", "none":
+	default:
+		return domain.Node{}, fmt.Errorf("vless: unsupported security %q", sec)
 	}
 	return n, nil
 }

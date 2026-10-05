@@ -10,8 +10,10 @@ import (
 
 func Executable(source, dir string) string {
 	target := filepath.Join(dir, "elevated", "justrayd")
-	if sum, err := hashFile(source); err == nil && hasNetAdmin(target) && verified(target, sum) {
-		return target
+	if hasNetAdmin(target) {
+		if sum, err := hashFile(source); err == nil && verified(target, sum) {
+			return target
+		}
 	}
 	return source
 }
