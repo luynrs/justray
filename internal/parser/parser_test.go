@@ -68,6 +68,8 @@ func TestParseURIRejects(t *testing.T) {
 		"ss://not-base64-and-no-at@x:1",     // undecodable
 		"vmess://not-base64-json",           // undecodable
 		"hysteria2://user:pass@example.com", // missing port
+		"vless://11111111-1111-1111-1111-111111111111@example.com:443?security=invalid",
+		"vmess://" + base64.StdEncoding.EncodeToString([]byte(`{"add":"example.com","port":443,"id":"11111111-1111-1111-1111-111111111111","tls":{}}`)),
 	}
 	for _, uri := range invalidURIs {
 		if _, err := ParseURI(uri); err == nil {
@@ -326,6 +328,7 @@ func TestXrayInvalid(t *testing.T) {
 	for _, body := range []string{
 		`{"outbounds":[{"protocol":"vless","settings":{"vnext":[{"port":443,"users":[{"id":"uuid"}]}]}}]}`,
 		`{"outbounds":[{"protocol":"vless","settings":{"vnext":[{"address":"example.com","port":443,"users":[{"id":"uuid"}]}]},"streamSettings":{"network":"invalid"}}]}`,
+		`{"outbounds":[{"protocol":"vless","settings":{"vnext":[{"address":"example.com","port":443,"users":[{"id":"11111111-1111-1111-1111-111111111111"}]}]},"streamSettings":{"security":"invalid"}}]}`,
 	} {
 		if _, _, err := ParseSubscription([]byte(body)); err == nil {
 			t.Fatalf("accepted invalid xray config: %s", body)

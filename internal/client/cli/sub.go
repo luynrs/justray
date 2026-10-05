@@ -76,12 +76,11 @@ func (a *app) subRemove(cmd *cobra.Command, args []string) error {
 		return subErr
 	}
 
-	var directNodes []ipc.Node
-	for _, node := range snapshot.Nodes {
-		if slices.ContainsFunc(snapshot.Subscriptions, func(s ipc.Subscription) bool { return s.SubscriptionID == node.SubscriptionID && !s.Refreshable }) {
-			directNodes = append(directNodes, node)
-		}
+	directSubscriptions := make(map[string]bool, len(snapshot.Subscriptions))
+	for _, sub := range snapshot.Subscriptions {
+		directSubscriptions[sub.SubscriptionID] = !sub.Refreshable
 	}
+	directNodes := slices.DeleteFunc(snapshot.Nodes, func(node ipc.Node) bool { return !directSubscriptions[node.SubscriptionID] })
 	node, nodeErr := match(args[0], "node", directNodes, func(n ipc.Node) (string, string) { return n.NodeID, n.Name })
 	if nodeErr == nil {
 		stop := spin("Removing " + a.clean(node.Name))
@@ -243,11 +242,11 @@ func (a *app) showTree(subs []ipc.Subscription, nodes []ipc.Node) {
 		nameW, infoW := 0, 0
 		for _, n := range g.Nodes {
 			nameW = max(nameW, lipgloss.Width(a.nodeName(n.Name, "")))
-			infoW = max(infoW, lipgloss.Width(a.serverProto(n)))
+			infoW = max(infoW, lipgloss.Width(a.serverProto(*n)))
 		}
 		for j, n := range g.Nodes {
 			branch := style.Branch(j == len(g.Nodes)-1)
-			out(a.nodeLine(n, branch, nameW, infoW))
+			out(a.nodeLine(*n, branch, nameW, infoW))
 		}
 	}
 }

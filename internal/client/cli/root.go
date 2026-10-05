@@ -9,7 +9,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -90,6 +89,11 @@ func Execute() error {
 
 	rootCmd.Use = filepath.Base(os.Args[0]) + " <command>"
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		tun, _ := cmd.Flags().GetBool("tun")
+		proxy, _ := cmd.Flags().GetBool("proxy")
+		if tun && proxy {
+			return errors.New("cannot use both --tun and --proxy")
+		}
 		for c := cmd; c != nil; c = c.Parent() {
 			if c.Name() == cobra.ShellCompRequestCmd || c.Name() == "completion" || c.Name() == "help" || c.Name() == "stop" || c.Name() == "version" || c.Name() == "logs" {
 				return nil
@@ -404,15 +408,17 @@ func (application *app) complete(cmd *cobra.Command, args []string, toComplete s
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 	names := make([]string, 0, len(snapshot.Subscriptions)+len(snapshot.Nodes))
+	directSubscriptions := make(map[string]bool)
 	for _, sub := range snapshot.Subscriptions {
 		if cmd != upCmd && (cmd != subRefreshCmd || sub.Refreshable) {
 			names = append(names, sub.Name)
 		}
+		if cmd == subRemoveCmd && !sub.Refreshable {
+			directSubscriptions[sub.SubscriptionID] = true
+		}
 	}
 	for _, node := range snapshot.Nodes {
-		if cmd == upCmd || cmd == probeCmd || cmd == subRemoveCmd && slices.ContainsFunc(snapshot.Subscriptions, func(sub ipc.Subscription) bool {
-			return sub.SubscriptionID == node.SubscriptionID && !sub.Refreshable
-		}) {
+		if cmd == upCmd || cmd == probeCmd || cmd == subRemoveCmd && directSubscriptions[node.SubscriptionID] {
 			names = append(names, node.Name)
 		}
 	}

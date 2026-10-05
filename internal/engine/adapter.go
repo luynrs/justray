@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"reflect"
 	"syscall"
 
 	sbox "github.com/sagernet/sing-box"
@@ -40,7 +41,9 @@ func (e *box) Apply(ctx context.Context, spec Spec) error {
 	if e.inst == nil {
 		return e.start(ctx, spec)
 	}
-	nodeChanged := e.node.ID != spec.Node.ID
+	previous := e.node
+	previous.Name = spec.Node.Name
+	nodeChanged := !reflect.DeepEqual(previous, spec.Node)
 	tunChanged := spec.Tun != e.tun
 
 	if rebuilds(e.settings, spec.Settings, spec.Tun) || nodeChanged && tunChanged {

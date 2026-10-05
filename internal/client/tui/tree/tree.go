@@ -43,12 +43,13 @@ func (d Data) connected() bool { return d.Live && d.Status.Connected }
 
 type Group struct {
 	Sub   ipc.Subscription
-	Nodes []ipc.Node
+	Nodes []*ipc.Node
 }
 
 func (d Data) Groups() []Group {
-	index := make(map[string][]ipc.Node, len(d.Subs))
-	for _, node := range d.Nodes {
+	index := make(map[string][]*ipc.Node, len(d.Subs))
+	for i := range d.Nodes {
+		node := &d.Nodes[i]
 		index[node.SubscriptionID] = append(index[node.SubscriptionID], node)
 	}
 	groups := make([]Group, 0, len(d.Subs))
@@ -59,16 +60,10 @@ func (d Data) Groups() []Group {
 }
 
 func (d Data) Rows() []Row {
-	q := strings.ToLower(strings.TrimSpace(d.Query))
+	query := strings.ToLower(strings.TrimSpace(d.Query))
 	var rows []Row
 	for _, group := range d.Groups() {
-		nodes := group.Nodes
-		if q != "" && !strings.Contains(strings.ToLower(group.Sub.Name), q) {
-			nodes = matching(nodes, q)
-			if len(nodes) == 0 {
-				continue
-			}
-		}
+		start := len(rows)
 		if len(rows) > 0 {
 			rows = append(rows, Row{Kind: Gap})
 		}
@@ -77,24 +72,22 @@ func (d Data) Rows() []Row {
 		if group.Sub.Refreshable {
 			rows = append(rows, Row{Kind: Meta, Sub: group.Sub})
 		}
+		nodeStart := len(rows)
+		filtered := query != "" && !strings.Contains(strings.ToLower(group.Sub.Name), query)
 		collapsed := slices.Contains(d.Collapsed, group.Sub.SubscriptionID)
-		for _, n := range nodes {
-			if q != "" || !collapsed || (d.connected() && d.Status.NodeRef == n.Ref()) {
-				rows = append(rows, Row{Kind: Node, Sub: group.Sub, Node: n})
+		for _, node := range group.Nodes {
+			if filtered && !strings.Contains(strings.ToLower(node.Name+" "+node.Protocol+" "+node.Server), query) {
+				continue
 			}
+			if query != "" || !collapsed || (d.connected() && d.Status.NodeRef == node.Ref()) {
+				rows = append(rows, Row{Kind: Node, Sub: group.Sub, Node: *node})
+			}
+		}
+		if filtered && len(rows) == nodeStart {
+			rows = rows[:start]
 		}
 	}
 	return rows
-}
-
-func matching(nodes []ipc.Node, q string) []ipc.Node {
-	var out []ipc.Node
-	for _, n := range nodes {
-		if strings.Contains(strings.ToLower(n.Name+" "+n.Protocol+" "+n.Server), q) {
-			out = append(out, n)
-		}
-	}
-	return out
 }
 
 func Selectable(rows []Row) []int {

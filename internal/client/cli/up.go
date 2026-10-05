@@ -23,9 +23,6 @@ var upCmd = &cobra.Command{
 func (a *app) up(cmd *cobra.Command, args []string) error {
 	tun, _ := cmd.Flags().GetBool("tun")
 	proxy, _ := cmd.Flags().GetBool("proxy")
-	if tun && proxy {
-		return fmt.Errorf("cannot use both --tun and --proxy")
-	}
 	var mode *bool
 	if tun || proxy {
 		mode = &tun

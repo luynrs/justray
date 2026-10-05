@@ -277,5 +277,5 @@ func (f *flexString) UnmarshalJSON(b []byte) error {
 		*f = flexString(strings.Join(arr, ","))
 		return nil
 	}
-	return nil
+	return errors.New("expected a string, boolean or string array")
 }
