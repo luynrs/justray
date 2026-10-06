@@ -62,6 +62,9 @@ func (node Node) ConfigKey() string {
 	if node.Transport.Network == "" {
 		node.Transport.Network = "tcp"
 	}
+	if (node.Protocol == VLESS || node.Protocol == VMess) && node.PacketEncoding == "" {
+		node.PacketEncoding = "xudp"
+	}
 	if node.Transport.Extra != "" {
 		decoder := json.NewDecoder(strings.NewReader(node.Transport.Extra))
 		decoder.UseNumber()

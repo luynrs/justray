@@ -49,6 +49,9 @@ func ParseVMess(uri string) (domain.Node, error) {
 		return domain.Node{}, errors.New("invalid vmess json")
 	}
 	net := strings.ToLower(cmp.Or(vm.Net, "tcp"))
+	if net == "h2" {
+		net = "http"
+	}
 	host0 := strings.TrimSpace(strings.SplitN(vm.Host, ",", 2)[0])
 	n := domain.Node{
 		Name:     cmp.Or(vm.PS, frag, vm.Add),
