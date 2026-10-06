@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/luynrs/justray/internal/daemon/connection"
@@ -156,21 +157,42 @@ func TestWatchLifecycle(t *testing.T) {
 	}
 }
 
+type refreshTransport func(*http.Request) (*http.Response, error)
+
+func (transport refreshTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	return transport(request)
+}
+
+func sendRequest(ctx context.Context, server *Server, request ipc.Request) error {
+	client, daemon := net.Pipe()
+	defer func() { _ = client.Close() }()
+	stop := context.AfterFunc(ctx, func() { _ = client.Close() })
+	defer stop()
+	server.sem <- struct{}{}
+	go server.handle(daemon)
+	request.Version = version.Version
+	if err := json.NewEncoder(client).Encode(request); err != nil {
+		return err
+	}
+	var response ipc.Response
+	err := json.NewDecoder(client).Decode(&response)
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if err != nil {
+		return err
+	}
+	if response.Error != nil {
+		return response.Error
+	}
+	return nil
+}
+
 func TestSubscriptionRefresh(t *testing.T) {
 	var body atomic.Value
-	var slow atomic.Bool
-	started, release := make(chan context.Context, 1), make(chan struct{})
 	first, second := "trojan://secret@example.com:443#first", "trojan://secret@example.com:443#second"
 	body.Store(first + "\n" + second)
 	source := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, req *http.Request) {
-		if slow.Load() {
-			started <- req.Context()
-			select {
-			case <-release:
-			case <-req.Context().Done():
-				return
-			}
-		}
 		_, _ = io.WriteString(response, body.Load().(string))
 	}))
 	defer source.Close()
@@ -324,39 +346,51 @@ func TestSubscriptionRefresh(t *testing.T) {
 			}
 		})
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
-	defer cancel()
-	ownerCtx, cancelOwner := context.WithCancel(ctx)
-	defer cancelOwner()
-	body.Store(first)
-	slow.Store(true)
-	done := make(chan error, 1)
-	go func() { done <- client.RefreshSubscription(ownerCtx, added.SubscriptionID) }()
-	var providerCtx context.Context
-	select {
-	case providerCtx = <-started:
-	case <-ctx.Done():
-		t.Fatal("refresh did not start")
-	}
-	followerDone := make(chan error, 1)
-	go func() { followerDone <- client.RefreshSubscription(ctx, added.SubscriptionID) }()
-	if err := client.SetCollapsed(ctx, added.SubscriptionID, new(true)); err != nil {
-		t.Fatalf("mutation blocked on refresh: %v", err)
-	}
-	cancelOwner()
-	if err := <-done; !errors.Is(err, context.Canceled) {
-		t.Fatalf("canceled refresh: %v", err)
-	}
-	select {
-	case <-providerCtx.Done():
-	case <-ctx.Done():
-		t.Fatal("canceled refresh did not stop its HTTP request")
-	}
-	close(release)
-	if err := <-followerDone; err != nil {
-		t.Fatal(err)
-	}
-	snap, err := client.Snapshot(ctx)
+	synctest.Test(t, func(t *testing.T) {
+		started, release := make(chan context.Context, 1), make(chan struct{})
+		previousTransport := http.DefaultTransport
+		defer func() { http.DefaultTransport = previousTransport }()
+		http.DefaultTransport = refreshTransport(func(request *http.Request) (*http.Response, error) {
+			started <- request.Context()
+			select {
+			case <-release:
+				return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(first))}, nil
+			case <-request.Context().Done():
+				return nil, request.Context().Err()
+			}
+		})
+		ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+		defer cancel()
+		ownerCtx, cancelOwner := context.WithCancel(ctx)
+		defer cancelOwner()
+		request := ipc.Request{Method: "RefreshSubscription", Arguments: ipc.Arguments{SubscriptionID: added.SubscriptionID}}
+		done := make(chan error, 1)
+		go func() {
+			done <- sendRequest(ownerCtx, server, request)
+		}()
+		providerCtx := <-started
+		followerDone := make(chan error, 1)
+		go func() {
+			followerDone <- sendRequest(ctx, server, request)
+		}()
+		synctest.Wait()
+		if err := sendRequest(ctx, server, ipc.Request{Method: "SetCollapsed", Arguments: ipc.Arguments{SubscriptionID: added.SubscriptionID, Collapsed: new(true)}}); err != nil {
+			t.Fatalf("mutation blocked on refresh: %v", err)
+		}
+		cancelOwner()
+		synctest.Wait()
+		if err := <-done; !errors.Is(err, context.Canceled) {
+			t.Fatalf("canceled refresh: %v", err)
+		}
+		if providerCtx.Err() != context.Canceled {
+			t.Fatal("canceled refresh did not stop its HTTP request")
+		}
+		close(release)
+		if err := <-followerDone; err != nil {
+			t.Fatal(err)
+		}
+	})
+	snap, err := client.Snapshot(t.Context())
 	if err != nil || len(snap.Nodes) != 1 || snap.Nodes[0].Name != "first" || snap.Subscriptions[0].Refreshing ||
 		len(snap.Collapsed) != 1 || snap.Collapsed[0] != added.SubscriptionID {
 		t.Fatalf("refresh lost a concurrent change: %+v, %v", snap, err)

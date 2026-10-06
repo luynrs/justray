@@ -8,7 +8,6 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"charm.land/bubbles/v2/spinner"
 	"charm.land/lipgloss/v2"
 
 	"github.com/luynrs/justray/internal/client/tui/style"
@@ -114,10 +113,7 @@ func spin(text string) func() {
 	if fi, err := os.Stdout.Stat(); err != nil || fi.Mode()&os.ModeCharDevice == 0 {
 		return func() {}
 	}
-	s := spinner.MiniDot
-	if style.TTY {
-		s = spinner.Line
-	}
+	s := style.Spinner()
 	quit, stopped := make(chan struct{}), make(chan struct{})
 	go func() {
 		defer close(stopped)

@@ -74,7 +74,7 @@ func (d Data) dot(n ipc.Node) string {
 	case n.Probing:
 		return style.Pending.Render(cmp.Or(d.Spinner, style.Dot(false)))
 	case !n.Probed:
-		return style.Unknown.Render(style.Dot(false))
+		return style.Dim.Render(style.Dot(false))
 	case n.Alive:
 		return style.Alive.Render(style.Dot(false))
 	}

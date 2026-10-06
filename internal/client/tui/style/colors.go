@@ -3,6 +3,8 @@ package style
 import (
 	"strings"
 
+	"charm.land/bubbles/v2/textarea"
+	"charm.land/bubbles/v2/textinput"
 	"charm.land/lipgloss/v2"
 )
 
@@ -10,25 +12,34 @@ var (
 	green  = lipgloss.Color("2")
 	yellow = lipgloss.Color("3")
 	red    = lipgloss.Color("1")
-	gray   = lipgloss.Color("8")
 )
 
 var (
 	Title  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("4"))
 	Accent = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
-	Strong = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
+	Strong = Accent.Bold(true)
 	Name   = lipgloss.NewStyle().Bold(true)
-	Key    = lipgloss.NewStyle().Bold(true)
+	Key    = Name
 	Dim    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	Err    = lipgloss.NewStyle().Bold(true).Foreground(red)
 
-	pill    = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("4")).Bold(true)
-	pillCap = lipgloss.NewStyle().Foreground(lipgloss.Color("4"))
+	pill    = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(Title.GetForeground()).Bold(true)
+	pillCap = lipgloss.NewStyle().Foreground(Title.GetForeground())
 
 	Alive   = lipgloss.NewStyle().Foreground(green)
 	Dead    = lipgloss.NewStyle().Foreground(red)
 	Pending = lipgloss.NewStyle().Foreground(yellow)
-	Unknown = lipgloss.NewStyle().Foreground(gray)
+
+	Input = textinput.Styles{
+		Focused: textinput.StyleState{Placeholder: Dim, Suggestion: Dim},
+		Blurred: textinput.StyleState{Text: Dim, Placeholder: Dim, Suggestion: Dim},
+		Cursor:  textinput.CursorStyle{Color: Accent.GetForeground(), Blink: true},
+	}
+	Editor = textarea.Styles{
+		Focused: textarea.StyleState{Placeholder: Dim, Selection: lipgloss.NewStyle().Reverse(true)},
+		Blurred: textarea.StyleState{Text: Dim, Placeholder: Dim, Selection: lipgloss.NewStyle().Reverse(true)},
+		Cursor:  textarea.CursorStyle{Color: Accent.GetForeground(), Blink: true},
+	}
 )
 
 // Segment is one tab, same width either way

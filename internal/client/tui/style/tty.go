@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"os"
 	"strings"
+
+	"charm.land/bubbles/v2/spinner"
 )
 
 var TTY bool
@@ -32,6 +34,13 @@ func Sep() string   { return pick("-", "·") }
 func Move() string  { return pick("j/k", "↑/↓") }
 func Fold() string  { return pick("h/l", "←/→") }
 func Enter() string { return pick("enter", "↵") }
+
+func Spinner() spinner.Spinner {
+	if TTY {
+		return spinner.Line
+	}
+	return spinner.MiniDot
+}
 
 func Arrow(collapsed bool) string {
 	if collapsed {

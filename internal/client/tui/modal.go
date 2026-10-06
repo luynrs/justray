@@ -56,14 +56,6 @@ func (model *Model) resizeModal() {
 }
 
 func (model *Model) closeModal() tea.Cmd {
-	if model.activeModal == modalHelp {
-		model.activeModal, model.helpReturn = model.helpReturn, modalNone
-		model.resizeModal()
-		if model.activeModal == modalAdd || model.editing() {
-			return cursor.Blink
-		}
-		return nil
-	}
 	model.activeModal = modalNone
 	model.deleteTarget = tree.Row{}
 	model.editor.Blur()
@@ -154,10 +146,10 @@ func (model Model) modalView(background string) string {
 	if style.TTY {
 		border = lipgloss.ASCIIBorder()
 	}
-	window := lipgloss.NewStyle().Border(border).BorderForeground(lipgloss.Color("4")).
+	window := lipgloss.NewStyle().Border(border).BorderForeground(style.Title.GetForeground()).
 		Padding(layout.body.Min.Y-layout.bounds.Min.Y-1, layout.body.Min.X-layout.bounds.Min.X-1).
 		Width(width).Height(height).Render(content)
-	edge := lipgloss.NewStyle().Foreground(lipgloss.Color("4"))
+	edge := lipgloss.NewStyle().Foreground(style.Title.GetForeground())
 	frame := strings.Split(window, "\n")
 	titlePadding := min(2, width-4)
 	title = ansi.Truncate(title, width-4-titlePadding, "")
@@ -172,16 +164,15 @@ func (model Model) modalView(background string) string {
 		}
 	}
 	canvas := lipgloss.NewCanvas(model.w, model.h).Compose(lipgloss.NewLayer(background))
-	subduedAccent := lipgloss.Color("#3d4a52")
 	for row := range canvas.Height() {
 		for column := range canvas.Width() {
 			cell := canvas.CellAt(column, row)
 			cell.Style.Attrs = (cell.Style.Attrs &^ uv.AttrBold) | uv.AttrFaint
-			if cell.Style.Bg == lipgloss.Color("4") {
-				cell.Style.Bg = subduedAccent
+			if cell.Style.Bg == style.Title.GetForeground() {
+				cell.Style.Bg = style.Dim.GetForeground()
 			}
-			if cell.Style.Fg == lipgloss.Color("4") && (cell.Content == "▐" || cell.Content == "▌") {
-				cell.Style.Fg = subduedAccent
+			if cell.Style.Fg == style.Title.GetForeground() && (cell.Content == "▐" || cell.Content == "▌") {
+				cell.Style.Fg = style.Dim.GetForeground()
 				cell.Style.Attrs &^= uv.AttrFaint
 			}
 		}

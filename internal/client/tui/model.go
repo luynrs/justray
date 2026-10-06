@@ -13,7 +13,6 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 
 	"github.com/luynrs/justray/internal/client/tui/settings"
 	"github.com/luynrs/justray/internal/client/tui/style"
@@ -43,7 +42,6 @@ type Model struct {
 	filter       textinput.Model
 	help         viewport.Model
 	activeModal  modalKind
-	helpReturn   modalKind
 
 	live    bool
 	updates chan pushed
@@ -69,13 +67,11 @@ func New(c *ipc.Client, start, restore func(context.Context) error) Model {
 	editor.Placeholder = "Paste a subscription or node link..."
 	editor.CharLimit = 2048
 	editor.KeyMap.InsertNewline.SetEnabled(false)
-	editorStyles := editor.Styles()
-	editorStyles.Focused.CursorLine = lipgloss.NewStyle()
-	editorStyles.Focused.Placeholder = style.Dim
-	editor.SetStyles(editorStyles)
+	editor.SetStyles(style.Editor)
 	filter := textinput.New()
 	filter.Prompt = ""
 	filter.CharLimit = 128
+	filter.SetStyles(style.Input)
 	m := Model{
 		client:        c,
 		spin:          spinner.New(),
@@ -133,10 +129,7 @@ func (m *Model) syncTTY() tea.Cmd {
 		force = m.dialog.Current().ForceTTY
 	}
 	style.TTY = style.DetectTTY(force)
-	animation := spinner.MiniDot
-	if style.TTY {
-		animation = spinner.Line
-	}
+	animation := style.Spinner()
 	if slices.Equal(m.spin.Spinner.Frames, animation.Frames) {
 		return nil
 	}

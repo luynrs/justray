@@ -200,9 +200,7 @@ type Model struct {
 func New(s domain.Settings, top int) *Model {
 	input := textinput.New()
 	input.Prompt = ""
-	styles := input.Styles()
-	styles.Focused.Placeholder = style.Dim
-	input.SetStyles(styles)
+	input.SetStyles(style.Input)
 	input.CharLimit = 2048
 	cur := s
 	cur.Direct = slices.Clone(s.Direct)
