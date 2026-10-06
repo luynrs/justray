@@ -71,15 +71,14 @@ homebrew_casks:
     description: A modern VPN client that lives in your terminal
     license: GPL-3.0-or-later
     skip_upload: auto
+    custom_block: |
+      binary "justray", target: "jray"
     hooks:
       post:
         install: |
           if OS.mac?
             system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/justray", "#{staged_path}/justrayd"]
           end
-          FileUtils.ln_sf "#{HOMEBREW_PREFIX}/bin/justray", "#{HOMEBREW_PREFIX}/bin/jray"
-        uninstall: |
-          FileUtils.rm_f "#{HOMEBREW_PREFIX}/bin/jray"
 
 winget:
   - name: justray
@@ -91,8 +90,9 @@ winget:
     homepage: https://github.com/luynrs/justray
     publisher_url: https://github.com/luynrs
     publisher_support_url: https://github.com/luynrs/justray/issues
+    privacy_url: https://github.com/luynrs/justray/blob/{{ .Tag }}/PRIVACY.md
     license: GPL-3.0-or-later
-    license_url: https://www.gnu.org/licenses/gpl-3.0.html
+    license_url: https://github.com/luynrs/justray/blob/{{ .Tag }}/LICENSE
     tags: [cli, vpn, terminal]
     path: manifests/l/luynrs/justray/{{ .Version }}
     skip_upload: auto
