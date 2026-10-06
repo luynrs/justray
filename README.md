@@ -3,6 +3,10 @@
 </p>
 
 <p align="center">
+  <a href="README.md">English</a> / <a href=".github/docs/README.RU.md">Русский</a> / <a href=".github/docs/README.CN.md">简体中文</a>
+</p>
+
+<p align="center">
   <a href="https://github.com/luynrs/justray/commits/main"><img alt="Last commit" src="https://img.shields.io/github/last-commit/luynrs/justray?style=for-the-badge&logo=github&logoColor=white&labelColor=1e1e2e&color=cba6f7"></a>
   <img alt="Platforms" src="https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-cba6f7?style=for-the-badge&logo=linux&logoColor=white&labelColor=1e1e2e">
   <a href="https://github.com/luynrs/justray/releases"><img alt="Version" src="https://img.shields.io/github/v/release/luynrs/justray?style=for-the-badge&labelColor=1e1e2e&color=cba6f7"></a>
@@ -67,7 +71,7 @@ nix run github:luynrs/justray
 ```
 
 ```nix
-# Home Manager module (justrayd systemd user service)
+# Home Manager
 {
   imports = [ justray.homeManagerModules.default ];
   services.justray.enable = true;
