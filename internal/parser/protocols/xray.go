@@ -159,8 +159,6 @@ func ParseXray(raw []byte) ([]domain.Node, map[string]int, error) {
 					node.Protocol, node.Auth = domain.Trojan, domain.Auth{Password: server.Password}
 				case "shadowsocks", "ss":
 					node.Protocol, node.Auth = domain.SS, domain.Auth{Password: server.Password, Method: server.Method}
-				default:
-					continue
 				}
 				node, err := xrayNode(node, ob.StreamSettings)
 				if err != nil {
@@ -183,8 +181,6 @@ func ParseXray(raw []byte) ([]domain.Node, map[string]int, error) {
 						node.Protocol, node.Auth = domain.VLESS, domain.Auth{UUID: user.ID, Flow: user.Flow}
 					case "trojan":
 						node.Protocol, node.Auth = domain.Trojan, domain.Auth{Password: cmp.Or(user.Password, user.ID)}
-					default:
-						continue
 					}
 					node, err := xrayNode(node, ob.StreamSettings)
 					if err != nil {

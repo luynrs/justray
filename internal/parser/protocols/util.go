@@ -221,13 +221,6 @@ func isCertFingerprint(s string) bool {
 	return true
 }
 
-func checkPlugin(name string) error {
-	if base, _, _ := strings.Cut(name, ";"); base != "" && base != "shadow-tls" {
-		return fmt.Errorf("unsupported plugin %q", base)
-	}
-	return nil
-}
-
 type stringOrSlice []string
 
 func (s *stringOrSlice) UnmarshalJSON(b []byte) error {

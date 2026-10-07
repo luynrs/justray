@@ -275,7 +275,6 @@ func isPrefix(rule string) bool {
 
 // parsePrefix accepts a CIDR or a bare address
 func parsePrefix(raw string) (netip.Prefix, error) {
-	raw = strings.TrimSpace(raw)
 	if p, err := netip.ParsePrefix(raw); err == nil {
 		return p.Masked(), nil
 	}

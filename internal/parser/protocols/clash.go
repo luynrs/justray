@@ -185,8 +185,8 @@ func clashNode(p clashProxy) (domain.Node, error) {
 	case "ss", "shadowsocks":
 		n.Protocol = domain.SS
 		n.Auth = domain.Auth{Method: p.Cipher, Password: p.Password}
-		if err := checkPlugin(p.Plugin); err != nil {
-			return domain.Node{}, fmt.Errorf("clash: %w", err)
+		if plugin, _, _ := strings.Cut(p.Plugin, ";"); plugin != "" && plugin != "shadow-tls" {
+			return domain.Node{}, fmt.Errorf("clash: unsupported plugin %q", plugin)
 		}
 		stlsOpts := p.PluginOpts
 		if stlsOpts == nil {
