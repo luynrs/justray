@@ -201,13 +201,13 @@ func (c *Client) Watch(ctx context.Context, onUpdate func(Snapshot)) error {
 	}
 	dec := json.NewDecoder(conn)
 	for {
-		snap, err := receive[Snapshot](dec)
+		snapshot, err := receive[Snapshot](dec)
 		if err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
 			return fmt.Errorf("watch: %w", err)
 		}
-		onUpdate(snap)
+		onUpdate(snapshot)
 	}
 }

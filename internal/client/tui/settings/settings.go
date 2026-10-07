@@ -202,13 +202,9 @@ func New(s domain.Settings, top int) *Model {
 	input.Prompt = ""
 	input.SetStyles(style.Input)
 	input.CharLimit = 2048
-	cur := s
-	cur.Direct = slices.Clone(s.Direct)
-	cur.Proxy = slices.Clone(s.Proxy)
-	cur.Block = slices.Clone(s.Block)
-	res := &Model{top: top, cur: cur, orig: s, input: input}
-	res.move(0)
-	return res
+	m := &Model{top: top, cur: s.Clone(), orig: s, input: input}
+	m.move(0)
+	return m
 }
 
 func (s *Model) Result() (domain.Settings, bool, error) {

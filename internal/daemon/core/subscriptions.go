@@ -98,15 +98,7 @@ func (c *Core) RemoveSubscription(ctx context.Context, id string) error {
 	next.Collapsed = slices.DeleteFunc(next.Collapsed, func(s string) bool {
 		return s == id
 	})
-	if err := c.commit(next); err != nil {
-		return err
-	}
-	var cleanupErr error
-	if dropConn {
-		cleanupErr = c.conn.Disconnect(context.WithoutCancel(ctx))
-	}
-	c.publish()
-	return cleanupErr
+	return c.finishDisconnect(ctx, next, dropConn)
 }
 
 func (c *Core) RemoveNode(ctx context.Context, ref domain.NodeRef) error {
@@ -125,15 +117,7 @@ func (c *Core) RemoveNode(ctx context.Context, ref domain.NodeRef) error {
 	}
 	next.Subscriptions[i].Nodes = slices.DeleteFunc(slices.Clone(next.Subscriptions[i].Nodes), func(node domain.Node) bool { return node.ID == ref.NodeID })
 	dropConn := c.sanitizeRefs(&next, next.Subscriptions[i])
-	if err := c.commit(next); err != nil {
-		return err
-	}
-	var cleanupErr error
-	if dropConn {
-		cleanupErr = c.conn.Disconnect(context.WithoutCancel(ctx))
-	}
-	c.publish()
-	return cleanupErr
+	return c.finishDisconnect(ctx, next, dropConn)
 }
 
 func (c *Core) MoveSubscription(ctx context.Context, id string, dir int) error {

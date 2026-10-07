@@ -393,11 +393,11 @@ func match[T any](key, noun string, items []T, idName func(T) (id, name string))
 	}
 }
 
-func (application *app) complete(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+func (a *app) complete(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	if len(args) > 0 {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	client := application.daemon()
+	client := a.daemon()
 	if client == nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}

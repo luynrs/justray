@@ -75,7 +75,7 @@ func (c *Core) current() store.State {
 	state := c.state
 	state.Subscriptions = slices.Clone(state.Subscriptions)
 	state.Collapsed = slices.Clone(state.Collapsed)
-	state.Settings = cloneSettings(state.Settings)
+	state.Settings = state.Settings.Clone()
 	return state
 }
 

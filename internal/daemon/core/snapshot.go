@@ -43,7 +43,7 @@ func (c *Core) publishLocked() {
 		selected = state.Last
 	}
 	snapshot := &ipc.Snapshot{
-		Settings:      cloneSettings(state.Settings),
+		Settings:      state.Settings.Clone(),
 		Subscriptions: subs,
 		Nodes:         c.nodes(state.Subscriptions),
 		Status:        c.status(state),
@@ -106,7 +106,7 @@ func (c *Core) nodes(subscriptions []store.Subscription) []ipc.Node {
 }
 
 func cloneSnapshot(snapshot ipc.Snapshot) ipc.Snapshot {
-	snapshot.Settings = cloneSettings(snapshot.Settings)
+	snapshot.Settings = snapshot.Settings.Clone()
 	snapshot.Subscriptions = slices.Clone(snapshot.Subscriptions)
 	snapshot.Nodes = slices.Clone(snapshot.Nodes)
 	snapshot.Collapsed = slices.Clone(snapshot.Collapsed)
@@ -119,11 +119,4 @@ func subView(sub store.Subscription, refreshing bool) ipc.Subscription {
 		UpdatedAt: sub.UpdatedAt, Traffic: ipc.Traffic(sub.Traffic),
 		Refreshable: sub.URL != "", Refreshing: refreshing, Warning: sub.Warning,
 	}
-}
-
-func cloneSettings(settings domain.Settings) domain.Settings {
-	settings.Direct = slices.Clone(settings.Direct)
-	settings.Proxy = slices.Clone(settings.Proxy)
-	settings.Block = slices.Clone(settings.Block)
-	return settings
 }

@@ -74,12 +74,7 @@ func (d Disk) SaveState(state State) error {
 	if state.Subscriptions == nil {
 		state.Subscriptions = []Subscription{}
 	}
-	stateData, err := json.MarshalIndent(state, "", "  ")
-	if err != nil {
-		return err
-	}
-	stateData = append(stateData, '\n')
-	return write(ipc.State(d.Dir), stateData)
+	return writeJSON(ipc.State(d.Dir), state)
 }
 
 func (d Disk) SaveConfig(settings domain.Settings) error {
@@ -89,12 +84,15 @@ func (d Disk) SaveConfig(settings domain.Settings) error {
 			*l = []string{}
 		}
 	}
-	cfgData, err := json.MarshalIndent(settings, "", "  ")
+	return writeJSON(ipc.Config(d.Dir), settings)
+}
+
+func writeJSON(path string, value any) error {
+	data, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
 		return err
 	}
-	cfgData = append(cfgData, '\n')
-	return write(ipc.Config(d.Dir), cfgData)
+	return write(path, append(data, '\n'))
 }
 
 func write(path string, data []byte) error {

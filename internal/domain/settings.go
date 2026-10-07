@@ -75,6 +75,13 @@ func (s Settings) Equal(o Settings) bool {
 		slices.Equal(s.Direct, o.Direct) && slices.Equal(s.Proxy, o.Proxy) && slices.Equal(s.Block, o.Block)
 }
 
+func (s Settings) Clone() Settings {
+	s.Direct = slices.Clone(s.Direct)
+	s.Proxy = slices.Clone(s.Proxy)
+	s.Block = slices.Clone(s.Block)
+	return s
+}
+
 // Normalize fills defaults and validates
 func (s Settings) Normalize() (Settings, error) {
 	checks := []error{

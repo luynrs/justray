@@ -88,12 +88,19 @@ func (c *Core) Disconnect(ctx context.Context) error {
 	next := c.current()
 	next.Active = domain.NodeRef{}
 	next.Pending = nil
+	return c.finishDisconnect(ctx, next, true)
+}
+
+func (c *Core) finishDisconnect(ctx context.Context, next store.State, dropConn bool) error {
 	if err := c.commit(next); err != nil {
 		return err
 	}
-	applyErr := c.conn.Disconnect(context.WithoutCancel(ctx))
+	var disconnectErr error
+	if dropConn {
+		disconnectErr = c.conn.Disconnect(context.WithoutCancel(ctx))
+	}
 	c.publish()
-	return applyErr
+	return disconnectErr
 }
 
 func (c *Core) SetTun(ctx context.Context, enable bool) error {
