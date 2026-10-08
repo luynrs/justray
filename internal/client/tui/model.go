@@ -14,6 +14,7 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/luynrs/justray/internal/client/tui/navigation"
 	"github.com/luynrs/justray/internal/client/tui/settings"
 	"github.com/luynrs/justray/internal/client/tui/style"
 	"github.com/luynrs/justray/internal/client/tui/tree"
@@ -34,7 +35,7 @@ type Model struct {
 	spinnerActive bool
 	cursor        int
 	scroll        int
-	wheel         time.Time
+	navigation    navigation.Keys
 
 	editor       textarea.Model
 	deleteTarget tree.Row
@@ -168,11 +169,6 @@ func (m Model) at() (tree.Row, bool) { return tree.At(m.rows(), m.cursor) }
 func (m Model) connected() bool { return m.live && m.snapshot.Status.Connected }
 
 func (m Model) height() int { return max(m.h-topLines-footerLines, 1) }
-
-func (m *Model) move(delta int) {
-	m.cursor += delta
-	m.clamp()
-}
 
 func (m *Model) clamp() {
 	m.cursor, m.scroll = tree.Clamp(m.rows(), m.cursor, m.scroll, m.height())

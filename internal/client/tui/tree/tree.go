@@ -139,6 +139,37 @@ func Clamp(rows []Row, cursor, scroll, height int) (int, int) {
 	return cursor, min(max(scroll, 0), max(len(rows)-height, 0))
 }
 
+func Scroll(rows []Row, cursor, scroll, delta, height int) (int, int) {
+	selectable := Selectable(rows)
+	if len(selectable) == 0 {
+		return 0, 0
+	}
+	position := selectable[min(max(cursor, 0), len(selectable)-1)] - scroll
+	nextScroll := min(max(scroll+delta, 0), max(len(rows)-height, 0))
+	nextCursor, exact := slices.BinarySearch(selectable, nextScroll+position)
+	if delta < 0 && !exact {
+		nextCursor--
+	}
+	nextCursor = min(max(nextCursor, 0), len(selectable)-1)
+	nextScroll = selectable[nextCursor] - position
+	if nextScroll < 0 || nextScroll > max(len(rows)-height, 0) {
+		return cursor, scroll
+	}
+	return nextCursor, nextScroll
+}
+
+func Page(rows []Row, cursor, scroll, delta, height int) (int, int) {
+	selectable := Selectable(rows)
+	if len(selectable) == 0 {
+		return 0, 0
+	}
+	cursor, exact := slices.BinarySearch(selectable, selectable[min(max(cursor, 0), len(selectable)-1)]+delta)
+	if delta < 0 && !exact {
+		cursor--
+	}
+	return Clamp(rows, cursor, scroll+delta, height)
+}
+
 // Point maps a screen line to a cursor position
 func Point(rows []Row, scroll, height, top, y int) (cursor int, ok bool) {
 	i := scroll + y - top

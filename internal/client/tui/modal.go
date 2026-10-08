@@ -10,6 +10,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/luynrs/justray/internal/client/tui/navigation"
 	"github.com/luynrs/justray/internal/client/tui/style"
 	"github.com/luynrs/justray/internal/client/tui/tree"
 )
@@ -55,59 +56,78 @@ func (model *Model) resizeModal() {
 	}
 }
 
-func (model *Model) closeModal() tea.Cmd {
-	model.activeModal = modalNone
-	model.deleteTarget = tree.Row{}
-	model.editor.Blur()
-	if model.editing() {
+func (m *Model) closeModal() tea.Cmd {
+	m.navigation.Reset()
+	m.activeModal = modalNone
+	m.deleteTarget = tree.Row{}
+	m.editor.Blur()
+	if m.editing() {
 		return cursor.Blink
 	}
 	return nil
 }
 
-func (model Model) updateModal(message tea.Msg) (tea.Model, tea.Cmd) {
-	switch message := message.(type) {
+func (m Model) updateModal(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
-		if message.String() == "esc" || (message.String() == "?" && model.activeModal == modalHelp) {
-			command := model.closeModal()
-			return model, command
+		if msg.String() == "esc" || (msg.String() == "?" && m.activeModal == modalHelp) {
+			cmd := m.closeModal()
+			return m, cmd
 		}
-		if message.String() == "enter" && model.activeModal == modalAdd {
-			url := strings.TrimSpace(model.editor.Value())
-			model.closeModal()
-			if url == "" {
-				return model, nil
+		if m.activeModal == modalHelp {
+			if key := msg.String(); len(key) == 1 && key[0] >= '0' && key[0] <= '9' {
+				m.navigation.Reset()
+				return m, nil
 			}
-			return model, action(false, model.start(false), func() error {
-				_, err := model.client.AddSubscription(model.watch, url)
+			if motion, handled := m.navigation.Read(msg.String()); handled {
+				switch motion.Action {
+				case navigation.Move, navigation.Scroll, navigation.Page, navigation.HalfPage:
+					m.help.SetYOffset(m.help.YOffset() + motion.Distance(m.help.Height(), m.help.TotalLineCount()))
+				case navigation.Line:
+					m.help.GotoTop()
+				case navigation.Last:
+					m.help.GotoBottom()
+				}
+				return m, nil
+			}
+		}
+		if msg.String() == "enter" && m.activeModal == modalAdd {
+			url := strings.TrimSpace(m.editor.Value())
+			m.closeModal()
+			if url == "" {
+				return m, nil
+			}
+			return m, action(false, m.start(false), func() error {
+				_, err := m.client.AddSubscription(m.watch, url)
 				return err
 			})
 		}
-		if message.String() == "enter" && model.activeModal == modalDelete {
-			target := model.deleteTarget
-			model.closeModal()
-			return model, action(false, model.start(false), func() error {
+		if msg.String() == "enter" && m.activeModal == modalDelete {
+			target := m.deleteTarget
+			m.closeModal()
+			return m, action(false, m.start(false), func() error {
 				if target.Kind == tree.Header {
-					return model.client.RemoveSubscription(model.watch, target.Sub.SubscriptionID)
+					return m.client.RemoveSubscription(m.watch, target.Sub.SubscriptionID)
 				}
-				return model.client.RemoveNode(model.watch, target.Node.Ref())
+				return m.client.RemoveNode(m.watch, target.Node.Ref())
 			})
 		}
 	case tea.MouseMsg:
-		layout := model.modalLayout()
-		mouse := message.Mouse()
-		if model.activeModal != modalHelp || !image.Pt(mouse.X, mouse.Y).In(layout.body) {
-			return model, nil
+		m.navigation.Reset()
+		layout := m.modalLayout()
+		mouse := msg.Mouse()
+		if m.activeModal != modalHelp || !image.Pt(mouse.X, mouse.Y).In(layout.body) {
+			return m, nil
 		}
 	}
-	var command tea.Cmd
-	switch model.activeModal {
+	var cmd tea.Cmd
+	switch m.activeModal {
 	case modalAdd:
-		model.editor, command = model.editor.Update(message)
+		m.editor, cmd = m.editor.Update(msg)
 	case modalHelp:
-		model.help, command = model.help.Update(message)
+		m.help, cmd = m.help.Update(msg)
 	}
-	return model, command
+	return m, cmd
 }
 
 func (model Model) modalView(background string) string {

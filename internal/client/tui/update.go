@@ -109,13 +109,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.quit()
 	}
 	showHelp := false
-	switch message := msg.(type) {
+	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
-		showHelp = m.activeModal == modalNone && message.String() == "?" && !m.editing()
+		showHelp = m.activeModal == modalNone && msg.String() == "?" && !m.editing()
 	case tea.MouseClickMsg:
-		showHelp = m.activeModal == modalNone && !m.editing() && message.Button == tea.MouseLeft && m.h >= topLines+footerLines+1 && message.Y == m.h-1 && message.X >= m.w-lipgloss.Width(m.helpHint()) && message.X < m.w
+		showHelp = m.activeModal == modalNone && !m.editing() && msg.Button == tea.MouseLeft && m.h >= topLines+footerLines+1 && msg.Y == m.h-1 && msg.X >= m.w-lipgloss.Width(m.helpHint()) && msg.X < m.w
 	}
 	if showHelp {
+		m.navigation.Reset()
+		if m.dialog != nil {
+			m.dialog.CancelNavigation()
+		}
 		m.activeModal = modalHelp
 		m.resizeModal()
 		m.help.GotoTop()
@@ -125,12 +129,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateModal(msg)
 	}
 	if m.dialog != nil {
-		closed, command := m.dialog.Update(msg)
+		if _, wheel := msg.(tea.MouseWheelMsg); wheel && m.h < topLines+footerLines+1 {
+			m.dialog.CancelNavigation()
+			return m, nil
+		}
+		closed, cmd := m.dialog.Update(msg)
 		if closed {
 			return m.closeSettings()
 		}
 		spinnerCommand := m.syncTTY()
-		return m, tea.Batch(command, spinnerCommand)
+		return m, tea.Batch(cmd, spinnerCommand)
 	}
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
@@ -160,12 +168,12 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		return m.updateFilter(msg)
 	}
+	if motion, handled := m.navigation.Read(k); handled {
+		m.navigate(motion)
+		return m, nil
+	}
 
 	switch k {
-	case "up", "k":
-		m.move(-1)
-	case "down", "j":
-		m.move(1)
 	case "shift+up":
 		return m.moveSub(-1)
 	case "shift+down":
@@ -222,15 +230,16 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) updateFilter(msg tea.Msg) (tea.Model, tea.Cmd) {
 	query := m.filter.Value()
-	var command tea.Cmd
-	m.filter, command = m.filter.Update(msg)
+	var cmd tea.Cmd
+	m.filter, cmd = m.filter.Update(msg)
 	if m.filter.Value() != query {
 		m.clamp()
 	}
-	return m, command
+	return m, cmd
 }
 
 func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	m.navigation.Reset()
 	mouse := msg.Mouse()
 	switch msg.(type) {
 	case tea.MouseClickMsg:
@@ -239,18 +248,15 @@ func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.MouseWheelMsg:
-		if m.filter.Focused() || (mouse.Button != tea.MouseWheelUp && mouse.Button != tea.MouseWheelDown) {
+		if m.filter.Focused() || m.h < topLines+footerLines+1 || mouse.Y < topLines || mouse.Y >= topLines+m.height() ||
+			(mouse.Button != tea.MouseWheelUp && mouse.Button != tea.MouseWheelDown) {
 			return m, nil
 		}
-		if time.Since(m.wheel) < 15*time.Millisecond {
-			return m, nil
-		}
-		m.wheel = time.Now()
+		delta := 1
 		if mouse.Button == tea.MouseWheelUp {
-			m.move(-1)
-		} else {
-			m.move(1)
+			delta = -1
 		}
+		m.cursor, m.scroll = tree.Scroll(m.rows(), m.cursor, m.scroll, delta, m.height())
 	}
 	return m, nil
 }

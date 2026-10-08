@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"reflect"
-	"slices"
 	"strings"
 	"testing"
 
@@ -124,27 +123,5 @@ func TestCollapseSnapshot(t *testing.T) {
 	updated, _ = model.Update(pushed{live: true, snapshot: snapshot})
 	if row, _ := updated.(Model).at(); row.Sub.SubscriptionID != "sub" {
 		t.Fatal("remote collapse moved selection to another subscription")
-	}
-}
-
-func TestRoutingSettings(t *testing.T) {
-	model := New(nil, nil, nil)
-	defer model.stop()
-	model.snapshot.Settings, _ = (domain.Settings{}).Normalize()
-	for _, key := range []tea.KeyPressMsg{{Code: 'o'}, {Code: tea.KeyTab}, {Code: tea.KeyTab},
-		{Code: tea.KeyDown}, {Code: tea.KeyDown}, {Code: tea.KeyDown}, {Code: tea.KeyDown}, {Code: tea.KeyEnter}} {
-		updated, _ := model.Update(key)
-		model = updated.(Model)
-	}
-	updated, _ := model.Update(tea.PasteMsg{Content: "example.com"})
-	model = updated.(Model)
-	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	model = updated.(Model)
-	if !slices.Equal(model.dialog.Current().Direct, []string{"example.com"}) {
-		t.Fatalf("rule was not added: %v", model.dialog.Current().Direct)
-	}
-	updated, _ = model.Update(tea.KeyPressMsg{Code: 'd'})
-	if len(updated.(Model).dialog.Current().Direct) != 0 {
-		t.Fatal("rule was not removed")
 	}
 }

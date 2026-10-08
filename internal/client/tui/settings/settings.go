@@ -6,11 +6,11 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/luynrs/justray/internal/client/tui/navigation"
 	"github.com/luynrs/justray/internal/client/tui/style"
 	"github.com/luynrs/justray/internal/domain"
 )
@@ -188,12 +188,13 @@ type Model struct {
 	tab         int
 	cursor      int
 	scroll      int
+	height      int
+	navigation  navigation.Keys
 	abandon     bool
 	input       textinput.Model
 	cur         domain.Settings
 	orig        domain.Settings
 	err         string
-	wheel       time.Time
 	compactTabs bool
 }
 
@@ -202,7 +203,7 @@ func New(s domain.Settings, top int) *Model {
 	input.Prompt = ""
 	input.SetStyles(style.Input)
 	input.CharLimit = 2048
-	m := &Model{top: top, cur: s.Clone(), orig: s, input: input}
+	m := &Model{top: top, height: 1, cur: s.Clone(), orig: s, input: input}
 	m.move(0)
 	return m
 }
@@ -221,11 +222,14 @@ func (s *Model) Err() string { return s.err }
 
 func (s *Model) Editing() bool { return s.input.Focused() }
 
+func (s *Model) CancelNavigation() { s.navigation.Reset() }
+
 func (s *Model) Update(msg tea.Msg) (closed bool, cmd tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		return s.key(msg)
 	case tea.MouseMsg:
+		s.navigation.Reset()
 		return false, s.mouse(msg)
 	}
 	if s.input.Focused() {
@@ -239,6 +243,10 @@ func (s *Model) Update(msg tea.Msg) (closed bool, cmd tea.Cmd) {
 func (s *Model) key(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	if s.input.Focused() {
 		return false, s.editKey(msg)
+	}
+	if motion, handled := s.navigation.Read(msg.String()); handled {
+		s.navigate(motion)
+		return false, nil
 	}
 
 	switch msg.String() {
@@ -265,10 +273,6 @@ func (s *Model) key(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 		s.switchTab(1)
 	case "shift+tab":
 		s.switchTab(-1)
-	case "up", "k":
-		s.move(-1)
-	case "down", "j":
-		s.move(1)
 
 	case "enter":
 		return false, s.activate()
@@ -320,18 +324,17 @@ func (s *Model) mouse(msg tea.MouseMsg) tea.Cmd {
 			return s.activate()
 		}
 		s.cursor = h.row
+		s.move(0)
 
 	case tea.MouseWheelMsg:
-		// one physical notch fires several of these; count it once
-		if time.Since(s.wheel) < 20*time.Millisecond {
+		if y < 0 || y >= s.height {
 			return nil
 		}
-		s.wheel = time.Now()
 		switch mouse.Button {
 		case tea.MouseWheelUp:
-			s.move(-1)
+			s.scrollBy(-1)
 		case tea.MouseWheelDown:
-			s.move(1)
+			s.scrollBy(1)
 		}
 	}
 	return nil
@@ -490,20 +493,16 @@ func (s *Model) Dirty() bool {
 // move skips list headings
 func (s *Model) move(delta int) {
 	rows := s.rows()
-	i := min(max(s.cursor+delta, 0), len(rows)-1)
-	step := max(min(delta, 1), -1)
-	if step == 0 {
-		step = 1
-	}
-	for n := 0; n < len(rows) && !rows[i].editable(); n++ {
-		next := i + step
-		if next < 0 || next >= len(rows) {
-			step = -step
-			next = min(max(i+step, 0), len(rows)-1)
+	var editable []int
+	for index, row := range rows {
+		if row.editable() {
+			editable = append(editable, index)
 		}
-		i = next
 	}
-	s.cursor = i
+	cursor, _ := slices.BinarySearch(editable, s.cursor)
+	s.cursor = editable[min(max(cursor+delta, 0), len(editable)-1)]
+	layout, total := s.layout(rows)
+	s.reveal(layout, total, true)
 }
 
 func (s *Model) switchTab(delta int) {

@@ -19,7 +19,12 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
+	"unicode"
 
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/luynrs/justray/internal/client/tui"
 	"github.com/luynrs/justray/internal/daemon/connection"
 	"github.com/luynrs/justray/internal/daemon/core"
 	"github.com/luynrs/justray/internal/daemon/store"
@@ -137,6 +142,7 @@ func TestWatchLifecycle(t *testing.T) {
 	}
 	settings := snapshot.Settings
 	settings.DNS = "1.1.1.1"
+	settings.ForceTTY = "on"
 	if err := client.SetSettings(t.Context(), settings); err != nil {
 		t.Fatal(err)
 	}
@@ -144,6 +150,96 @@ func TestWatchLifecycle(t *testing.T) {
 	if err != nil || strings.Contains(string(config), `"autostart"`) {
 		t.Fatalf("autostart stored in config: %s, %v", config, err)
 	}
+	t.Run("compact navigation", func(t *testing.T) {
+		frames := make(chan string, 1)
+		program := tea.NewProgram(tui.New(client, nil, nil), tea.WithInput(nil), tea.WithOutput(io.Discard),
+			tea.WithWindowSize(80, 10), tea.WithoutSignalHandler(),
+			tea.WithFilter(func(m tea.Model, msg tea.Msg) tea.Msg {
+				if _, ok := msg.(chan string); ok {
+					frames <- ansi.Strip(m.View().Content)
+					return nil
+				}
+				return msg
+			}))
+		done := make(chan error, 1)
+		go func() { _, err := program.Run(); done <- err }()
+		defer func() {
+			program.Send(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+			select {
+			case err := <-done:
+				if err != nil {
+					t.Error(err)
+				}
+			case <-time.After(3 * time.Second):
+				program.Kill()
+				t.Error("TUI did not stop")
+			}
+		}()
+		screen := func(keys string) string {
+			for _, key := range keys {
+				msg := tea.KeyPressMsg{Code: key}
+				if unicode.IsPrint(key) {
+					msg.Text = string(key)
+				}
+				program.Send(msg)
+			}
+			program.Send(frames)
+			select {
+			case frame := <-frames:
+				return frame
+			case <-time.After(3 * time.Second):
+				t.Fatal("TUI did not render")
+				return ""
+			}
+		}
+		for deadline := time.Now().Add(3 * time.Second); !strings.Contains(screen("o"), "General"); {
+			if time.Now().After(deadline) {
+				t.Fatal("TUI did not receive settings")
+			}
+			time.Sleep(time.Millisecond)
+		}
+		screen("q")
+		for _, pane := range []string{"tree", "settings"} {
+			program.Send(tea.WindowSizeMsg{Width: 80, Height: 10})
+			if pane == "settings" {
+				screen("o\t\t")
+			}
+			if counted, repeated := screen("gg2j"), screen("ggjj"); counted != repeated {
+				t.Fatalf("%s count differs from repeated movement", pane)
+			}
+			if first, returned := screen("gg"), screen("2j2k"); first != returned {
+				t.Fatalf("%s counted movement did not return to the first row", pane)
+			}
+			for _, keys := range [][2]string{{"2G", "ggj"}, {"3gg", "ggjj"}, {"999999999999999999999999G", "G"}} {
+				if counted, expected := screen(keys[0]), screen(keys[1]); counted != expected {
+					t.Fatalf("%s %q differs from %q", pane, keys[0], keys[1])
+				}
+			}
+			for _, page := range []struct {
+				start string
+				key   rune
+				alias rune
+			}{{"gg", tea.KeyPgDown, 'f'}, {"G", tea.KeyPgUp, 'b'}} {
+				before := screen(page.start)
+				program.Send(tea.KeyPressMsg{Code: page.key})
+				after := screen("")
+				screen(page.start)
+				program.Send(tea.KeyPressMsg{Code: page.alias, Mod: tea.ModCtrl})
+				if after == before || screen("") != after {
+					t.Fatalf("%s page movement or its Ctrl alias did not work", pane)
+				}
+			}
+		}
+		screen("gg4j\r")
+		program.Send(tea.PasteMsg{Content: "example.com"})
+		if frame := screen("\r"); !strings.Contains(frame, "example.com") || !strings.Contains(frame, "Direct (1)") {
+			t.Fatal("routing rule was not added to Direct")
+		}
+		if frame := screen("d"); strings.Contains(frame, "example.com") || !strings.Contains(frame, "Direct (0)") {
+			t.Fatal("routing rule was not removed from Direct")
+		}
+		screen("q")
+	})
 
 	shutdownDone := make(chan struct{})
 	go func() { server.Shutdown(); close(shutdownDone) }()

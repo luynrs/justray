@@ -39,9 +39,9 @@ type tick struct{}
 func watch(ctx context.Context, c *ipc.Client, ch chan<- pushed) tea.Cmd {
 	return func() tea.Msg {
 		for ctx.Err() == nil {
-			err := c.Watch(ctx, func(snap ipc.Snapshot) {
+			err := c.Watch(ctx, func(snapshot ipc.Snapshot) {
 				select {
-				case ch <- pushed{snapshot: snap, live: true}:
+				case ch <- pushed{snapshot: snapshot, live: true}:
 				case <-ctx.Done():
 				}
 			})

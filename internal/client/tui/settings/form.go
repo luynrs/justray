@@ -16,65 +16,90 @@ type hit struct {
 	choice string
 }
 
+type fieldLayout struct {
+	start int
+	end   int
+}
+
 func (s *Model) View(width, height int) string {
 	w := max(width-2, 20)
 	s.input.SetWidth(max(w-6, 12))
+	s.height = max(height, 1)
 
 	rows := s.rows()
-	heights := make([]int, len(rows))
-	for i, f := range rows {
-		heights[i] = 1
-		if f.editable() && !f.bare {
-			if i == s.cursor && !s.input.Focused() {
-				heights[i] += max(len(f.enum), 1)
-			} else {
-				heights[i]++
-			}
-		}
-		if i > 0 && !f.bare {
-			heights[i]++
-		}
-	}
-
-	h := max(height, 1)
-	s.scrollTo(heights, h)
-
-	lines := make([]string, 0, h)
+	layout, total := s.layout(rows)
+	s.reveal(layout, total, false)
+	lines := make([]string, min(s.height, total-s.scroll))
 	hits := map[int]hit{}
-	for i := s.scroll; i < len(rows); i++ {
-		if len(lines)+heights[i] > h && i > s.scroll {
+	for i, bounds := range layout {
+		if bounds.end <= s.scroll {
+			continue
+		}
+		if bounds.start >= s.scroll+s.height {
 			break
 		}
 		block, choices := s.fieldBlock(rows[i], i)
+		offset := bounds.start
+		if i > 0 && !rows[i].bare {
+			offset--
+		}
 		for j, line := range block {
-			if len(lines) >= h {
-				break
+			position := offset + j - s.scroll
+			if position < 0 || position >= len(lines) {
+				continue
 			}
-			line = style.Clip(line, width)
-			hits[len(lines)] = hit{row: i, choice: choices[j]}
-			lines = append(lines, line)
+			lines[position] = style.Clip(line, width)
+			if line != "" {
+				hits[position] = hit{row: i, choice: choices[j]}
+			}
 		}
 	}
 	s.hits = hits
 	return strings.Join(lines, "\n")
 }
 
-func (s *Model) scrollTo(heights []int, h int) {
-	s.scroll = min(max(s.scroll, 0), max(len(heights)-1, 0))
-	if s.cursor < s.scroll {
-		s.scroll = s.cursor
+func (s *Model) layout(rows []field) ([]fieldLayout, int) {
+	layout := make([]fieldLayout, len(rows))
+	position := 0
+	for i, row := range rows {
+		if i > 0 && !row.bare {
+			position++
+		}
+		layout[i].start = position
+		position++
+		if row.editable() && !row.bare {
+			if i == s.cursor && !s.input.Focused() {
+				position += max(len(row.enum), 1)
+			} else {
+				position++
+			}
+		}
+		layout[i].end = position
 	}
-	visibleHeight := 0
-	for _, height := range heights[s.scroll : s.cursor+1] {
-		visibleHeight += height
+	return layout, position
+}
+
+func (s *Model) reveal(layout []fieldLayout, total int, whole bool) {
+	s.scroll = min(max(s.scroll, 0), max(total-s.height, 0))
+	start, end := layout[s.cursor].start, layout[s.cursor].end
+	if whole {
+		end = min(end, start+s.height)
+		s.scroll = min(max(s.scroll, end-s.height), start)
+	} else {
+		s.scroll = min(max(s.scroll, start-s.height+1), end-1)
 	}
-	for s.scroll < s.cursor && visibleHeight > h {
-		visibleHeight -= heights[s.scroll]
-		s.scroll++
-	}
-	for s.scroll > 0 && visibleHeight+heights[s.scroll-1] <= h {
-		s.scroll--
-		visibleHeight += heights[s.scroll]
+}
+
+func (s *Model) scrollBy(delta int) {
+	rows := s.rows()
+	layout, _ := s.layout(rows)
+	cursor, scroll := s.cursor, s.scroll
+	position := layout[cursor].start - scroll
+	s.move(delta)
+	layout, total := s.layout(rows)
+	s.scroll = layout[s.cursor].start - position
+	if s.scroll < 0 || s.scroll > max(total-s.height, 0) {
+		s.cursor, s.scroll = cursor, scroll
 	}
 }
 
