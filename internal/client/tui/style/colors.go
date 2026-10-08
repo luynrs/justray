@@ -15,13 +15,14 @@ var (
 )
 
 var (
-	Title  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("4"))
-	Accent = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
-	Strong = Accent.Bold(true)
-	Name   = lipgloss.NewStyle().Bold(true)
-	Key    = Name
-	Dim    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	Err    = lipgloss.NewStyle().Bold(true).Foreground(red)
+	Title      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("4"))
+	MutedTitle = Title.Foreground(lipgloss.Color("#3d4a52"))
+	Accent     = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+	Strong     = Accent.Bold(true)
+	Name       = lipgloss.NewStyle().Bold(true)
+	Key        = Name
+	Dim        = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	Err        = lipgloss.NewStyle().Bold(true).Foreground(red)
 
 	pill    = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(Title.GetForeground()).Bold(true)
 	pillCap = lipgloss.NewStyle().Foreground(Title.GetForeground())
@@ -41,6 +42,10 @@ var (
 		Cursor:  textarea.CursorStyle{Color: Accent.GetForeground(), Blink: true},
 	}
 )
+
+func KeyHint(key, description string) string {
+	return Key.Render(key) + Dim.Render(" "+description)
+}
 
 // Segment is one tab, same width either way
 func Segment(s string, active bool) string {

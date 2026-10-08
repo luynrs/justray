@@ -113,29 +113,6 @@ func (m Model) tree(rows []tree.Row) string {
 	return strings.Join(lines, "\n")
 }
 
-func (m Model) shortcuts() string {
-	keys := [][2]string{
-		{style.Move(), "Move"}, {style.Fold(), "Fold"}, {"t/T", "Ping"}, {"r/R", "Refresh"}, {style.Enter(), "Toggle"},
-		{"a/d", "Add / Delete"}, {"m", "Mode"}, {"/", "Filter"}, {"o", "Settings"}, {"q", "Quit"},
-	}
-	lines := make([]string, len(keys))
-	columnWidth := 0
-	for i, key := range keys {
-		lines[i] = style.Strong.Render(style.Pad(key[0], 6)) + " " + key[1]
-		columnWidth = max(columnWidth, lipgloss.Width(lines[i]))
-	}
-	if width := m.help.Width(); width >= columnWidth*2+2 {
-		rows := (len(lines) + 1) / 2
-		for i := range rows {
-			if i+rows < len(lines) {
-				lines[i] = style.Pad(lines[i], width/2) + lines[i+rows]
-			}
-		}
-		lines = lines[:rows]
-	}
-	return strings.Join(lines, "\n")
-}
-
 func (m Model) footer(rows []tree.Row) string {
 	icon := style.Dot(false)
 	if m.connected() {
@@ -174,15 +151,15 @@ func (m Model) footer(rows []tree.Row) string {
 	hint := m.helpHint()
 	switch {
 	case m.activeModal != modalNone:
-		hint = ansi.Truncate(style.Key.Render("esc")+style.Dim.Render(" cancel"), m.w, "")
+		hint = ansi.Truncate(style.KeyHint("esc", "cancel"), m.w, "")
 	case m.editing():
-		hint = ansi.Truncate(style.Key.Render(style.Enter())+style.Dim.Render(" apply "+style.Sep()+" ")+style.Key.Render("esc")+style.Dim.Render(" cancel"), m.w, "")
+		hint = ansi.Truncate(style.KeyHint(style.Enter(), "apply")+style.Dim.Render(" "+style.Sep()+" ")+style.KeyHint("esc", "cancel"), m.w, "")
 	case m.dialog != nil && m.dialog.Dirty():
 		action := "apply"
 		if m.dialog.Err() != "" {
 			action = "cancel"
 		}
-		prefix := style.Key.Render("esc") + style.Dim.Render(" "+action+" "+style.Sep()+" ")
+		prefix := style.KeyHint("esc", action) + style.Dim.Render(" "+style.Sep()+" ")
 		if lipgloss.Width(prefix)+lipgloss.Width(hint) <= m.w {
 			hint = prefix + hint
 		}
@@ -194,11 +171,10 @@ func (m Model) footer(rows []tree.Row) string {
 }
 
 func (m Model) helpHint() string {
-	hint := style.Key.Render("?")
 	if m.w >= len("? shortcuts")+4 {
-		hint += style.Dim.Render(" shortcuts")
+		return style.KeyHint("?", "shortcuts")
 	}
-	return hint
+	return style.Key.Render("?")
 }
 
 func (m Model) clip(s string) string { return style.Clip(s, m.w) }

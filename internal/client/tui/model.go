@@ -129,7 +129,12 @@ func (m *Model) syncTTY() tea.Cmd {
 	if m.dialog != nil {
 		force = m.dialog.Current().ForceTTY
 	}
-	style.TTY = style.DetectTTY(force)
+	if tty := style.DetectTTY(force); tty != style.TTY {
+		style.TTY = tty
+		if m.activeModal == modalHelp {
+			m.resizeModal()
+		}
+	}
 	animation := style.Spinner()
 	if slices.Equal(m.spin.Spinner.Frames, animation.Frames) {
 		return nil

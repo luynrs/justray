@@ -76,9 +76,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.snapshot = msg.snapshot
 		spinnerCommand := m.syncTTY()
-		if m.activeModal == modalHelp {
-			m.help.SetContent(m.shortcuts())
-		}
 		m.live = true
 		spinnerCommand = tea.Batch(spinnerCommand, m.startSpinner())
 		rows := m.rows()

@@ -29,12 +29,15 @@ type modalLayout struct {
 	body   image.Rectangle
 }
 
-func (model Model) modalLayout() modalLayout {
-	width, height := min(max(model.w-4, 1), 60), min(max(model.h, 1), 9)
-	if model.w < 28 {
-		width = max(model.w, 1)
+func (m Model) modalLayout() modalLayout {
+	width, height := min(max(m.w-4, 1), 60), min(max(m.h, 1), 9)
+	if m.w < 28 {
+		width = max(m.w, 1)
 	}
-	left, top := max((model.w-width)/2, 0), max((model.h-height)/2, 0)
+	if m.activeModal == modalHelp {
+		height = min(max(m.h-2, 1), lipgloss.Height(m.shortcuts(max(width-6, 1)))+4)
+	}
+	left, top := max((m.w-width)/2, 0), max((m.h-height)/2, 0)
 	layout := modalLayout{bounds: image.Rect(left, top, left+width, top+height)}
 	if width < 4 || height < 3 {
 		layout.body = layout.bounds
@@ -45,14 +48,14 @@ func (model Model) modalLayout() modalLayout {
 	return layout
 }
 
-func (model *Model) resizeModal() {
-	layout := model.modalLayout()
-	model.editor.SetWidth(layout.body.Dx())
-	model.editor.SetHeight(layout.body.Dy())
-	model.help.SetWidth(layout.body.Dx())
-	model.help.SetHeight(layout.body.Dy())
-	if model.activeModal == modalHelp {
-		model.help.SetContent(model.shortcuts())
+func (m *Model) resizeModal() {
+	layout := m.modalLayout()
+	m.editor.SetWidth(layout.body.Dx())
+	m.editor.SetHeight(layout.body.Dy())
+	m.help.SetWidth(layout.body.Dx())
+	m.help.SetHeight(layout.body.Dy())
+	if m.activeModal == modalHelp {
+		m.help.SetContent(m.shortcuts(layout.body.Dx()))
 	}
 }
 
@@ -130,31 +133,31 @@ func (m Model) updateModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (model Model) modalView(background string) string {
-	layout := model.modalLayout()
+func (m Model) modalView(background string) string {
+	layout := m.modalLayout()
 	var title, content string
-	switch model.activeModal {
+	switch m.activeModal {
 	case modalAdd:
 		title = "Add"
-		if model.editor.Value() == "" {
-			editorStyles := model.editor.Styles()
+		if m.editor.Value() == "" {
+			editorStyles := m.editor.Styles()
 			editorStyles.Focused.CursorLine = style.Dim
-			model.editor.SetStyles(editorStyles)
+			m.editor.SetStyles(editorStyles)
 		}
-		content = model.editor.View()
+		content = m.editor.View()
 	case modalHelp:
 		title = "Shortcuts"
-		content = model.help.View()
+		content = m.help.View()
 	case modalDelete:
 		title = "Delete"
-		name := model.deleteTarget.Sub.Name
-		if model.deleteTarget.Kind == tree.Node {
-			name = model.deleteTarget.Node.Name
+		name := m.deleteTarget.Sub.Name
+		if m.deleteTarget.Kind == tree.Node {
+			name = m.deleteTarget.Node.Name
 		}
 		const question = "Do you really want to delete "
 		warning := ansi.Hardwrap("This action can't be undone.", layout.body.Dx(), true)
 		questionLines := max(layout.body.Dy()-lipgloss.Height(warning), 1)
-		name = ansi.Truncate(style.Sanitize(name, model.emoji()), max(layout.body.Dx()*questionLines-len(question)-1, 0), "...")
+		name = ansi.Truncate(style.Sanitize(name, m.emoji()), max(layout.body.Dx()*questionLines-len(question)-1, 0), "...")
 		content = ansi.Hardwrap(question+style.Name.Render(name)+"?", layout.body.Dx(), true) + "\n" + warning
 	}
 	width, height := layout.bounds.Dx(), layout.bounds.Dy()
@@ -169,31 +172,31 @@ func (model Model) modalView(background string) string {
 	window := lipgloss.NewStyle().Border(border).BorderForeground(style.Title.GetForeground()).
 		Padding(layout.body.Min.Y-layout.bounds.Min.Y-1, layout.body.Min.X-layout.bounds.Min.X-1).
 		Width(width).Height(height).Render(content)
-	edge := lipgloss.NewStyle().Foreground(style.Title.GetForeground())
+	edge := style.Title.Bold(false)
 	frame := strings.Split(window, "\n")
 	titlePadding := min(2, width-4)
 	title = ansi.Truncate(title, width-4-titlePadding, "")
 	frame[0] = edge.Render(border.TopLeft+strings.Repeat(border.Top, titlePadding)+" ") + style.Name.Render(title) +
 		edge.Render(" "+strings.Repeat(border.Top, width-4-titlePadding-lipgloss.Width(title))+border.TopRight)
-	if model.activeModal == modalAdd || model.activeModal == modalDelete {
-		hint := style.Key.Render(style.Enter()) + style.Dim.Render(" submit")
+	if m.activeModal == modalAdd || m.activeModal == modalDelete {
+		hint := style.KeyHint(style.Enter(), "submit")
 		hintWidth := lipgloss.Width(hint)
 		if width >= hintWidth+6 {
 			frame[height-1] = edge.Render(border.BottomLeft+strings.Repeat(border.Bottom, width-hintWidth-6)+" ") +
 				hint + edge.Render(" "+strings.Repeat(border.Bottom, 2)+border.BottomRight)
 		}
 	}
-	canvas := lipgloss.NewCanvas(model.w, model.h).Compose(lipgloss.NewLayer(background))
+	canvas := lipgloss.NewCanvas(m.w, m.h).Compose(lipgloss.NewLayer(background))
 	for row := range canvas.Height() {
 		for column := range canvas.Width() {
 			cell := canvas.CellAt(column, row)
-			cell.Style.Attrs = (cell.Style.Attrs &^ uv.AttrBold) | uv.AttrFaint
-			if cell.Style.Bg == style.Title.GetForeground() {
-				cell.Style.Bg = style.Dim.GetForeground()
+			if cell.Style.Fg == style.Title.GetForeground() {
+				cell.Style.Fg = style.MutedTitle.GetForeground()
+			} else {
+				cell.Style.Attrs |= uv.AttrFaint
 			}
-			if cell.Style.Fg == style.Title.GetForeground() && (cell.Content == "▐" || cell.Content == "▌") {
-				cell.Style.Fg = style.Dim.GetForeground()
-				cell.Style.Attrs &^= uv.AttrFaint
+			if cell.Style.Bg == style.Title.GetForeground() {
+				cell.Style.Bg = style.MutedTitle.GetForeground()
 			}
 		}
 	}

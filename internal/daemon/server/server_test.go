@@ -229,6 +229,30 @@ func TestWatchLifecycle(t *testing.T) {
 					t.Fatalf("%s page movement or its Ctrl alias did not work", pane)
 				}
 			}
+			screen("?")
+			if counted, single := screen("gg9j"), screen("ggj"); counted != single {
+				t.Fatalf("%s help applied a numeric prefix", pane)
+			}
+			program.Send(tea.WindowSizeMsg{Width: 80, Height: 12})
+			frame := screen("gg")
+			lastAction := "Quit"
+			if pane == "settings" {
+				lastAction = "Save / discard"
+			}
+			if !strings.Contains(frame, "Move") || !strings.Contains(frame, lastAction) {
+				t.Fatalf("%s essential shortcuts require scrolling at 80x12:\n%s", pane, frame)
+			}
+			for _, width := range []int{24, 12, 1, 80} {
+				program.Send(tea.WindowSizeMsg{Width: width, Height: 40})
+				for _, line := range strings.Split(screen("gg"), "\n") {
+					if ansi.StringWidth(line) > width {
+						t.Fatalf("help exceeds terminal width %d: %q", width, line)
+					}
+				}
+			}
+			if frame := screen("\x1b"); strings.Contains(frame, "Shortcuts") {
+				t.Fatal("Esc did not close help")
+			}
 		}
 		screen("gg4j\r")
 		program.Send(tea.PasteMsg{Content: "example.com"})
