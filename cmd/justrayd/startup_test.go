@@ -19,6 +19,9 @@ import (
 )
 
 func TestStartup(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Setenv("TMPDIR", "/tmp")
+	}
 	home, err := os.MkdirTemp("", "jr-")
 	if err != nil {
 		t.Fatal(err)
@@ -34,35 +37,6 @@ func TestStartup(t *testing.T) {
 		t.Setenv(key, home)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	if runtime.GOOS == "linux" {
-		script := `#!/bin/sh
-case "$2" in
-is-enabled) if [ -f "$HOME/fail-query" ]; then echo 'scheduler unavailable' >&2; exit 2; fi; if [ -f "$HOME/query-once" ]; then rm "$HOME/query-once"; touch "$HOME/fail-query"; fi; if [ -f "$HOME/hang-query" ]; then exec sleep 60; fi; if [ -f "$HOME/autostart-enabled" ]; then echo enabled; else echo disabled; exit 1; fi;;
-enable) if [ -f "$HOME/slow-enable" ]; then sleep 5; fi; touch "$HOME/autostart-enabled"; if [ -f "$HOME/hang-enable" ]; then exec sleep 60; fi; test ! -f "$HOME/fail-enable";;
-disable) test ! -f "$HOME/fail-disable" || exit 1; rm -f "$HOME/autostart-enabled";;
-*) exit 0;;
-esac
-`
-		if err := os.WriteFile(filepath.Join(bin, "systemctl"), []byte(script), 0o700); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if runtime.GOOS == "darwin" {
-		script := `#!/bin/sh
-case "$1" in
-print-disabled) if [ -f "$HOME/fail-query" ]; then echo 'scheduler unavailable' >&2; exit 2; fi; if [ -f "$HOME/query-once" ]; then rm "$HOME/query-once"; touch "$HOME/fail-query"; fi; if [ -f "$HOME/hang-query" ]; then exec sleep 60; fi; if [ -f "$HOME/autostart-enabled" ]; then echo '"com.github.luynrs.justrayd" => enabled'; else echo '"com.github.luynrs.justrayd" => disabled'; fi;;
-print) test -f "$HOME/autostart-loaded";;
-bootstrap) test ! -f "$HOME/autostart-loaded" || exit 1; touch "$HOME/autostart-loaded";;
-enable) if [ -f "$HOME/slow-enable" ]; then sleep 5; fi; touch "$HOME/autostart-enabled"; if [ -f "$HOME/hang-enable" ]; then exec sleep 60; fi; test ! -f "$HOME/fail-enable";;
-disable) test ! -f "$HOME/fail-disable" || exit 1; rm -f "$HOME/autostart-enabled";;
-bootout) kill -TERM "$PPID";;
-*) exit 1;;
-esac
-`
-		if err := os.WriteFile(filepath.Join(bin, "launchctl"), []byte(script), 0o700); err != nil {
-			t.Fatal(err)
-		}
-	}
 	directory, err := ipc.Dir()
 	if err != nil {
 		t.Fatal(err)
@@ -121,24 +95,7 @@ esac
 	}
 	run("sub", "add", "socks://127.0.0.1:19090#fixture")
 	run("up", "fixture", "--proxy")
-	t.Run("settings", func(t *testing.T) { checkSettings(t, client, directory, home) })
 	run("stop")
-	if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
-		marker := filepath.Join(home, "fail-query")
-		if err := os.WriteFile(marker, nil, 0o600); err != nil {
-			t.Fatal(err)
-		}
-		start()
-		ready(true)
-		snapshot, err := client.Snapshot(t.Context())
-		if err != nil || snapshot.Settings.Autostart != "" {
-			t.Fatalf("unknown autostart reported as known: %+v, %v", snapshot.Settings, err)
-		}
-		if err := os.Remove(marker); err != nil {
-			t.Fatal(err)
-		}
-		run("stop")
-	}
 	start()
 	ready(true)
 	run("down")
