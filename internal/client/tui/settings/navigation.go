@@ -36,7 +36,7 @@ func (s *Model) navigate(motion navigation.Motion) {
 		}
 		s.scroll += delta
 		layout, total = s.layout(rows)
-		s.reveal(layout, total, true)
+		s.reveal(layout, total)
 	case navigation.Scroll:
 		s.scrollBy(motion.Distance(s.height, total))
 	}

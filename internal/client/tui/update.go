@@ -99,7 +99,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-		m.cursor, m.scroll = tree.Clamp(rows, m.cursor, m.scroll, m.height())
+		if initial {
+			m.cursor, m.scroll = tree.Reveal(rows, m.cursor, m.scroll, m.height())
+		} else {
+			m.cursor, m.scroll = tree.Clamp(rows, m.cursor, m.scroll, m.height())
+		}
 		return m, tea.Batch(next(m.watch, m.updates), spinnerCommand)
 	}
 	if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "ctrl+c" {
@@ -249,11 +253,11 @@ func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			(mouse.Button != tea.MouseWheelUp && mouse.Button != tea.MouseWheelDown) {
 			return m, nil
 		}
-		delta := 1
+		delta := 3
 		if mouse.Button == tea.MouseWheelUp {
-			delta = -1
+			delta = -3
 		}
-		m.cursor, m.scroll = tree.Scroll(m.rows(), m.cursor, m.scroll, delta, m.height())
+		m.cursor, m.scroll = tree.Clamp(m.rows(), m.cursor, m.scroll+delta, m.height())
 	}
 	return m, nil
 }
@@ -273,7 +277,7 @@ func (m Model) click(x, y int) (tea.Model, tea.Cmd) {
 	}
 	clicked := cursor == m.cursor
 	m.cursor = cursor
-	m.cursor, m.scroll = tree.Clamp(rows, m.cursor, m.scroll, m.height())
+	m.cursor, m.scroll = tree.Reveal(rows, m.cursor, m.scroll, m.height())
 
 	if r, _ := tree.At(rows, m.cursor); clicked || r.Kind == tree.Header {
 		return m.activate(r)

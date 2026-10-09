@@ -332,15 +332,16 @@ func (s *Model) mouse(msg tea.MouseMsg) tea.Cmd {
 		}
 		switch mouse.Button {
 		case tea.MouseWheelUp:
-			s.scrollBy(-1)
+			s.scrollBy(-3)
 		case tea.MouseWheelDown:
-			s.scrollBy(1)
+			s.scrollBy(3)
 		}
 	}
 	return nil
 }
 
 func (s *Model) activate() tea.Cmd {
+	s.move(0)
 	f, ok := s.at()
 	if !ok || !f.editable() {
 		return nil
@@ -502,7 +503,7 @@ func (s *Model) move(delta int) {
 	cursor, _ := slices.BinarySearch(editable, s.cursor)
 	s.cursor = editable[min(max(cursor+delta, 0), len(editable)-1)]
 	layout, total := s.layout(rows)
-	s.reveal(layout, total, true)
+	s.reveal(layout, total)
 }
 
 func (s *Model) switchTab(delta int) {

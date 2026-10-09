@@ -175,7 +175,10 @@ func TestWatchLifecycle(t *testing.T) {
 				t.Error("TUI did not stop")
 			}
 		}()
-		screen := func(keys string) string {
+		screen := func(keys string, messages ...tea.Msg) string {
+			for _, message := range messages {
+				program.Send(message)
+			}
 			for _, key := range keys {
 				msg := tea.KeyPressMsg{Code: key}
 				if unicode.IsPrint(key) {
@@ -192,12 +195,34 @@ func TestWatchLifecycle(t *testing.T) {
 				return ""
 			}
 		}
-		for deadline := time.Now().Add(3 * time.Second); !strings.Contains(screen("o"), "General"); {
-			if time.Now().After(deadline) {
-				t.Fatal("TUI did not receive settings")
+		check := func(test *testing.T, frame string, texts ...string) {
+			test.Helper()
+			for _, text := range texts {
+				if !strings.Contains(frame, text) {
+					test.Fatalf("missing %q:\n%s", text, frame)
+				}
 			}
-			time.Sleep(time.Millisecond)
 		}
+		scroll := func(message tea.Msg) string {
+			for range 20 {
+				program.Send(message)
+			}
+			return screen("")
+		}
+		waitFor := func(test *testing.T, keys, text string) string {
+			test.Helper()
+			for deadline := time.Now().Add(3 * time.Second); ; {
+				frame := screen(keys)
+				if strings.Contains(frame, text) {
+					return frame
+				}
+				if time.Now().After(deadline) {
+					test.Fatalf("timed out waiting for %q:\n%s", text, frame)
+				}
+				time.Sleep(time.Millisecond)
+			}
+		}
+		waitFor(t, "o", "General")
 		screen("q")
 		for _, pane := range []string{"tree", "settings"} {
 			program.Send(tea.WindowSizeMsg{Width: 80, Height: 10})
@@ -263,6 +288,72 @@ func TestWatchLifecycle(t *testing.T) {
 			t.Fatal("routing rule was not removed from Direct")
 		}
 		screen("q")
+		controls := []struct {
+			name      string
+			down      tea.Msg
+			up        tea.Msg
+			firstLine int
+		}{
+			{"wheel", tea.MouseWheelMsg{Button: tea.MouseWheelDown, X: 10, Y: 3}, tea.MouseWheelMsg{Button: tea.MouseWheelUp, X: 10, Y: 3}, 2},
+			{"keys", tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl}, tea.KeyPressMsg{Code: 'y', Mod: tea.ModCtrl}, 4},
+		}
+		for _, control := range controls {
+			t.Run("settings scroll focus/"+control.name, func(t *testing.T) {
+				screen("ogg", tea.WindowSizeMsg{Width: 80, Height: 10})
+				defer screen("q")
+				check(t, screen("", tea.MouseClickMsg{Button: tea.MouseLeft, X: 5, Y: 6}), "| Auto-refresh")
+				check(t, strings.Split(screen("", control.down), "\n")[control.firstLine], "| Auto-refresh")
+				if frame := scroll(control.down); strings.Contains(frame, "| ") || !strings.Contains(frame, domain.DefaultProbeURL) {
+					t.Fatalf("scroll did not reach the bottom with the selected setting offscreen:\n%s", frame)
+				}
+				check(t, scroll(control.up), "| Auto-refresh")
+				scroll(control.down)
+				check(t, screen("\r"), "| Auto-refresh")
+				check(t, screen("\r", tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl}, tea.PasteMsg{Content: "12h"}), "| Auto-refresh", "| 12h")
+				screen("\t\tgg")
+				check(t, scroll(control.down), "Block (0)")
+				check(t, strings.Split(scroll(control.up), "\n")[2], "| Mode")
+			})
+		}
+		if _, err := client.AddSubscription(t.Context(), link+"#Scroll%20anchor"); err != nil {
+			t.Fatal(err)
+		}
+		feed := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			writer.Header().Set("Profile-Title", "Scroll feed")
+			_, _ = io.WriteString(writer, strings.Join([]string{link + "#Remote-one", link + "#Remote-two", link + "#Remote-three", link + "#Remote-four"}, "\n"))
+		}))
+		defer feed.Close()
+		if _, err := client.AddSubscription(t.Context(), feed.URL); err != nil {
+			t.Fatal(err)
+		}
+		program.Send(tea.WindowSizeMsg{Width: 80, Height: 20})
+		waitFor(t, "", "Remote-four")
+		for _, control := range controls {
+			t.Run("tree scroll focus/"+control.name, func(t *testing.T) {
+				screen("gg", tea.WindowSizeMsg{Width: 80, Height: 10})
+				check(t, screen("", tea.MouseClickMsg{Button: tea.MouseLeft, X: 5, Y: 5}), "|   o Scroll anchor")
+				check(t, strings.Split(screen("", control.down), "\n")[control.firstLine], "|   o Scroll anchor")
+				if frame := scroll(control.down); strings.Contains(frame, "Scroll anchor") || strings.Contains(frame, "| ") || !strings.Contains(frame, "Remote-four") {
+					t.Fatalf("scroll did not reach the bottom with the selected node offscreen:\n%s", frame)
+				}
+				mode := "[ Proxy ]"
+				if control.name == "keys" {
+					mode = "[  TUN  ]"
+				}
+				if err := client.SetTun(t.Context(), control.name == "keys"); err != nil {
+					t.Fatal(err)
+				}
+				if frame := waitFor(t, "", mode); strings.Contains(frame, "Scroll anchor") || !strings.Contains(frame, "Remote-four") {
+					t.Fatalf("daemon update moved the viewport back to the selection:\n%s", frame)
+				}
+				if frame := screen("", tea.WindowSizeMsg{Width: 80, Height: 9}); strings.Contains(frame, "Scroll anchor") {
+					t.Fatalf("resize moved the viewport back to the selection:\n%s", frame)
+				}
+				check(t, screen("d"), "Delete", "Scroll anchor")
+				screen("\x1b")
+				check(t, scroll(control.up), "|   o Scroll anchor", "v Default")
+			})
+		}
 	})
 
 	shutdownDone := make(chan struct{})

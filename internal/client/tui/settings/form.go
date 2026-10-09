@@ -28,7 +28,7 @@ func (s *Model) View(width, height int) string {
 
 	rows := s.rows()
 	layout, total := s.layout(rows)
-	s.reveal(layout, total, false)
+	s.scroll = min(max(s.scroll, 0), max(total-s.height, 0))
 	lines := make([]string, min(s.height, total-s.scroll))
 	hits := map[int]hit{}
 	for i, bounds := range layout {
@@ -79,25 +79,16 @@ func (s *Model) layout(rows []field) ([]fieldLayout, int) {
 	return layout, position
 }
 
-func (s *Model) reveal(layout []fieldLayout, total int, whole bool) {
+func (s *Model) reveal(layout []fieldLayout, total int) {
 	s.scroll = min(max(s.scroll, 0), max(total-s.height, 0))
 	start, end := layout[s.cursor].start, layout[s.cursor].end
-	if whole {
-		end = min(end, start+s.height)
-		s.scroll = min(max(s.scroll, end-s.height), start)
-	} else {
-		s.scroll = min(max(s.scroll, start-s.height+1), end-1)
-	}
+	end = min(end, start+s.height)
+	s.scroll = min(max(s.scroll, end-s.height), start)
 }
 
 func (s *Model) scrollBy(delta int) {
-	rows := s.rows()
-	layout, _ := s.layout(rows)
-	position := layout[s.cursor].start - s.scroll
-	s.move(delta)
-	layout, total := s.layout(rows)
-	s.scroll = layout[s.cursor].start - position
-	s.reveal(layout, total, false)
+	_, total := s.layout(s.rows())
+	s.scroll = min(max(s.scroll+delta, 0), max(total-s.height, 0))
 }
 
 func (s *Model) TabBar(width int) string {

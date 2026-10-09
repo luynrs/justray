@@ -23,12 +23,12 @@ func (m *Model) navigate(motion navigation.Motion) {
 		m.cursor, m.scroll = tree.Page(rows, m.cursor, m.scroll, motion.Distance(height, len(rows)), height)
 		return
 	case navigation.Scroll:
-		m.cursor, m.scroll = tree.Scroll(rows, m.cursor, m.scroll, motion.Distance(height, len(rows)), height)
+		m.cursor, m.scroll = tree.Clamp(rows, m.cursor, m.scroll+motion.Distance(height, len(rows)), height)
 		return
 	case navigation.Line:
 		m.cursor = min(motion.Count-1, len(selectable)-1)
 	case navigation.Last:
 		m.cursor = len(selectable) - 1
 	}
-	m.cursor, m.scroll = tree.Clamp(rows, m.cursor, m.scroll, height)
+	m.cursor, m.scroll = tree.Reveal(rows, m.cursor, m.scroll, height)
 }

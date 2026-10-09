@@ -116,6 +116,16 @@ func At(rows []Row, cursor int) (Row, bool) {
 }
 
 func Clamp(rows []Row, cursor, scroll, height int) (int, int) {
+	count := 0
+	for _, row := range rows {
+		if row.Selectable() {
+			count++
+		}
+	}
+	return min(max(cursor, 0), max(count-1, 0)), min(max(scroll, 0), max(len(rows)-height, 0))
+}
+
+func Reveal(rows []Row, cursor, scroll, height int) (int, int) {
 	cursor = max(cursor, 0)
 	count, pos := 0, 0
 	for i, row := range rows {
@@ -139,20 +149,6 @@ func Clamp(rows []Row, cursor, scroll, height int) (int, int) {
 	return cursor, min(max(scroll, 0), max(len(rows)-height, 0))
 }
 
-func Scroll(rows []Row, cursor, scroll, delta, height int) (int, int) {
-	selectable := Selectable(rows)
-	if len(selectable) == 0 {
-		return 0, 0
-	}
-	position := selectable[min(max(cursor, 0), len(selectable)-1)] - scroll
-	nextScroll := min(max(scroll+delta, 0), max(len(rows)-height, 0))
-	nextCursor, exact := slices.BinarySearch(selectable, nextScroll+position)
-	if delta < 0 && !exact {
-		nextCursor--
-	}
-	return Clamp(rows, nextCursor, nextScroll, height)
-}
-
 func Page(rows []Row, cursor, scroll, delta, height int) (int, int) {
 	selectable := Selectable(rows)
 	if len(selectable) == 0 {
@@ -162,10 +158,9 @@ func Page(rows []Row, cursor, scroll, delta, height int) (int, int) {
 	if delta < 0 && !exact {
 		cursor--
 	}
-	return Clamp(rows, cursor, scroll+delta, height)
+	return Reveal(rows, cursor, scroll+delta, height)
 }
 
-// Point maps a screen line to a cursor position
 func Point(rows []Row, scroll, height, top, y int) (cursor int, ok bool) {
 	i := scroll + y - top
 	if y < top || y >= top+height || i < 0 || i >= len(rows) {
