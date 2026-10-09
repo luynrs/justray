@@ -30,10 +30,7 @@ import (
 func TestStop(t *testing.T) {
 	if os.Getenv("JUSTRAY_TEST_COMMAND") == "stop" {
 		rootCmd.SetArgs([]string{"stop"})
-		if err := Execute(); err != nil {
-			t.Fatal(err)
-		}
-		return
+		os.Exit(Execute())
 	}
 	if reply := os.Getenv("JUSTRAY_TEST_REPLY"); reply != "" {
 		dir, err := ipc.Dir()

@@ -5,8 +5,8 @@ try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 
 $repo = "https://github.com/luynrs/justray"
 $version = if ($env:JUSTRAY_VERSION) { $env:JUSTRAY_VERSION } else { "latest" }
-$dir = if ($env:JUSTRAY_INSTALL_DIR) {
-	$env:JUSTRAY_INSTALL_DIR
+$dir = if ($env:JUSTRAY_DIRECTORY) {
+	$env:JUSTRAY_DIRECTORY
 } else {
 	Join-Path $env:LOCALAPPDATA "justray"
 }
@@ -49,10 +49,6 @@ $arch = switch ($nativeArch) {
 	"AMD64" { "amd64" }
 	"ARM64" { "arm64" }
 	default { fail "Unsupported architecture: $nativeArch" }
-}
-
-if ($version -match '^\d') {
-	$version = "v$version"
 }
 
 $base = if ($version -eq "latest") {
@@ -138,13 +134,12 @@ try {
 	}
 	done "Extracted archive"
 
-	step "Stopping daemon..."
-
-	$restart = (& "$out\justray.exe" stop) -match 'Daemon stopped'
-	if ($LASTEXITCODE) {
-		throw "Failed to stop daemon"
+	& "$out\justray.exe" stop > $null
+	switch ($LASTEXITCODE) {
+		0 { $restart = $true; done "Stopped daemon" }
+		2 {}
+		default { throw "Failed to stop daemon" }
 	}
-	done $(if ($restart) { "Daemon stopped" } else { "Daemon is not running" })
 
 	step "Installing..."
 
@@ -193,7 +188,7 @@ try {
 		}
 		& "$dir\justray.exe" status > $null
 		if ($LASTEXITCODE) { throw "Failed to restore daemon" }
-		done "Daemon ready"
+		done "Restarted daemon"
 	}
 	done "Installed to $dir"
 	Write-Host "`nRun jray in a new terminal window."

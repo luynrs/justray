@@ -39,7 +39,7 @@ func stop(cmd *cobra.Command, args []string) error {
 				return err
 			}
 			done("Daemon is not running")
-			return nil
+			return ipc.ErrNoDaemon
 		}
 	}
 	stop := spin("Stopping daemon")

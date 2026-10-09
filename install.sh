@@ -35,12 +35,11 @@ esac
 
 case "$version" in
 	latest) base="$repo/releases/latest/download" ;;
-	[0-9]*) base="$repo/releases/download/v$version" ;;
 	*) base="$repo/releases/download/$version" ;;
 esac
 
-if [ -n "${JUSTRAY_INSTALL_DIR:-}" ]; then
-	dir="$JUSTRAY_INSTALL_DIR"
+if [ -n "${JUSTRAY_DIRECTORY:-}" ]; then
+	dir="$JUSTRAY_DIRECTORY"
 else
 	dir="$HOME/.local/bin"
 	for candidate in "$HOME/.local/bin" "$HOME/bin" /usr/local/bin; do
@@ -136,13 +135,12 @@ for binary in justray justrayd jray; do
 done
 pass "Extracted archive"
 
-step "Stopping daemon..."
-
-stopped=$("$tmp/out/justray" stop) || fail "Failed to stop daemon"
-case "$stopped" in
-	*"Daemon stopped"*) restart=1 ;;
-esac
-pass "${stopped#✓ }"
+if "$tmp/out/justray" stop >/dev/null; then
+	restart=1
+	pass "Stopped daemon"
+else
+	[ "$?" -eq 2 ] || fail "Failed to stop daemon"
+fi
 
 step "Installing..."
 
@@ -161,7 +159,7 @@ if [ "$restart" -eq 1 ]; then
 		attempt=$((attempt + 1))
 	done
 	"$dir/justray" status >/dev/null || fail "Failed to restore daemon"
-	pass "Daemon ready"
+	pass "Restarted daemon"
 fi
 
 pass "Installed to $dir"

@@ -93,6 +93,10 @@ func TestStartup(t *testing.T) {
 			time.Sleep(20 * time.Millisecond)
 		}
 	}
+	stopped := exec.Command(filepath.Join(bin, "justray"), "stop")
+	if output, err := stopped.CombinedOutput(); err == nil || stopped.ProcessState.ExitCode() != 2 {
+		t.Fatalf("stop without daemon: %s, %v", output, err)
+	}
 	run("sub", "add", "socks://127.0.0.1:19090#fixture")
 	run("up", "fixture", "--proxy")
 	run("stop")

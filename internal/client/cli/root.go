@@ -77,8 +77,7 @@ func init() {
 	rootCmd.AddCommand(upCmd, downCmd, stopCmd, probeCmd, statusCmd, subCmd, logsCmd, versionCmd)
 }
 
-// Execute runs the justray CLI. The caller (cmd/justray) handles the error.
-func Execute() error {
+func Execute() int {
 	style.TTY = style.DetectTTY("")
 	a := &app{}
 
@@ -143,14 +142,18 @@ func Execute() error {
 	}
 	setHelpText(rootCmd)
 
-	err := rootCmd.ExecuteContext(ctx)
+	command, err := rootCmd.ExecuteContextC(ctx)
 	if err != nil {
-		if errors.Is(err, context.Canceled) {
-			return nil
+		if command == stopCmd && err == ipc.ErrNoDaemon {
+			return 2
 		}
-		return errors.New(a.clean(err.Error()))
+		if errors.Is(err, context.Canceled) && command != stopCmd {
+			return 0
+		}
+		Fail(errors.New(a.clean(err.Error())))
+		return 1
 	}
-	return nil
+	return 0
 }
 
 func setHelpText(c *cobra.Command) {
