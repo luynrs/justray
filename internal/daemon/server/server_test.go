@@ -260,11 +260,7 @@ func TestWatchLifecycle(t *testing.T) {
 			}
 			program.Send(tea.WindowSizeMsg{Width: 80, Height: 12})
 			frame := screen("gg")
-			lastAction := "Quit"
-			if pane == "settings" {
-				lastAction = "Save / discard"
-			}
-			if !strings.Contains(frame, "Move") || !strings.Contains(frame, lastAction) {
+			if !strings.Contains(frame, "Move") || !strings.Contains(frame, "Quit") {
 				t.Fatalf("%s essential shortcuts require scrolling at 80x12:\n%s", pane, frame)
 			}
 			for _, width := range []int{24, 12, 1, 80} {

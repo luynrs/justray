@@ -10,18 +10,10 @@ import (
 )
 
 func (m Model) shortcuts(width int) string {
-	keys := [][2]string{{style.Move(), "Move"}}
-	if m.dialog != nil {
-		keys = append(keys, [][2]string{
-			{"tab", "Next tab"}, {style.Fold(), "Change value"}, {style.Enter(), "Edit / cycle"},
-			{"d", "Delete rule"}, {"esc/q", "Save / discard"},
-		}...)
-	} else {
-		keys = append(keys, [][2]string{
-			{style.Fold(), "Fold"}, {style.Enter(), "Toggle"}, {"m", "Proxy / TUN"},
-			{"a/d", "Add / Delete"}, {"t/T", "Ping"}, {"r/R", "Refresh"},
-			{"o", "Settings"}, {"/", "Filter"}, {"q", "Quit"},
-		}...)
+	keys := [][2]string{
+		{style.Move(), "Move"}, {style.Fold(), "Fold"}, {style.Enter(), "Toggle"}, {"m", "Proxy / TUN"},
+		{"a/d", "Add / Delete"}, {"t/T", "Ping"}, {"r/R", "Refresh"},
+		{"o", "Settings"}, {"/", "Filter"}, {"q", "Quit"},
 	}
 	lines := make([]string, len(keys))
 	columnWidth := 0
