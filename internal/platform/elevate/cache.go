@@ -8,22 +8,8 @@ import (
 	"path/filepath"
 )
 
-func Executable(source, dir string) string {
-	target := filepath.Join(dir, "elevated", "justrayd")
-	if hasNetAdmin(target) {
-		if sum, err := hashFile(source); err == nil && verified(target, sum) {
-			return target
-		}
-	}
-	return source
-}
-
-func cachedCopy(dir string) (string, error) {
-	self, err := os.Executable()
-	if err != nil {
-		return "", err
-	}
-	sum, err := hashFile(self)
+func cachedCopy(source, dir string) (string, error) {
+	sum, err := hashFile(source)
 	if err != nil {
 		return "", err
 	}
@@ -38,7 +24,7 @@ func cachedCopy(dir string) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
 		return "", err
 	}
-	return target, copyFile(self, target)
+	return target, copyFile(source, target)
 }
 
 func verified(path, sum string) bool {

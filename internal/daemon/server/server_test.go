@@ -143,7 +143,7 @@ func TestWatchLifecycle(t *testing.T) {
 	settings := snapshot.Settings
 	settings.DNS = "1.1.1.1"
 	settings.ForceTTY = "on"
-	if err := client.SetSettings(t.Context(), settings); err != nil {
+	if err := client.SetSettings(t.Context(), snapshot.Settings, settings); err != nil {
 		t.Fatal(err)
 	}
 	config, err := os.ReadFile(ipc.Config(directory))
@@ -152,7 +152,7 @@ func TestWatchLifecycle(t *testing.T) {
 	}
 	t.Run("compact navigation", func(t *testing.T) {
 		frames := make(chan string, 1)
-		program := tea.NewProgram(tui.New(client, nil, nil), tea.WithInput(nil), tea.WithOutput(io.Discard),
+		program := tea.NewProgram(tui.New(client, nil), tea.WithInput(nil), tea.WithOutput(io.Discard),
 			tea.WithWindowSize(80, 10), tea.WithoutSignalHandler(),
 			tea.WithFilter(func(m tea.Model, msg tea.Msg) tea.Msg {
 				if _, ok := msg.(chan string); ok {
@@ -626,7 +626,10 @@ func TestSwitch(t *testing.T) {
 			t.Fatal(err)
 		}
 		if err := app.Restore(); err != nil {
-			t.Fatal(err)
+			if !errors.Is(err, ipc.ErrElevate) {
+				t.Fatal(err)
+			}
+			app.RestoreFailed(err)
 		}
 		listener, err := net.Listen("unix", socket)
 		if err != nil {

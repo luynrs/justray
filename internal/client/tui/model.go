@@ -40,6 +40,7 @@ type Model struct {
 	editor       textarea.Model
 	deleteTarget tree.Row
 	dialog       *settings.Model
+	saving       bool
 	filter       textinput.Model
 	help         viewport.Model
 	activeModal  modalKind
@@ -49,8 +50,8 @@ type Model struct {
 	watch   context.Context
 	stop    context.CancelFunc
 	busy    bool
-	start   func(manual bool) func() error
-	restore tea.Cmd
+	start   func() error
+	startup tea.Cmd
 
 	err   string
 	errAt time.Time
@@ -59,9 +60,8 @@ type Model struct {
 	quitting bool
 }
 
-func New(c *ipc.Client, start, restore func(context.Context) error) Model {
+func New(c *ipc.Client, start func(context.Context) error) Model {
 	watch, stop := context.WithCancel(context.Background())
-	ctx, cancel := context.WithCancel(watch)
 	editor := textarea.New()
 	editor.Prompt = ""
 	editor.ShowLineNumbers = false
@@ -83,35 +83,23 @@ func New(c *ipc.Client, start, restore func(context.Context) error) Model {
 		updates:       make(chan pushed),
 		watch:         watch,
 		stop:          stop,
-		start: func(manual bool) func() error {
-			if manual {
-				cancel()
-			}
-			if start == nil {
-				return nil
-			}
-			return func() error { return start(watch) }
-		},
 	}
 	m.help.SoftWrap = true
-	if restore != nil {
-		m.restore = func() tea.Msg {
-			defer cancel()
-			return restored{err: restore(ctx)}
-		}
-	} else {
-		cancel()
+	if start != nil {
+		m.start = func() error { return start(watch) }
+		m.startup = func() tea.Msg { return started{err: start(watch)} }
 	}
+
 	m.syncTTY()
 	return m
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(watch(m.watch, m.client, m.updates), next(m.watch, m.updates), tickCmd(), m.spin.Tick, m.restore)
+	return tea.Batch(watch(m.watch, m.client, m.updates), next(m.watch, m.updates), tickCmd(), m.spin.Tick, m.startup)
 }
 
 func (m Model) needsSpinner() bool {
-	return m.busy || m.restore != nil ||
+	return m.busy || m.startup != nil ||
 		slices.ContainsFunc(m.snapshot.Nodes, func(node ipc.Node) bool { return node.Probing }) ||
 		slices.ContainsFunc(m.snapshot.Subscriptions, func(subscription ipc.Subscription) bool { return subscription.Refreshing })
 }
@@ -185,7 +173,7 @@ func (m Model) quit() (tea.Model, tea.Cmd) {
 	return m, tea.Quit
 }
 
-func Run(c *ipc.Client, start, restore func(context.Context) error) error {
+func Run(c *ipc.Client, start func(context.Context) error) error {
 	defer log.SetOutput(log.Writer())
 	defer log.SetPrefix(log.Prefix())
 	defer log.SetFlags(log.Flags())
@@ -200,7 +188,7 @@ func Run(c *ipc.Client, start, restore func(context.Context) error) error {
 		}
 	}
 
-	m := New(c, start, restore)
+	m := New(c, start)
 	defer m.stop()
 	_, err := tea.NewProgram(m).Run()
 	return err

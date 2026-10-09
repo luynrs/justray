@@ -10,7 +10,7 @@ import (
 	"github.com/luynrs/justray/internal/platform/autostart"
 )
 
-func (c *Core) SetSettings(ctx context.Context, settings domain.Settings) error {
+func (c *Core) SetSettings(ctx context.Context, expected, settings domain.Settings) error {
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
 	if err := ctx.Err(); err != nil {
@@ -21,8 +21,19 @@ func (c *Core) SetSettings(ctx context.Context, settings domain.Settings) error 
 		return err
 	}
 	previous := c.current()
-	if settings.Autostart != previous.Settings.Autostart {
-		return errors.New("autostart must be changed separately")
+	previous.Settings.Autostart, err = autostart.Current(ctx)
+	if err != nil {
+		return err
+	}
+	if !expected.Equal(previous.Settings) {
+		c.stMu.Lock()
+		c.state.Settings.Autostart = previous.Settings.Autostart
+		c.stMu.Unlock()
+		c.publish()
+		return errors.New("settings changed; reopen settings and try again")
+	}
+	if settings.Equal(previous.Settings) {
+		return nil
 	}
 	status := c.conn.Status()
 	var node domain.Node
@@ -34,7 +45,22 @@ func (c *Core) SetSettings(ctx context.Context, settings domain.Settings) error 
 		err = c.conn.Apply(ctx, node, status.NodeRef, settings, status.Tun)
 	}
 	if err == nil {
-		err = c.store.SaveConfig(settings)
+		if settings.Autostart != previous.Settings.Autostart {
+			err = autostart.Set(ctx, settings.Autostart == "on")
+		}
+		if err == nil {
+			err = ctx.Err()
+		}
+		if err == nil {
+			err = c.store.SaveConfig(settings)
+		}
+		if err != nil && settings.Autostart != previous.Settings.Autostart {
+			if rollbackErr := autostart.Set(context.WithoutCancel(ctx), previous.Settings.Autostart == "on"); rollbackErr != nil {
+				var readErr error
+				previous.Settings.Autostart, readErr = autostart.Current(context.WithoutCancel(ctx))
+				err = errors.Join(err, fmt.Errorf("restore autostart: %w", rollbackErr), readErr)
+			}
+		}
 	}
 	if err != nil {
 		if status.Connected {
@@ -42,43 +68,12 @@ func (c *Core) SetSettings(ctx context.Context, settings domain.Settings) error 
 				err = errors.Join(err, fmt.Errorf("restore settings: %w", rollbackErr))
 			}
 		}
-		c.publish()
-		return err
+		settings = previous.Settings
 	}
 	c.stMu.Lock()
 	c.state.Settings = settings
 	c.stMu.Unlock()
 	c.publish()
-	return nil
-}
-
-func (c *Core) SetAutostart(ctx context.Context, enabled bool) error {
-	c.opMu.Lock()
-	defer c.opMu.Unlock()
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	actual := autostart.Enabled()
-	var err error
-	if actual != enabled {
-		if enabled {
-			err = autostart.Enable()
-		} else {
-			err = autostart.Disable()
-		}
-		actual = autostart.Enabled()
-	}
-	c.stMu.Lock()
-	if actual {
-		c.state.Settings.Autostart = "on"
-	} else {
-		c.state.Settings.Autostart = "off"
-	}
-	c.stMu.Unlock()
-	c.publish()
-	if err == nil && actual != enabled {
-		return errors.New("autostart state did not change")
-	}
 	return err
 }
 

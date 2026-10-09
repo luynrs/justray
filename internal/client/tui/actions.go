@@ -18,7 +18,6 @@ func (m Model) activate(r tree.Row) (tea.Model, tea.Cmd) {
 	if m.busy {
 		return m, nil
 	}
-	m.restore = nil
 	m.err = ""
 
 	m.busy = true
@@ -28,7 +27,7 @@ func (m Model) activate(r tree.Row) (tea.Model, tea.Cmd) {
 		ref := r.Node.Ref()
 		act = func() error { return m.awaitConnection(m.client.Connect(m.watch, ref, nil), ref, true) }
 	}
-	return m, tea.Batch(spinnerCommand, action(true, m.start(true), act))
+	return m, tea.Batch(spinnerCommand, action(true, m.start, act))
 }
 
 func (m Model) collapse() (tea.Model, tea.Cmd) {
@@ -70,9 +69,9 @@ func (m Model) probe() (tea.Model, tea.Cmd) {
 		if r.Node.Probing {
 			return m, nil
 		}
-		return m, action(false, m.start(false), func() error { return m.client.Probe(m.watch, r.Node.SubscriptionID, r.Node.NodeID) })
+		return m, action(false, m.start, func() error { return m.client.Probe(m.watch, r.Node.SubscriptionID, r.Node.NodeID) })
 	}
-	return m, action(false, m.start(false), func() error { return m.client.Probe(m.watch, r.Sub.SubscriptionID, "") })
+	return m, action(false, m.start, func() error { return m.client.Probe(m.watch, r.Sub.SubscriptionID, "") })
 }
 
 func (m Model) refresh() (tea.Model, tea.Cmd) {
@@ -84,7 +83,7 @@ func (m Model) refresh() (tea.Model, tea.Cmd) {
 	if !r.Sub.Refreshable {
 		return m, nil
 	}
-	return m, action(false, m.start(false), func() error { return m.client.RefreshSubscription(m.watch, id) })
+	return m, action(false, m.start, func() error { return m.client.RefreshSubscription(m.watch, id) })
 }
 
 func (m Model) moveSub(dir int) (tea.Model, tea.Cmd) {
@@ -98,18 +97,17 @@ func (m Model) moveSub(dir int) (tea.Model, tea.Cmd) {
 	if i < 0 || j < 0 || j >= len(m.snapshot.Subscriptions) {
 		return m, nil
 	}
-	return m, action(false, m.start(false), func() error { return m.client.MoveSubscription(m.watch, id, dir) })
+	return m, action(false, m.start, func() error { return m.client.MoveSubscription(m.watch, id, dir) })
 }
 
 func (m Model) setTun(enable bool) (tea.Model, tea.Cmd) {
 	if m.busy {
 		return m, nil
 	}
-	m.restore = nil
 	m.err = ""
 	m.busy = m.connected()
 	spinnerCommand := m.startSpinner()
-	return m, tea.Batch(spinnerCommand, action(m.busy, m.start(true), func() error {
+	return m, tea.Batch(spinnerCommand, action(m.busy, m.start, func() error {
 		return m.awaitConnection(m.client.SetTun(m.watch, enable), m.snapshot.Selected, enable)
 	}))
 }

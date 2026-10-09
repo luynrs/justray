@@ -79,6 +79,8 @@ func call[T any](ctx context.Context, c *Client, method string, args Arguments) 
 	switch method {
 	case "Ping", "Snapshot":
 		timeout = 500 * time.Millisecond
+	case "SetSettings":
+		timeout = 45 * time.Second
 	case "Probe", "AddSubscription", "RefreshSubscription", "RefreshSubscriptions":
 		timeout = 0
 	}
@@ -120,6 +122,8 @@ func (c *Client) AwaitConnection(ctx context.Context, ref domain.NodeRef, want *
 		switch {
 		case err != nil:
 			pending = pending || errors.Is(err, ErrNoDaemon)
+		case status.Error != "":
+			return snapshot, errors.New(status.Error)
 		case status.Connected && status.NodeRef == ref && (want == nil || status.Tun == *want):
 			return snapshot, nil
 		case pending:
@@ -168,12 +172,8 @@ func (c *Client) SetTun(ctx context.Context, enable bool) error {
 	return c.command(ctx, "SetTun", Arguments{Tun: new(enable)})
 }
 
-func (c *Client) SetSettings(ctx context.Context, s domain.Settings) error {
-	return c.command(ctx, "SetSettings", Arguments{Settings: s})
-}
-
-func (c *Client) SetAutostart(ctx context.Context, enabled bool) error {
-	return c.command(ctx, "SetAutostart", Arguments{Autostart: enabled})
+func (c *Client) SetSettings(ctx context.Context, previous, next domain.Settings) error {
+	return c.command(ctx, "SetSettings", Arguments{Settings: next, PreviousSettings: previous})
 }
 
 func (c *Client) SetCollapsed(ctx context.Context, id string, collapsed *bool) error {

@@ -3,6 +3,7 @@
 package autostart
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -34,15 +35,30 @@ func unitPath() (string, error) {
 }
 
 // Enabled counts foreign units as enabled too
-func Enabled() bool {
+func Enabled(ctx context.Context) (bool, error) {
 	path, err := unitPath()
 	if err != nil {
-		return false
+		return false, err
 	}
 	if _, err := os.Lstat(path); err != nil {
-		return false
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
 	}
-	return exec.Command("systemctl", "--user", "is-enabled", "justrayd.service").Run() == nil
+	output, err := run(ctx, exec.CommandContext(ctx, "systemctl", "--user", "is-enabled", "justrayd.service"))
+	if err == nil {
+		return true, nil
+	}
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) {
+		return false, err
+	}
+	switch strings.TrimSpace(string(output)) {
+	case "disabled", "masked", "masked-runtime", "linked", "linked-runtime", "not-found":
+		return false, nil
+	}
+	return false, err
 }
 
 func symlinked(path string) bool {
@@ -50,7 +66,7 @@ func symlinked(path string) bool {
 	return err == nil && info.Mode()&os.ModeSymlink != 0
 }
 
-func Enable() error {
+func Enable(ctx context.Context) error {
 	path, err := unitPath()
 	if err != nil {
 		return err
@@ -74,14 +90,14 @@ func Enable() error {
 		return err
 	}
 
-	_ = exec.Command("systemctl", "--user", "daemon-reload").Run()
-	if err := exec.Command("systemctl", "--user", "enable", "justrayd.service").Run(); err != nil {
-		return errors.New("could not enable autostart")
+	if _, err := run(ctx, exec.CommandContext(ctx, "systemctl", "--user", "daemon-reload")); err != nil {
+		return err
 	}
-	return nil
+	_, err = run(ctx, exec.CommandContext(ctx, "systemctl", "--user", "enable", "justrayd.service"))
+	return err
 }
 
-func Disable() error {
+func Disable(ctx context.Context) error {
 	path, err := unitPath()
 	if err != nil {
 		return err
@@ -90,10 +106,12 @@ func Disable() error {
 		return fmt.Errorf("%s is managed elsewhere", path)
 	}
 
-	_ = exec.Command("systemctl", "--user", "disable", "justrayd.service").Run()
+	if _, err := run(ctx, exec.CommandContext(ctx, "systemctl", "--user", "disable", "justrayd.service")); err != nil {
+		return err
+	}
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	_ = exec.Command("systemctl", "--user", "daemon-reload").Run()
-	return nil
+	_, err = run(ctx, exec.CommandContext(ctx, "systemctl", "--user", "daemon-reload"))
+	return err
 }

@@ -15,6 +15,7 @@ import (
 
 	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/engine/outbound"
+	"github.com/luynrs/justray/internal/platform/elevate"
 	"github.com/luynrs/justray/internal/platform/link"
 )
 
@@ -36,6 +37,9 @@ func New(ctx context.Context, logPath string) Engine {
 func (e *box) Apply(ctx context.Context, spec Spec) error {
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	if spec.Tun && elevate.Needed(syscall.EPERM) {
+		return syscall.EPERM
 	}
 	if e.inst == nil {
 		return e.start(ctx, spec)

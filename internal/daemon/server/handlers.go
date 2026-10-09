@@ -111,9 +111,7 @@ func (s *Server) dispatch(ctx context.Context, req ipc.Request) (any, error) {
 		}
 		return nil, s.core.SetTun(ctx, *a.Tun)
 	case "SetSettings":
-		return nil, s.core.SetSettings(ctx, a.Settings)
-	case "SetAutostart":
-		return nil, s.core.SetAutostart(ctx, a.Autostart)
+		return nil, s.core.SetSettings(ctx, a.PreviousSettings, a.Settings)
 	case "SetCollapsed":
 		return nil, s.core.SetCollapsed(ctx, a.SubscriptionID, a.Collapsed)
 	}

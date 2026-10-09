@@ -4,6 +4,7 @@ package autostart
 
 import (
 	"bytes"
+	"context"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/luynrs/justray/internal/ipc"
 )
@@ -37,13 +39,35 @@ func plistPath() (string, error) {
 	return filepath.Join(home, "Library", "LaunchAgents", label+".plist"), nil
 }
 
-func Enabled() bool {
+func Enabled(ctx context.Context) (bool, error) {
 	path, err := plistPath()
 	if err != nil {
-		return false
+		return false, err
 	}
-	_, err = os.Stat(path)
-	return err == nil
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	output, err := run(ctx, exec.CommandContext(ctx, "launchctl", "print-disabled", guiDomain()))
+	if err != nil {
+		return false, err
+	}
+	for line := range strings.SplitSeq(string(output), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 3 && fields[0] == strconv.Quote(label) && fields[1] == "=>" {
+			switch fields[2] {
+			case "false", "enabled":
+				return true, nil
+			case "true", "disabled":
+				return false, nil
+			default:
+				return false, errors.New("unrecognized launchctl state: " + fields[2])
+			}
+		}
+	}
+	return true, nil
 }
 
 func guiDomain() string {
@@ -53,7 +77,7 @@ func guiDomain() string {
 	return "gui/" + strconv.Itoa(os.Getuid())
 }
 
-func Enable() error {
+func Enable(ctx context.Context) error {
 	path, err := plistPath()
 	if err != nil {
 		return err
@@ -76,21 +100,25 @@ func Enable() error {
 	if err := ipc.Chown(path); err != nil {
 		return err
 	}
-	if err := exec.Command("launchctl", "enable", guiDomain()+"/"+label).Run(); err != nil {
-		return errors.New("could not enable autostart")
+	if _, err := run(ctx, exec.CommandContext(ctx, "launchctl", "enable", guiDomain()+"/"+label)); err != nil {
+		return err
 	}
-	if err := exec.Command("launchctl", "bootstrap", guiDomain(), path).Run(); err != nil {
-		return errors.New("could not enable autostart")
+	if _, err := run(ctx, exec.CommandContext(ctx, "launchctl", "print", guiDomain()+"/"+label)); err != nil {
+		if _, err := run(ctx, exec.CommandContext(ctx, "launchctl", "bootstrap", guiDomain(), path)); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-func Disable() error {
+func Disable(ctx context.Context) error {
 	path, err := plistPath()
 	if err != nil {
 		return err
 	}
-	_ = exec.Command("launchctl", "bootout", guiDomain(), path).Run()
+	if _, err := run(ctx, exec.CommandContext(ctx, "launchctl", "disable", guiDomain()+"/"+label)); err != nil {
+		return err
+	}
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return err
 	}

@@ -64,7 +64,7 @@ func TestConnection(t *testing.T) {
 	}
 	settings = app.Snapshot().Settings
 	settings.DNS = "1.1.1.1"
-	if err := app.SetSettings(t.Context(), settings); err != nil {
+	if err := app.SetSettings(t.Context(), app.Snapshot().Settings, settings); err != nil {
 		t.Fatal(err)
 	}
 	if engine.spec.Settings.DNS != settings.DNS || app.Snapshot().Settings.DNS != settings.DNS {
@@ -72,7 +72,7 @@ func TestConnection(t *testing.T) {
 	}
 	invalid := settings
 	invalid.DNS = "dns-cloudflare/dns-query"
-	if err := app.SetSettings(t.Context(), invalid); err == nil || app.Snapshot().Settings.DNS != settings.DNS || engine.spec.Settings.DNS != settings.DNS {
+	if err := app.SetSettings(t.Context(), app.Snapshot().Settings, invalid); err == nil || app.Snapshot().Settings.DNS != settings.DNS || engine.spec.Settings.DNS != settings.DNS {
 		t.Fatalf("invalid DNS changed active settings: %v", err)
 	}
 	if err := app.SetTun(t.Context(), true); err != nil {
@@ -216,7 +216,7 @@ func TestContextCancelled(t *testing.T) {
 		func() error { return app.Connect(ctx, "n1", "sub", nil) },
 		func() error { return app.Disconnect(ctx) },
 		func() error { return app.SetTun(ctx, true) },
-		func() error { return app.SetSettings(ctx, settings) },
+		func() error { return app.SetSettings(ctx, app.Snapshot().Settings, settings) },
 		func() error { _, err := app.AddSubscription(ctx, "https://example.com/sub"); return err },
 	} {
 		if err := fn(); !errors.Is(err, context.Canceled) {

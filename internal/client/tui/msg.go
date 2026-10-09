@@ -15,7 +15,9 @@ type completed struct {
 	err        error
 }
 
-type restored struct{ err error }
+type started struct{ err error }
+
+type settingsSaved struct{ err error }
 
 type pushed struct {
 	snapshot ipc.Snapshot

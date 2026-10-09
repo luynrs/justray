@@ -100,7 +100,7 @@ func (m Model) updateModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if url == "" {
 				return m, nil
 			}
-			return m, action(false, m.start(false), func() error {
+			return m, action(false, m.start, func() error {
 				_, err := m.client.AddSubscription(m.watch, url)
 				return err
 			})
@@ -108,7 +108,7 @@ func (m Model) updateModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.String() == "enter" && m.activeModal == modalDelete {
 			target := m.deleteTarget
 			m.closeModal()
-			return m, action(false, m.start(false), func() error {
+			return m, action(false, m.start, func() error {
 				if target.Kind == tree.Header {
 					return m.client.RemoveSubscription(m.watch, target.Sub.SubscriptionID)
 				}

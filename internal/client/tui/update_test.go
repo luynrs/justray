@@ -9,7 +9,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/luynrs/justray/internal/client/tui/settings"
 	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/ipc"
 )
@@ -17,7 +16,7 @@ import (
 func TestActionStartFailure(t *testing.T) {
 	model := New(ipc.New("missing-daemon.sock"), func(context.Context) error {
 		return errors.New("launcher failed")
-	}, nil)
+	})
 	defer model.stop()
 	updated, command := model.Update(tea.KeyPressMsg{Code: 'm'})
 	updated, _ = updated.Update(command())
@@ -28,37 +27,8 @@ func TestActionStartFailure(t *testing.T) {
 	}
 }
 
-func TestSettingsSnapshot(t *testing.T) {
-	original, _ := (domain.Settings{}).Normalize()
-	model := New(nil, nil, nil)
-	defer model.stop()
-	model.snapshot.Settings = original
-	model.dialog = settings.New(original, topLines)
-	for range 2 {
-		model.dialog.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-	}
-	model.dialog.Update(tea.KeyPressMsg{Code: tea.KeyRight})
-	edited, changed, err := model.dialog.Result()
-	if err != nil || !changed || edited.Emoji == original.Emoji {
-		t.Fatalf("edit failed: changed=%v err=%v", changed, err)
-	}
-	model, _ = model.closeSettings()
-	if !model.snapshot.Settings.Equal(original) {
-		t.Fatal("closing the dialog applied unconfirmed settings")
-	}
-	updated, _ := model.Update(completed{err: errors.New("disk write failed")})
-	model = updated.(Model)
-	if !model.snapshot.Settings.Equal(original) || model.err == "" {
-		t.Fatal("failed save changed confirmed settings or lost the error")
-	}
-	updated, _ = model.Update(pushed{live: true, snapshot: ipc.Snapshot{Settings: edited}})
-	if !updated.(Model).snapshot.Settings.Equal(edited) {
-		t.Fatal("daemon snapshot did not apply settings")
-	}
-}
-
 func TestReconnectSnapshot(t *testing.T) {
-	model := New(nil, nil, nil)
+	model := New(nil, nil)
 	defer model.stop()
 	first := ipc.Snapshot{
 		Nodes:         []ipc.Node{{NodeID: "old"}},
@@ -83,7 +53,7 @@ func TestReconnectSnapshot(t *testing.T) {
 }
 
 func TestCollapseSnapshot(t *testing.T) {
-	model := New(nil, nil, nil)
+	model := New(nil, nil)
 	defer model.stop()
 	model.w, model.h = 80, 24
 	snapshot := ipc.Snapshot{

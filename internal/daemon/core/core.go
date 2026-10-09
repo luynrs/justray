@@ -1,7 +1,9 @@
 package core
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -42,15 +44,15 @@ func New(st store.Disk, conn *connection.Service, subs *subscription.Service) (*
 	if err != nil {
 		return nil, fmt.Errorf("load state: %w", err)
 	}
-	state.Settings.Autostart = "off"
-	if autostart.Enabled() {
-		state.Settings.Autostart = "on"
-	}
 	settings, err := state.Settings.Normalize()
 	if err != nil {
 		return nil, fmt.Errorf("normalize settings: %w", err)
 	}
 	state.Settings = settings
+	state.Settings.Autostart, err = autostart.Current(context.Background())
+	if err != nil {
+		log.Print(err)
+	}
 	c := &Core{
 		store: st, state: state, conn: conn, subs: subs,
 		probes:    map[domain.NodeRef]engine.Result{},

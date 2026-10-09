@@ -150,6 +150,20 @@ for binary in justrayd justray jray; do
 	mv -f "$tmp/out/$binary" "$dir/$binary" || fail "Failed to install $binary"
 done
 
+if [ "$restart" -eq 1 ]; then
+	restart=0
+	step "Restarting daemon..."
+	nohup "$dir/justrayd" </dev/null >/dev/null 2>&1 &
+	attempt=0
+	while [ "$attempt" -lt 45 ]; do
+		[ -n "$("$dir/justray" status --json 2>/dev/null)" ] && break
+		sleep 1
+		attempt=$((attempt + 1))
+	done
+	"$dir/justray" status >/dev/null || fail "Failed to restore daemon"
+	pass "Daemon ready"
+fi
+
 pass "Installed to $dir"
 
 case ":$PATH:" in

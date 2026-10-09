@@ -19,9 +19,7 @@ import (
 	"github.com/luynrs/justray/internal/client/cli/detach"
 	"github.com/luynrs/justray/internal/client/tui"
 	"github.com/luynrs/justray/internal/client/tui/style"
-	"github.com/luynrs/justray/internal/daemon/store"
 	"github.com/luynrs/justray/internal/ipc"
-	"github.com/luynrs/justray/internal/platform/elevate"
 	"github.com/luynrs/justray/internal/platform/lock"
 	"github.com/luynrs/justray/internal/version"
 )
@@ -99,7 +97,15 @@ func Execute() error {
 				return nil
 			}
 		}
-		if err := a.connectDaemon(cmd.Context(), cmd != statusCmd && cmd != subListCmd && cmd != downCmd, false); err != nil {
+		if cmd == rootCmd {
+			dir, err := ipc.Dir()
+			if err != nil {
+				return err
+			}
+			a.client = ipc.New(ipc.Socket(dir))
+			return nil
+		}
+		if err := a.connectDaemon(cmd.Context(), cmd != statusCmd && cmd != subListCmd && cmd != downCmd); err != nil {
 			return err
 		}
 		if snapshot, err := a.client.Snapshot(cmd.Context()); err == nil {
@@ -109,7 +115,7 @@ func Execute() error {
 		return nil
 	}
 	rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return tui.Run(a.client, a.start, a.restore)
+		return tui.Run(a.client, a.start)
 	}
 	upCmd.RunE = a.up
 	downCmd.RunE = a.down
@@ -156,14 +162,10 @@ func setHelpText(c *cobra.Command) {
 }
 
 func (a *app) start(ctx context.Context) error {
-	return a.connectDaemon(ctx, true, false)
+	return a.connectDaemon(ctx, true)
 }
 
-func (a *app) restore(ctx context.Context) error {
-	return a.connectDaemon(ctx, true, true)
-}
-
-func (a *app) connectDaemon(ctx context.Context, startMissing, restore bool) error {
+func (a *app) connectDaemon(ctx context.Context, startMissing bool) error {
 	caller := ctx
 	dir, err := ipc.Dir()
 	if err != nil {
@@ -202,6 +204,9 @@ func (a *app) connectDaemon(ctx context.Context, startMissing, restore bool) err
 		}
 	}
 	pingErr := a.client.Ping(ctx)
+	if errors.Is(pingErr, context.DeadlineExceeded) {
+		return wait(ctx, a.client)
+	}
 	replacing := errors.Is(pingErr, ipc.ErrVersion)
 	if pingErr != nil {
 		if !replacing && !errors.Is(pingErr, ipc.ErrNoDaemon) {
@@ -232,7 +237,7 @@ func (a *app) connectDaemon(ctx context.Context, startMissing, restore bool) err
 		if err := spawn(bin, dir); err != nil {
 			return fmt.Errorf("start background service: %w", err)
 		}
-		err = wait(ctx, a.client, 8*time.Second)
+		err = wait(ctx, a.client)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				return err
@@ -240,36 +245,7 @@ func (a *app) connectDaemon(ctx context.Context, startMissing, restore bool) err
 			return fmt.Errorf("daemon did not start: %w; see %s", err, ipc.DaemonLog(dir))
 		}
 	}
-	if err := caller.Err(); err != nil {
-		return err
-	}
-	if !restore {
-		return caller.Err()
-	}
-	ctx = caller
-	snapshot, err := a.client.Snapshot(ctx)
-	if err != nil {
-		return err
-	}
-	if !snapshot.Status.Connected {
-		state, err := (store.Disk{Dir: dir}).Load()
-		if err != nil {
-			return fmt.Errorf("restore connection: %w", err)
-		}
-		if state.Active.NodeID != "" {
-			err := a.client.Connect(ctx, state.Active, &state.Tun)
-			if errors.Is(err, ipc.ErrElevate) {
-				_, err = a.client.AwaitConnection(context.WithoutCancel(ctx), state.Active, &state.Tun)
-				if err := caller.Err(); err != nil {
-					return err
-				}
-			}
-			if err != nil {
-				return fmt.Errorf("restore connection: %w", err)
-			}
-		}
-	}
-	return ctx.Err()
+	return caller.Err()
 }
 
 func spawn(bin, dir string) error {
@@ -285,8 +261,7 @@ func spawn(bin, dir string) error {
 	}
 	defer func() { _ = errLog.Close() }()
 
-	cmd := exec.Command(elevate.Executable(bin, dir))
-	cmd.Args[0] = bin
+	cmd := exec.Command(bin)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = devNull, devNull, errLog
 	detach.Cmd(cmd)
 	if err := cmd.Start(); err != nil {
@@ -298,10 +273,7 @@ func spawn(bin, dir string) error {
 
 func justrayd(ctx context.Context) (string, error) {
 	path, _ := exec.LookPath(exeName("justrayd"))
-	candidates := []string{path, nextToSelf("justrayd")}
-	if dir, err := ipc.Dir(); err == nil {
-		candidates = append(candidates, filepath.Join(dir, "elevated", exeName("justrayd")))
-	}
+	candidates := []string{nextToSelf("justrayd"), path}
 	for _, bin := range candidates {
 		if bin == "" {
 			continue
@@ -338,12 +310,16 @@ func nextToSelf(name string) string {
 	return p
 }
 
-func wait(ctx context.Context, c *ipc.Client, timeout time.Duration) error {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
+func wait(ctx context.Context, c *ipc.Client) error {
 	for delay := 5 * time.Millisecond; ; delay = min(delay*2, 100*time.Millisecond) {
-		if err := c.Ping(ctx); err == nil || errors.Is(err, ipc.ErrVersion) {
+		snapshot, err := c.Snapshot(ctx)
+		if err == nil {
+			if snapshot.Status.Error != "" {
+				return errors.New(snapshot.Status.Error)
+			}
+			return nil
+		}
+		if errors.Is(err, ipc.ErrVersion) {
 			return err
 		}
 		select {

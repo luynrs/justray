@@ -59,15 +59,26 @@ func (s *Service) Disconnect(ctx context.Context) error {
 	return nil
 }
 
-func (s *Service) Restore(n domain.Node, ref domain.NodeRef, settings domain.Settings, tun bool) {
-	err := s.apply(s.ctx, n, ref, settings, tun, true)
-	if tun && elevate.Needed(err) {
+func (s *Service) Restore(n domain.Node, ref domain.NodeRef, settings domain.Settings, tun bool) error {
+	err := elevationError(s.apply(s.ctx, n, ref, settings, tun, true), tun)
+	if errors.Is(err, ipc.ErrElevate) {
 		s.log.Print("restore failed (tun requires elevation)")
-		return
+		return err
 	}
 	if err != nil {
-		s.log.Printf("restore failed (%v)", err)
+		s.SetError(err)
 	}
+	return err
+}
+
+func (s *Service) SetError(err error) {
+	status := s.Status()
+	status.Error = ""
+	if err != nil {
+		s.log.Printf("restore failed (%v)", err)
+		status.Error = err.Error()
+	}
+	s.status.Store(&status)
 }
 
 func (s *Service) Probe(targets []engine.Target, settings domain.Settings, onResult func(int, engine.Result, error)) {

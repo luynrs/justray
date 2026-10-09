@@ -17,7 +17,9 @@ func (c *Core) Restore() error {
 	state := c.current()
 	if state.Pending != nil {
 		if node, ref, err := find(state.Subscriptions, state.Pending.Ref); err == nil {
-			c.conn.Restore(node, ref, state.Settings, state.Pending.Tun)
+			if err := c.conn.Restore(node, ref, state.Settings, state.Pending.Tun); errors.Is(err, ipc.ErrElevate) {
+				return err
+			}
 			if status := c.conn.Status(); status.Connected && status.NodeRef == ref && status.Tun == state.Pending.Tun {
 				state.Active, state.Last, state.Tun = ref, ref, state.Pending.Tun
 			}
@@ -29,11 +31,30 @@ func (c *Core) Restore() error {
 	}
 	if !c.conn.Status().Connected && state.Active.NodeID != "" {
 		if node, ref, err := find(state.Subscriptions, state.Active); err == nil {
-			c.conn.Restore(node, ref, state.Settings, state.Tun)
+			if err := c.conn.Restore(node, ref, state.Settings, state.Tun); errors.Is(err, ipc.ErrElevate) {
+				return err
+			}
 		}
 	}
 	c.publish()
 	return nil
+}
+
+func (c *Core) RestoreFailed(err error) {
+	c.opMu.Lock()
+	defer c.opMu.Unlock()
+	state := c.current()
+	if state.Pending != nil {
+		state.Pending = nil
+		err = errors.Join(err, c.commit(state))
+		if !state.Tun && state.Active.NodeID != "" {
+			if node, ref, findErr := find(state.Subscriptions, state.Active); findErr == nil {
+				err = errors.Join(err, c.conn.Restore(node, ref, state.Settings, false))
+			}
+		}
+	}
+	c.conn.SetError(err)
+	c.publish()
 }
 
 func (c *Core) RestartRequested() <-chan struct{} { return c.conn.RestartRequested() }
@@ -147,6 +168,9 @@ func (c *Core) finishConnection(ctx context.Context, previous, next store.State,
 	default:
 		saveErr := c.commit(previous)
 		err = errors.Join(err, saveErr, c.restoreLive(ctx, previous, before))
+	}
+	if err == nil || errors.Is(err, ipc.ErrElevate) {
+		c.conn.SetError(nil)
 	}
 	c.publish()
 	return err

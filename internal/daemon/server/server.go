@@ -7,10 +7,12 @@ import (
 	"net"
 	"os"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/luynrs/justray/internal/daemon/core"
 	"github.com/luynrs/justray/internal/ipc"
+	"github.com/luynrs/justray/internal/platform/elevate"
 	"github.com/luynrs/justray/internal/platform/lock"
 )
 
@@ -41,11 +43,38 @@ func New(ctx context.Context, logger *log.Logger, app *core.Core) *Server {
 }
 
 func Listen(socket string) (net.Listener, func(), error) {
-	unlock, err := lock.File(socket + ".lock")
-	if err != nil {
-		if errors.Is(err, lock.ErrLocked) {
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	var unlock func()
+	var err error
+	if elevate.Needed(syscall.EPERM) {
+		var release func()
+		release, err = lock.File(socket + ".elevation.lock")
+		if err == nil {
+			unlock, err = lock.File(socket + ".lock")
+			release()
+		}
+	} else {
+		unlock, err = lock.File(socket + ".lock")
+	}
+	for errors.Is(err, lock.ErrLocked) {
+		check, finish := context.WithTimeout(ctx, 100*time.Millisecond)
+		pingErr := ipc.New(socket).Ping(check)
+		finish()
+		if pingErr == nil || errors.Is(pingErr, ipc.ErrVersion) {
 			return nil, nil, ErrRunning
 		}
+		select {
+		case <-ctx.Done():
+			return nil, nil, ctx.Err()
+		case <-time.After(20 * time.Millisecond):
+		}
+		if !elevate.Needed(syscall.EPERM) {
+			unlock, err = lock.File(socket + ".lock")
+		}
+	}
+
+	if err != nil {
 		return nil, nil, err
 	}
 

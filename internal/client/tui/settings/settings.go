@@ -43,7 +43,7 @@ var tabs = []tab{
 		{
 			name: "Autostart",
 			enum: domain.Toggle,
-			get:  func(s domain.Settings) string { return s.Autostart },
+			get:  func(s domain.Settings) string { return cmp.Or(s.Autostart, "unknown") },
 			set:  func(s *domain.Settings, in string) error { s.Autostart = in; return nil },
 		},
 		{
@@ -208,12 +208,12 @@ func New(s domain.Settings, top int) *Model {
 	return m
 }
 
-func (s *Model) Result() (domain.Settings, bool, error) {
+func (s *Model) Result() (domain.Settings, domain.Settings, error) {
 	if s.abandon || !s.Dirty() {
-		return s.orig, false, nil
+		return s.orig, s.orig, nil
 	}
 	next, err := s.cur.Normalize()
-	return next, true, err
+	return next, s.orig, err
 }
 
 func (s *Model) Current() domain.Settings { return s.cur }

@@ -9,8 +9,6 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func Executable(source, _ string) string { return source }
-
 func Needed(err error) bool {
 	if err == nil || windows.GetCurrentProcessToken().IsElevated() {
 		return false

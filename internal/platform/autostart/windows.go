@@ -3,7 +3,7 @@
 package autostart
 
 import (
-	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -16,23 +16,35 @@ import (
 
 const name = "justrayd"
 
-func cmd(args ...string) *exec.Cmd {
-	c := exec.Command("schtasks", args...)
-	c.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NO_WINDOW}
-	return c
+func cmd(ctx context.Context, name string, args ...string) *exec.Cmd {
+	command := exec.CommandContext(ctx, name, args...)
+	command.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NO_WINDOW}
+	return command
 }
 
-func Enabled() bool {
-	return cmd("/Query", "/TN", name).Run() == nil
+func Enabled(ctx context.Context) (bool, error) {
+	output, err := run(ctx, cmd(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command",
+		"$ErrorActionPreference = 'Stop'; if ((Get-ScheduledTask | Where-Object { $_.TaskName -eq '"+name+"' -and $_.TaskPath -eq '\\' }).Settings.Enabled) { 'on' } else { 'off' }"))
+	if err != nil {
+		return false, err
+	}
+	switch strings.TrimSpace(string(output)) {
+	case "on":
+		return true, nil
+	case "off":
+		return false, nil
+	default:
+		return false, errors.New("unrecognized scheduled task state")
+	}
 }
 
-func Enable() error {
+func Enable(ctx context.Context) error {
 	bin, err := os.Executable()
 	if err != nil {
 		return err
 	}
 	ps := fmt.Sprintf(
-		`Register-ScheduledTask -TaskName '%s' `+
+		`$ErrorActionPreference = 'Stop'; Register-ScheduledTask -TaskName '%s' `+
 			`-Action (New-ScheduledTaskAction -Execute '%s') `+
 			`-Trigger (New-ScheduledTaskTrigger -AtLogOn) `+
 			`-Principal (New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest) `+
@@ -40,28 +52,18 @@ func Enable() error {
 			`-Force`,
 		name, strings.ReplaceAll(bin, "'", "''"),
 	)
-	c := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", ps)
-	c.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NO_WINDOW}
-	if out, err := c.CombinedOutput(); err != nil {
-		if msg := string(bytes.TrimSpace(out)); msg != "" {
-			return fmt.Errorf("enable autostart: %s", msg)
-		}
-		return fmt.Errorf("enable autostart: %w", err)
-	}
-	return nil
+	_, err = run(ctx, cmd(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", ps))
+	return err
 }
 
-func Disable() error {
-	out, err := cmd("/Delete", "/F", "/TN", name).CombinedOutput()
+func Disable(ctx context.Context) error {
+	_, err := run(ctx, cmd(ctx, "schtasks", "/Delete", "/F", "/TN", name))
 	if err == nil {
 		return nil
 	}
 	var exit *exec.ExitError
-	if queryErr := cmd("/Query", "/TN", name, "/HRESULT").Run(); errors.As(queryErr, &exit) && uint32(exit.ExitCode()) == 0x80070002 {
+	if _, queryErr := run(ctx, cmd(ctx, "schtasks", "/Query", "/TN", name, "/HRESULT")); errors.As(queryErr, &exit) && uint32(exit.ExitCode()) == 0x80070002 {
 		return nil // already absent
-	}
-	if msg := string(bytes.TrimSpace(out)); msg != "" {
-		return fmt.Errorf("disable autostart: %s", msg)
 	}
 	return fmt.Errorf("disable autostart: %w", err)
 }

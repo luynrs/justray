@@ -8,15 +8,28 @@ import (
 	"os"
 	"os/exec"
 	"syscall"
+
+	"golang.org/x/sys/unix"
 )
 
 func Needed(err error) bool {
-	self, _ := os.Executable()
-	return err != nil && errors.Is(err, os.ErrPermission) && !hasNetAdmin(self)
+	if !errors.Is(err, os.ErrPermission) {
+		return false
+	}
+	header := unix.CapUserHeader{Version: unix.LINUX_CAPABILITY_VERSION_3}
+	var capabilities [2]unix.CapUserData
+	return unix.Capget(&header, &capabilities[0]) != nil || capabilities[0].Effective&(1<<unix.CAP_NET_ADMIN) == 0
 }
 
 func Restart(dir string) error {
-	target, err := cachedCopy(dir)
+	self, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	if hasNetAdmin(self) {
+		return errors.New("CAP_NET_ADMIN is not effective for this process")
+	}
+	target, err := cachedCopy(self, dir)
 	if err != nil {
 		return err
 	}

@@ -26,7 +26,9 @@ func TestRestoreFallback(t *testing.T) {
 	service := New(t.Context(), t.TempDir(), func(context.Context, string) engine.Engine { return fake }, nil, log.New(&logs, "", 0))
 	settings, _ := (domain.Settings{}).Normalize()
 	reference := domain.NodeRef{NodeID: "node"}
-	service.Restore(domain.Node{ID: "node"}, reference, settings, true)
+	if err := service.Restore(domain.Node{ID: "node"}, reference, settings, true); !errors.Is(err, ipc.ErrElevate) {
+		t.Fatalf("restore elevation: %v", err)
+	}
 	status := service.Status()
 	if status.Connected {
 		t.Fatalf("expected disconnected when TUN needs elevation, got status=%+v", status)

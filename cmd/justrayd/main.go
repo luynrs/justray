@@ -8,7 +8,6 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"runtime"
 	"runtime/debug"
 	"syscall"
 	"time"
@@ -21,6 +20,7 @@ import (
 	"github.com/luynrs/justray/internal/engine"
 	"github.com/luynrs/justray/internal/ipc"
 	"github.com/luynrs/justray/internal/platform/elevate"
+	"github.com/luynrs/justray/internal/platform/lock"
 	"github.com/luynrs/justray/internal/version"
 )
 
@@ -69,7 +69,6 @@ func main() {
 			}
 			logger.Fatalf("listen failed (%v)", err)
 		}
-		logger.Printf("listening (%s, version %s)", socket, version.String())
 		if err := ipc.ClearLog(ipc.EngineLog(dir)); err != nil {
 			logger.Printf("clear engine log failed (%v)", err)
 		}
@@ -85,8 +84,37 @@ func main() {
 		}
 		srv := server.New(ctx, logger, app)
 		if err := app.Restore(); err != nil {
-			logger.Fatalf("restore failed (%v)", err)
+			if !errors.Is(err, ipc.ErrElevate) {
+				logger.Fatalf("restore failed (%v)", err)
+			}
+			release, err := lock.File(socket + ".elevation.lock")
+			for deadline := time.Now().Add(45 * time.Second); errors.Is(err, lock.ErrLocked) && time.Now().Before(deadline); {
+				time.Sleep(20 * time.Millisecond)
+				release, err = lock.File(socket + ".elevation.lock")
+			}
+			if err != nil {
+				logger.Fatalf("reserve elevation failed (%v)", err)
+			}
+			if err := elevate.Restart(dir); err != nil {
+				release()
+				app.RestoreFailed(err)
+			} else {
+				_ = ln.Close()
+				unlock()
+				cancel()
+				ready, finish := context.WithTimeout(context.Background(), 45*time.Second)
+				for ipc.New(socket).Ping(ready) != nil && ready.Err() == nil {
+					time.Sleep(20 * time.Millisecond)
+				}
+				if err := ready.Err(); err != nil {
+					logger.Printf("elevated daemon did not start (%v)", err)
+				}
+				finish()
+				release()
+				return
+			}
 		}
+		logger.Printf("listening (%s, version %s)", socket, version.String())
 
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
@@ -136,14 +164,6 @@ func main() {
 		if !restart {
 			return
 		}
-		if err := elevate.Restart(dir); err != nil {
-			if runtime.GOOS == "darwin" {
-				logger.Fatalf("elevation failed (%v)", err)
-			}
-			logger.Printf("elevation failed (%v, continuing unprivileged)", err)
-			continue
-		}
-		return
 	}
 }
 

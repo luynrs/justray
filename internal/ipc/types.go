@@ -19,14 +19,14 @@ var ErrElevate = errors.New("elevation required")
 var ErrVersion = errors.New("client and daemon version mismatch")
 
 type Arguments struct {
-	NodeID         string
-	SubscriptionID string
-	URL            string
-	Direction      int
-	Tun            *bool
-	Settings       domain.Settings
-	Autostart      bool
-	Collapsed      *bool // nil toggles the current state
+	NodeID           string
+	SubscriptionID   string
+	URL              string
+	Direction        int
+	Tun              *bool
+	Settings         domain.Settings
+	PreviousSettings domain.Settings
+	Collapsed        *bool // nil toggles the current state
 }
 
 type Response struct {
@@ -90,6 +90,7 @@ func (n Node) Ref() domain.NodeRef {
 }
 
 type Status struct {
+	Error     string
 	Connected bool
 	NodeRef   domain.NodeRef
 	NodeName  string

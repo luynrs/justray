@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"fmt"
 	"slices"
 	"time"
 
@@ -46,11 +45,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case restored:
-		if m.restore != nil {
-			m.restore = nil
+	case settingsSaved:
+		m.saving = false
+		if msg.err != nil {
+			m.err, m.errAt = msg.err.Error(), time.Now()
+		} else {
+			m.dialog = nil
+			m.err = ""
+		}
+		return m, m.syncTTY()
+
+	case started:
+		if m.startup != nil {
+			m.startup = nil
 			if msg.err != nil && m.watch.Err() == nil {
-				m.err, m.errAt = "Could not restore connection: "+msg.err.Error(), time.Now()
+				m.err, m.errAt = "Could not start daemon: "+msg.err.Error(), time.Now()
 			}
 		}
 		return m, nil
@@ -58,7 +67,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case pushed:
 		if !msg.live {
 			m.live = false
-			if msg.err != nil && m.restore == nil && !m.busy {
+			if msg.err != nil && m.startup == nil && !m.busy {
 				m.err, m.errAt = msg.err.Error(), time.Now()
 			}
 			return m, next(m.watch, m.updates)
@@ -73,6 +82,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.err, m.errAt = sub.Warning, time.Now()
 				}
 			}
+		}
+		if msg.snapshot.Status.Error != "" && msg.snapshot.Status.Error != m.snapshot.Status.Error {
+			m.err, m.errAt = msg.snapshot.Status.Error, time.Now()
 		}
 		m.snapshot = msg.snapshot
 		spinnerCommand := m.syncTTY()
@@ -130,6 +142,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateModal(msg)
 	}
 	if m.dialog != nil {
+		if m.saving {
+			return m, nil
+		}
 		if _, wheel := msg.(tea.MouseWheelMsg); wheel && m.h < topLines+footerLines+1 {
 			m.dialog.CancelNavigation()
 			return m, nil
@@ -190,11 +205,11 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "t":
 		return m.probe()
 	case "T", "shift+t":
-		return m, action(false, m.start(false), func() error { return m.client.Probe(m.watch, "", "") })
+		return m, action(false, m.start, func() error { return m.client.Probe(m.watch, "", "") })
 	case "r":
 		return m.refresh()
 	case "R", "shift+r":
-		return m, action(false, m.start(false), func() error { return m.client.RefreshSubscriptions(m.watch) })
+		return m, action(false, m.start, func() error { return m.client.RefreshSubscriptions(m.watch) })
 	case "m":
 		return m.setTun(!m.snapshot.Status.Tun)
 	case "a":
@@ -287,32 +302,23 @@ func (m Model) click(x, y int) (tea.Model, tea.Cmd) {
 
 // closeSettings saves on the way out
 func (m Model) closeSettings() (Model, tea.Cmd) {
-	next, changed, err := m.dialog.Result()
-	m.dialog = nil
-	spinnerCommand := m.syncTTY()
+	next, previous, err := m.dialog.Result()
 	switch {
 	case err != nil:
 		m.err, m.errAt = err.Error(), time.Now()
-		return m, spinnerCommand
-	case !changed:
-		return m, spinnerCommand
+		return m, nil
+	case next.Equal(previous):
+		m.dialog = nil
+		return m, m.syncTTY()
 	}
-	old := m.snapshot.Settings
-	otherSettings := next
-	otherSettings.Autostart = old.Autostart
-	return m, tea.Batch(spinnerCommand, action(false, m.start(false), func() error {
-		if next.Autostart != old.Autostart {
-			if err := m.client.SetAutostart(m.watch, next.Autostart == "on"); err != nil {
-				return err
+	m.saving = true
+	m.err = ""
+	return m, func() tea.Msg {
+		if m.start != nil {
+			if err := m.start(); err != nil {
+				return settingsSaved{err: err}
 			}
 		}
-		if otherSettings.Equal(old) {
-			return nil
-		}
-		err := m.client.SetSettings(m.watch, next)
-		if err != nil && next.Autostart != old.Autostart {
-			return fmt.Errorf("autostart changed; settings: %w", err)
-		}
-		return err
-	}))
+		return settingsSaved{err: m.client.SetSettings(m.watch, previous, next)}
+	}
 }

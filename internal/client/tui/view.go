@@ -119,7 +119,7 @@ func (m Model) footer(rows []tree.Row) string {
 	if m.connected() {
 		icon = style.Dot(true)
 	}
-	if m.busy || m.restore != nil {
+	if m.busy || m.startup != nil {
 		icon = m.spin.View()
 	}
 
@@ -131,8 +131,8 @@ func (m Model) footer(rows []tree.Row) string {
 			iconStyle = style.Pending
 		}
 		status = iconStyle.Render(icon) + " " + style.Sanitize(m.snapshot.Status.NodeName, m.emoji()) + " " + style.Dim.Render(style.Sep()) + " " + style.Uptime(m.snapshot.Status.Uptime())
-	case m.restore != nil:
-		status = style.Pending.Render(icon) + " " + style.Dim.Render("restoring connection")
+	case m.startup != nil:
+		status = style.Pending.Render(icon) + " " + style.Dim.Render("starting daemon")
 	case m.busy:
 		status = style.Pending.Render(icon) + " " + style.Dim.Render("connecting")
 	default:
@@ -153,6 +153,8 @@ func (m Model) footer(rows []tree.Row) string {
 	switch {
 	case m.activeModal != modalNone:
 		hint = ansi.Truncate(style.KeyHint("esc", "cancel"), m.w, "")
+	case m.saving:
+		hint = "saving settings"
 	case m.editing():
 		hint = ansi.Truncate(style.KeyHint(style.Enter(), "apply")+style.Dim.Render(" "+style.Sep()+" ")+style.KeyHint("esc", "cancel"), m.w, "")
 	case m.dialog != nil && m.dialog.Dirty():

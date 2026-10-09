@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 
 	"github.com/spf13/cobra"
 )
@@ -27,6 +28,7 @@ func (a *app) status(cmd *cobra.Command, args []string) error {
 	if jsonOut, _ := cmd.Flags().GetBool("json"); jsonOut {
 		type statusOut struct {
 			Connected bool   `json:"connected"`
+			Error     string `json:"error,omitempty"`
 			Mode      string `json:"mode,omitempty"`
 			Node      string `json:"node,omitempty"`
 			Server    string `json:"server,omitempty"`
@@ -36,7 +38,7 @@ func (a *app) status(cmd *cobra.Command, args []string) error {
 			Uptime    int64  `json:"uptime,omitempty"`
 			LastNode  string `json:"last_node,omitempty"`
 		}
-		out := statusOut{Connected: st.Connected}
+		out := statusOut{Connected: st.Connected, Error: st.Error}
 		if st.Connected {
 			n := lookup(st.NodeRef, snapshot.Nodes)
 			out.Mode, out.Node = modeWord(st.Tun), a.clean(st.NodeName)
@@ -50,9 +52,18 @@ func (a *app) status(cmd *cobra.Command, args []string) error {
 		}
 		enc := json.NewEncoder(cmd.OutOrStdout())
 		enc.SetIndent("", "  ")
-		return enc.Encode(out)
+		if err := enc.Encode(out); err != nil {
+			return err
+		}
+		if st.Error != "" {
+			return errors.New(st.Error)
+		}
+		return nil
 	}
 
+	if st.Error != "" {
+		return errors.New(st.Error)
+	}
 	stateHeadline(st)
 
 	if st.Connected {
