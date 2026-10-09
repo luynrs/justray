@@ -93,14 +93,11 @@ func (s *Model) reveal(layout []fieldLayout, total int, whole bool) {
 func (s *Model) scrollBy(delta int) {
 	rows := s.rows()
 	layout, _ := s.layout(rows)
-	cursor, scroll := s.cursor, s.scroll
-	position := layout[cursor].start - scroll
+	position := layout[s.cursor].start - s.scroll
 	s.move(delta)
 	layout, total := s.layout(rows)
 	s.scroll = layout[s.cursor].start - position
-	if s.scroll < 0 || s.scroll > max(total-s.height, 0) {
-		s.cursor, s.scroll = cursor, scroll
-	}
+	s.reveal(layout, total, false)
 }
 
 func (s *Model) TabBar(width int) string {

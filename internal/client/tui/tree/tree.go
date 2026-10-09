@@ -150,12 +150,7 @@ func Scroll(rows []Row, cursor, scroll, delta, height int) (int, int) {
 	if delta < 0 && !exact {
 		nextCursor--
 	}
-	nextCursor = min(max(nextCursor, 0), len(selectable)-1)
-	nextScroll = selectable[nextCursor] - position
-	if nextScroll < 0 || nextScroll > max(len(rows)-height, 0) {
-		return cursor, scroll
-	}
-	return nextCursor, nextScroll
+	return Clamp(rows, nextCursor, nextScroll, height)
 }
 
 func Page(rows []Row, cursor, scroll, delta, height int) (int, int) {
