@@ -7,10 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"runtime"
-	"strings"
-	"syscall"
 
 	"github.com/go-ole/go-ole"
 	"github.com/go-ole/go-ole/oleutil"
@@ -19,110 +16,195 @@ import (
 
 const name = "justrayd"
 
-func cmd(ctx context.Context, name string, args ...string) *exec.Cmd {
-	command := exec.CommandContext(ctx, name, args...)
-	command.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NO_WINDOW}
-	return command
+func isNotFound(err error) bool {
+	if comError, ok := errors.AsType[*ole.OleError](err); ok {
+		if uint32(comError.Code()) == 0x80070002 {
+			return true
+		}
+		if exception, ok := errors.AsType[ole.EXCEPINFO](comError.SubError()); ok && exception.SCODE() == 0x80070002 {
+			return true
+		}
+	}
+	return false
 }
 
-func Enabled(ctx context.Context) (bool, error) {
+func withFolder(ctx context.Context, action func(scheduler, folder *ole.IDispatch) error) error {
 	if err := ctx.Err(); err != nil {
-		return false, err
+		return err
 	}
-	type result struct {
-		enabled bool
-		err     error
+	type outcome struct {
+		err error
 	}
-	done := make(chan result, 1)
+	done := make(chan outcome, 1)
 	go func() {
-		enabled, err := func() (bool, error) {
-			runtime.LockOSThread()
-			defer runtime.UnlockOSThread()
-			if err := ole.CoInitializeEx(0, ole.COINIT_MULTITHREADED); err != nil {
-				if comError, ok := errors.AsType[*ole.OleError](err); !ok || comError.Code() != uintptr(windows.S_FALSE) {
-					return false, err
-				}
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		if err := ole.CoInitializeEx(0, ole.COINIT_MULTITHREADED); err != nil {
+			if comError, ok := errors.AsType[*ole.OleError](err); !ok || comError.Code() != uintptr(windows.S_FALSE) {
+				done <- outcome{err: err}
+				return
 			}
-			defer ole.CoUninitialize()
-			object, err := oleutil.CreateObject("Schedule.Service")
-			if err != nil {
-				return false, err
-			}
-			defer object.Release()
-			scheduler, err := object.QueryInterface(ole.IID_IDispatch)
-			if err != nil {
-				return false, err
-			}
-			defer scheduler.Release()
-			connected, err := oleutil.CallMethod(scheduler, "Connect")
-			if err != nil {
-				return false, err
-			}
-			defer func() { _ = connected.Clear() }()
-			folder, err := oleutil.CallMethod(scheduler, "GetFolder", `\`)
-			if err != nil {
-				return false, err
-			}
-			defer func() { _ = folder.Clear() }()
-			task, err := oleutil.CallMethod(folder.ToIDispatch(), "GetTask", name)
-			if err != nil {
-				if comError, ok := errors.AsType[*ole.OleError](err); ok {
-					if comError.Code() == 0x80070002 {
-						return false, nil
-					}
-					if exception, ok := errors.AsType[ole.EXCEPINFO](comError.SubError()); ok && exception.SCODE() == 0x80070002 {
-						return false, nil
-					}
-				}
-				return false, err
-			}
-			defer func() { _ = task.Clear() }()
-			value, err := oleutil.GetProperty(task.ToIDispatch(), "Enabled")
-			if err != nil {
-				return false, err
-			}
-			defer func() { _ = value.Clear() }()
-			return value.Val != 0, nil
-		}()
-		done <- result{enabled, err}
+		}
+		defer ole.CoUninitialize()
+		object, err := oleutil.CreateObject("Schedule.Service")
+		if err != nil {
+			done <- outcome{err: err}
+			return
+		}
+		defer object.Release()
+		scheduler, err := object.QueryInterface(ole.IID_IDispatch)
+		if err != nil {
+			done <- outcome{err: err}
+			return
+		}
+		defer scheduler.Release()
+		connected, err := oleutil.CallMethod(scheduler, "Connect")
+		if err != nil {
+			done <- outcome{err: err}
+			return
+		}
+		defer func() { _ = connected.Clear() }()
+		folder, err := oleutil.CallMethod(scheduler, "GetFolder", `\`)
+		if err != nil {
+			done <- outcome{err: err}
+			return
+		}
+		defer func() { _ = folder.Clear() }()
+		if err := ctx.Err(); err != nil {
+			done <- outcome{err: err}
+			return
+		}
+		done <- outcome{err: action(scheduler, folder.ToIDispatch())}
 	}()
 	select {
 	case <-ctx.Done():
-		return false, ctx.Err()
-	case completed := <-done:
+		<-done
+		return ctx.Err()
+	case item := <-done:
 		if err := ctx.Err(); err != nil {
-			return false, err
+			return err
 		}
-		return completed.enabled, completed.err
+		return item.err
 	}
+}
+
+func Enabled(ctx context.Context) (bool, error) {
+	var enabled bool
+	err := withFolder(ctx, func(_, folder *ole.IDispatch) error {
+		task, err := oleutil.CallMethod(folder, "GetTask", name)
+		if err != nil {
+			if isNotFound(err) {
+				return nil
+			}
+			return err
+		}
+		defer func() { _ = task.Clear() }()
+		value, err := oleutil.GetProperty(task.ToIDispatch(), "Enabled")
+		if err != nil {
+			return err
+		}
+		defer func() { _ = value.Clear() }()
+		enabled = value.Val != 0
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+	return enabled, err
 }
 
 func Enable(ctx context.Context) error {
-	bin, err := os.Executable()
+	executablePath, err := os.Executable()
 	if err != nil {
 		return err
 	}
-	ps := fmt.Sprintf(
-		`$ErrorActionPreference = 'Stop'; Register-ScheduledTask -TaskName '%s' `+
-			`-Action (New-ScheduledTaskAction -Execute '%s') `+
-			`-Trigger (New-ScheduledTaskTrigger -AtLogOn) `+
-			`-Principal (New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest) `+
-			`-Settings (New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit 0) `+
-			`-Force`,
-		name, strings.ReplaceAll(bin, "'", "''"),
-	)
-	_, err = run(ctx, cmd(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", ps))
-	return err
+	return withFolder(ctx, func(scheduler, folder *ole.IDispatch) error {
+		taskDefinition, err := oleutil.CallMethod(scheduler, "NewTask", 0)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = taskDefinition.Clear() }()
+		taskDefinitionDispatch := taskDefinition.ToIDispatch()
+
+		settings, err := oleutil.GetProperty(taskDefinitionDispatch, "Settings")
+		if err != nil {
+			return err
+		}
+		defer func() { _ = settings.Clear() }()
+		settingsDispatch := settings.ToIDispatch()
+		if _, err := oleutil.PutProperty(settingsDispatch, "DisallowStartIfOnBatteries", false); err != nil {
+			return err
+		}
+		if _, err := oleutil.PutProperty(settingsDispatch, "StopIfGoingOnBatteries", false); err != nil {
+			return err
+		}
+		if _, err := oleutil.PutProperty(settingsDispatch, "ExecutionTimeLimit", "PT0S"); err != nil {
+			return err
+		}
+
+		principal, err := oleutil.GetProperty(taskDefinitionDispatch, "Principal")
+		if err != nil {
+			return err
+		}
+		defer func() { _ = principal.Clear() }()
+		principalDispatch := principal.ToIDispatch()
+		if _, err := oleutil.PutProperty(principalDispatch, "LogonType", 3); err != nil {
+			return err
+		}
+		if _, err := oleutil.PutProperty(principalDispatch, "RunLevel", 1); err != nil {
+			return err
+		}
+
+		triggers, err := oleutil.GetProperty(taskDefinitionDispatch, "Triggers")
+		if err != nil {
+			return err
+		}
+		defer func() { _ = triggers.Clear() }()
+		trigger, err := oleutil.CallMethod(triggers.ToIDispatch(), "Create", 9)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = trigger.Clear() }()
+
+		actions, err := oleutil.GetProperty(taskDefinitionDispatch, "Actions")
+		if err != nil {
+			return err
+		}
+		defer func() { _ = actions.Clear() }()
+		action, err := oleutil.CallMethod(actions.ToIDispatch(), "Create", 0)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = action.Clear() }()
+		if _, err := oleutil.PutProperty(action.ToIDispatch(), "Path", executablePath); err != nil {
+			return err
+		}
+
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		registeredTask, err := oleutil.CallMethod(folder, "RegisterTaskDefinition", name, taskDefinitionDispatch, 6, "", "", 3, "")
+		if err != nil {
+			return fmt.Errorf("enable autostart: %w", err)
+		}
+		defer func() { _ = registeredTask.Clear() }()
+		return nil
+	})
 }
 
 func Disable(ctx context.Context) error {
-	_, err := run(ctx, cmd(ctx, "schtasks", "/Delete", "/F", "/TN", name))
-	if err == nil {
+	return withFolder(ctx, func(_, folder *ole.IDispatch) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		task, err := oleutil.CallMethod(folder, "DeleteTask", name, 0)
+		if err != nil {
+			if isNotFound(err) {
+				return nil
+			}
+			return fmt.Errorf("disable autostart: %w", err)
+		}
+		defer func() { _ = task.Clear() }()
 		return nil
-	}
-	_, queryErr := run(ctx, cmd(ctx, "schtasks", "/Query", "/TN", name, "/HRESULT"))
-	if exit, ok := errors.AsType[*exec.ExitError](queryErr); ok && uint32(exit.ExitCode()) == 0x80070002 {
-		return nil // already absent
-	}
-	return fmt.Errorf("disable autostart: %w", err)
+	})
 }
