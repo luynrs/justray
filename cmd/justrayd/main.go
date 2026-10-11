@@ -88,8 +88,8 @@ func main() {
 				logger.Fatalf("restore failed (%v)", err)
 			}
 			release, err := lock.File(socket + ".elevation.lock")
-			for deadline := time.Now().Add(45 * time.Second); errors.Is(err, lock.ErrLocked) && time.Now().Before(deadline); {
-				time.Sleep(20 * time.Millisecond)
+			for deadline := time.Now().Add(30 * time.Second); errors.Is(err, lock.ErrLocked) && time.Now().Before(deadline); {
+				time.Sleep(50 * time.Millisecond)
 				release, err = lock.File(socket + ".elevation.lock")
 			}
 			if err != nil {
@@ -102,9 +102,9 @@ func main() {
 				_ = ln.Close()
 				unlock()
 				cancel()
-				ready, finish := context.WithTimeout(context.Background(), 45*time.Second)
+				ready, finish := context.WithTimeout(context.Background(), 30*time.Second)
 				for ipc.New(socket).Ping(ready) != nil && ready.Err() == nil {
-					time.Sleep(20 * time.Millisecond)
+					time.Sleep(50 * time.Millisecond)
 				}
 				if err := ready.Err(); err != nil {
 					logger.Printf("elevated daemon did not start (%v)", err)

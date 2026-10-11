@@ -43,7 +43,7 @@ func New(ctx context.Context, logger *log.Logger, app *core.Core) *Server {
 }
 
 func Listen(socket string) (net.Listener, func(), error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	var unlock func()
 	var err error
@@ -67,7 +67,7 @@ func Listen(socket string) (net.Listener, func(), error) {
 		select {
 		case <-ctx.Done():
 			return nil, nil, ctx.Err()
-		case <-time.After(20 * time.Millisecond):
+		case <-time.After(50 * time.Millisecond):
 		}
 		if !elevate.Needed(syscall.EPERM) {
 			unlock, err = lock.File(socket + ".lock")

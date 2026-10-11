@@ -60,7 +60,7 @@ func waitStopped(ctx context.Context, socket string, timeout time.Duration) erro
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	for delay := 5 * time.Millisecond; ; delay = min(delay*2, 50*time.Millisecond) {
+	for {
 		unlock, err := lock.File(socket + ".lock")
 		if err == nil {
 			unlock()
@@ -78,7 +78,7 @@ func waitStopped(ctx context.Context, socket string, timeout time.Duration) erro
 				return errors.New("daemon stop timed out")
 			}
 			return ctx.Err()
-		case <-time.After(delay):
+		case <-time.After(50 * time.Millisecond):
 		}
 	}
 }

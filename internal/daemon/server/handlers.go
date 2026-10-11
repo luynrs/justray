@@ -68,6 +68,8 @@ func (s *Server) handle(conn net.Conn) {
 		s.watch(ctx, conn)
 		return
 	}
+	ctx, finish := context.WithTimeout(ctx, 30*time.Second)
+	defer finish()
 	_ = conn.SetDeadline(time.Time{})
 	result, err := s.dispatch(ctx, req)
 	_ = conn.SetDeadline(time.Now().Add(ipc.IdleTimeout))

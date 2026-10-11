@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"time"
 )
 
@@ -40,7 +41,10 @@ func (s *Server) AutoRefresh() {
 			ids = append(ids, id)
 		}
 		if len(ids) > 0 {
-			if err := s.core.RefreshSubscriptions(s.ctx, ids...); err != nil {
+			ctx, cancel := context.WithTimeout(s.ctx, 30*time.Second)
+			err := s.core.RefreshSubscriptions(ctx, ids...)
+			cancel()
+			if err != nil {
 				s.log.Printf("auto-refresh failed (%v)", err)
 			}
 		}

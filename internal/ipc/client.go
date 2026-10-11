@@ -19,7 +19,7 @@ type Client struct {
 }
 
 // IdleTimeout bounds how long either side waits on a quiet connection
-const IdleTimeout = 60 * time.Second
+const IdleTimeout = 30 * time.Second
 
 func New(socket string) *Client { return &Client{socket: socket} }
 
@@ -79,10 +79,8 @@ func call[T any](ctx context.Context, c *Client, method string, args Arguments) 
 	switch method {
 	case "Ping", "Snapshot":
 		timeout = 500 * time.Millisecond
-	case "SetSettings":
-		timeout = 45 * time.Second
-	case "Probe", "AddSubscription", "RefreshSubscription", "RefreshSubscriptions":
-		timeout = 0
+	case "SetSettings", "Probe", "AddSubscription", "RefreshSubscription", "RefreshSubscriptions":
+		timeout = 30 * time.Second
 	}
 	if timeout > 0 {
 		var cancel context.CancelFunc
@@ -116,7 +114,7 @@ func (c *Client) AwaitConnection(ctx context.Context, ref domain.NodeRef, want *
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	pending := false
-	for delay := 5 * time.Millisecond; ; delay = min(delay*2, 100*time.Millisecond) {
+	for {
 		snapshot, err := c.Snapshot(ctx)
 		status := snapshot.Status
 		switch {
@@ -135,7 +133,7 @@ func (c *Client) AwaitConnection(ctx context.Context, ref domain.NodeRef, want *
 				return Snapshot{}, errors.New("timed out waiting for elevation")
 			}
 			return Snapshot{}, ctx.Err()
-		case <-time.After(delay):
+		case <-time.After(50 * time.Millisecond):
 		}
 	}
 }

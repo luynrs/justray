@@ -186,9 +186,9 @@ func (a *app) connectDaemon(ctx context.Context, startMissing bool) error {
 		return fmt.Errorf("create config dir: %w", err)
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	for delay := 5 * time.Millisecond; ; delay = min(delay*2, 100*time.Millisecond) {
+	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -203,7 +203,7 @@ func (a *app) connectDaemon(ctx context.Context, startMissing bool) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(delay):
+		case <-time.After(50 * time.Millisecond):
 		}
 	}
 	pingErr := a.client.Ping(ctx)
@@ -227,7 +227,8 @@ func (a *app) connectDaemon(ctx context.Context, startMissing bool) error {
 				return err
 			}
 			var finish context.CancelFunc
-			ctx, finish = context.WithTimeout(context.WithoutCancel(ctx), 45*time.Second)
+			deadline, _ := ctx.Deadline()
+			ctx, finish = context.WithDeadline(context.WithoutCancel(ctx), deadline)
 			defer finish()
 			shutdownErr := a.client.Shutdown(ctx)
 			if err := waitStopped(ctx, ipc.Socket(dir), 6*time.Second); err != nil {
@@ -314,7 +315,7 @@ func nextToSelf(name string) string {
 }
 
 func wait(ctx context.Context, c *ipc.Client) error {
-	for delay := 5 * time.Millisecond; ; delay = min(delay*2, 100*time.Millisecond) {
+	for {
 		snapshot, err := c.Snapshot(ctx)
 		if err == nil {
 			if snapshot.Status.Error != "" {
@@ -328,7 +329,7 @@ func wait(ctx context.Context, c *ipc.Client) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(delay):
+		case <-time.After(50 * time.Millisecond):
 		}
 	}
 }
