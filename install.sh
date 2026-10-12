@@ -152,11 +152,10 @@ if [ "$restart" -eq 1 ]; then
 	restart=0
 	step "Restarting daemon..."
 	nohup "$dir/justrayd" </dev/null >/dev/null 2>&1 &
-	attempt=0
-	while [ "$attempt" -lt 45 ]; do
-		[ -n "$("$dir/justray" status --json 2>/dev/null)" ] && break
+	deadline=$(($(date +%s) + 30))
+	while [ -z "$("$dir/justray" status --json 2>/dev/null)" ]; do
+		[ "$(date +%s)" -lt "$deadline" ] || fail "Failed to restore daemon"
 		sleep 1
-		attempt=$((attempt + 1))
 	done
 	"$dir/justray" status >/dev/null || fail "Failed to restore daemon"
 	pass "Restarted daemon"

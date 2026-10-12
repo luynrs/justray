@@ -90,6 +90,7 @@ func (n Node) Ref() domain.NodeRef {
 }
 
 type Status struct {
+	Busy      bool
 	Error     string
 	Connected bool
 	NodeRef   domain.NodeRef

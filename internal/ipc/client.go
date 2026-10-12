@@ -75,18 +75,12 @@ func receive[T any](decoder *json.Decoder) (T, error) {
 
 func call[T any](ctx context.Context, c *Client, method string, args Arguments) (T, error) {
 	var out T
-	timeout := 4 * time.Second
-	switch method {
-	case "Ping", "Snapshot":
+	timeout := 30 * time.Second
+	if method == "Ping" || method == "Snapshot" {
 		timeout = 500 * time.Millisecond
-	case "SetSettings", "Probe", "AddSubscription", "RefreshSubscription", "RefreshSubscriptions":
-		timeout = 30 * time.Second
 	}
-	if timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, timeout)
-		defer cancel()
-	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	conn, err := c.dial(ctx)
 	if err != nil {
 		return out, err
@@ -118,6 +112,8 @@ func (c *Client) AwaitConnection(ctx context.Context, ref domain.NodeRef, want *
 		snapshot, err := c.Snapshot(ctx)
 		status := snapshot.Status
 		switch {
+		case errors.Is(err, ErrVersion):
+			return snapshot, err
 		case err != nil:
 			pending = pending || errors.Is(err, ErrNoDaemon)
 		case status.Error != "":

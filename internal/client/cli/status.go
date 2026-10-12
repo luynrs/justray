@@ -5,6 +5,8 @@ import (
 	"errors"
 
 	"github.com/spf13/cobra"
+
+	"github.com/luynrs/justray/internal/client/tui/style"
 )
 
 var statusCmd = &cobra.Command{
@@ -19,10 +21,12 @@ func init() {
 }
 
 func (a *app) status(cmd *cobra.Command, args []string) error {
-	snapshot, err := a.daemon().Snapshot(cmd.Context())
+	snapshot, err := a.client.Snapshot(cmd.Context())
 	if err != nil {
 		return err
 	}
+	a.emoji = snapshot.Settings.Emoji == "on"
+	style.TTY = style.DetectTTY(snapshot.Settings.ForceTTY)
 	st := snapshot.Status
 
 	if jsonOut, _ := cmd.Flags().GetBool("json"); jsonOut {

@@ -49,9 +49,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.saving = false
 		if msg.err != nil {
 			m.err, m.errAt = msg.err.Error(), time.Now()
-		} else {
-			m.dialog = nil
-			m.err = ""
 		}
 		return m, m.syncTTY()
 
@@ -142,9 +139,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateModal(msg)
 	}
 	if m.dialog != nil {
-		if m.saving {
-			return m, nil
-		}
 		if _, wheel := msg.(tea.MouseWheelMsg); wheel && m.h < topLines+footerLines+1 {
 			m.dialog.CancelNavigation()
 			return m, nil
@@ -218,7 +212,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.resizeModal()
 		return m, m.editor.Focus()
 	case "o":
-		if m.snapshot.Settings.Port == 0 {
+		if m.saving || m.snapshot.Settings.Port == 0 {
 			return m, nil
 		}
 		m.dialog = settings.New(m.snapshot.Settings, topLines)
@@ -312,13 +306,14 @@ func (m Model) closeSettings() (Model, tea.Cmd) {
 		return m, m.syncTTY()
 	}
 	m.saving = true
+	m.dialog = nil
 	m.err = ""
-	return m, func() tea.Msg {
+	return m, tea.Batch(m.syncTTY(), func() tea.Msg {
 		if m.start != nil {
 			if err := m.start(); err != nil {
 				return settingsSaved{err: err}
 			}
 		}
 		return settingsSaved{err: m.client.SetSettings(m.watch, previous, next)}
-	}
+	})
 }

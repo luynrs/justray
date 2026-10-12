@@ -75,7 +75,7 @@ func main() {
 
 		conn := connection.New(ctx, dir, engine.New, engine.Probe, logger)
 		subs := subscription.New(ctx, logger)
-		app, err := core.New(store.Disk{Dir: dir}, conn, subs)
+		app, err := core.New(ctx, store.Disk{Dir: dir}, conn, subs)
 		if err != nil {
 			_ = ln.Close()
 			unlock()

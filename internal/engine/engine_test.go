@@ -152,19 +152,14 @@ func TestProbeEngine(t *testing.T) {
 		},
 	}
 	results := make(map[string]Result)
-	var targets []Target
-	for _, node := range nodes {
-		targets = append(targets, Target{Context: t.Context(), Node: node})
-	}
 	var mutex sync.Mutex
-	Probe(targets, settings, "", func(index int, result Result, err error) {
+	if err := Probe(t.Context(), nodes, settings, "", func(index int, result Result) {
 		mutex.Lock()
 		defer mutex.Unlock()
-		if err != nil {
-			t.Errorf("node failures must not fail the probe: %v", err)
-		}
 		results[nodes[index].ID] = result
-	})
+	}); err != nil {
+		t.Errorf("node failures must not fail the probe: %v", err)
+	}
 	if len(results) != len(nodes) {
 		t.Fatalf("expected %d results, got %d", len(nodes), len(results))
 	}

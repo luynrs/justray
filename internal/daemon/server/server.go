@@ -24,10 +24,8 @@ type Server struct {
 	cancel   context.CancelFunc
 	sem      chan struct{}
 	watchSem chan struct{}
-	wg       sync.WaitGroup
-	mu       sync.Mutex
-	ln       net.Listener
-	active   map[net.Conn]struct{}
+	started  chan struct{}
+	done     chan struct{}
 	stop     chan struct{}
 }
 
@@ -38,7 +36,7 @@ func New(ctx context.Context, logger *log.Logger, app *core.Core) *Server {
 	return &Server{
 		log: logger, core: app, ctx: ctx, cancel: cancel,
 		sem: make(chan struct{}, 32), watchSem: make(chan struct{}, 64),
-		active: map[net.Conn]struct{}{}, stop: make(chan struct{}, 1),
+		started: make(chan struct{}), done: make(chan struct{}), stop: make(chan struct{}, 1),
 	}
 }
 
@@ -104,16 +102,21 @@ func Listen(socket string) (net.Listener, func(), error) {
 }
 
 func (s *Server) Serve(ln net.Listener) error {
-	s.mu.Lock()
-	s.ln = ln
-	closed := s.ctx.Err() != nil
-	s.mu.Unlock()
-	if closed {
+	close(s.started)
+	var handlers sync.WaitGroup
+	stop := context.AfterFunc(s.ctx, func() { _ = ln.Close() })
+	defer func() {
+		s.cancel()
 		_ = ln.Close()
-		return nil
-	}
+		stop()
+		handlers.Wait()
+		close(s.done)
+	}()
 
 	for {
+		if s.ctx.Err() != nil {
+			return nil
+		}
 		conn, err := ln.Accept()
 		if err != nil {
 			if s.ctx.Err() != nil {
@@ -128,30 +131,17 @@ func (s *Server) Serve(ln net.Listener) error {
 			return nil
 		}
 
-		s.mu.Lock()
-		if s.ctx.Err() != nil {
-			s.mu.Unlock()
-			<-s.sem
-			_ = conn.Close()
-			return nil
-		}
-		s.active[conn] = struct{}{}
-		s.wg.Go(func() { s.handle(conn) })
-		s.mu.Unlock()
+		handlers.Go(func() { s.handle(conn) })
 	}
 }
 
 func (s *Server) Shutdown() {
 	s.cancel()
-	s.mu.Lock()
-	if s.ln != nil {
-		_ = s.ln.Close()
+	select {
+	case <-s.started:
+		<-s.done
+	default:
 	}
-	for conn := range s.active {
-		_ = conn.Close()
-	}
-	s.mu.Unlock()
-	s.wg.Wait()
 }
 
 func (s *Server) ShutdownRequested() <-chan struct{} { return s.stop }

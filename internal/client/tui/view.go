@@ -119,7 +119,7 @@ func (m Model) footer(rows []tree.Row) string {
 	if m.connected() {
 		icon = style.Dot(true)
 	}
-	if m.busy || m.startup != nil {
+	if m.busy || m.snapshot.Status.Busy || m.startup != nil {
 		icon = m.spin.View()
 	}
 
@@ -127,7 +127,7 @@ func (m Model) footer(rows []tree.Row) string {
 	switch {
 	case m.connected():
 		iconStyle := style.Alive
-		if m.busy {
+		if m.busy || m.snapshot.Status.Busy {
 			iconStyle = style.Pending
 		}
 		status = iconStyle.Render(icon) + " " + style.Sanitize(m.snapshot.Status.NodeName, m.emoji()) + " " + style.Dim.Render(style.Sep()) + " " + style.Uptime(m.snapshot.Status.Uptime())
@@ -153,8 +153,6 @@ func (m Model) footer(rows []tree.Row) string {
 	switch {
 	case m.activeModal != modalNone:
 		hint = ansi.Truncate(style.KeyHint("esc", "cancel"), m.w, "")
-	case m.saving:
-		hint = "saving settings"
 	case m.editing():
 		hint = ansi.Truncate(style.KeyHint(style.Enter(), "apply")+style.Dim.Render(" "+style.Sep()+" ")+style.KeyHint("esc", "cancel"), m.w, "")
 	case m.dialog != nil && m.dialog.Dirty():

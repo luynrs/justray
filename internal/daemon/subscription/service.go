@@ -11,6 +11,7 @@ import (
 
 type Service struct {
 	device http.Header
+	slots  chan struct{}
 }
 
 func New(ctx context.Context, logger *log.Logger) *Service {
@@ -18,7 +19,7 @@ func New(ctx context.Context, logger *log.Logger) *Service {
 	if err != nil && logger != nil {
 		logger.Printf("device headers failed (%v)", err)
 	}
-	return &Service{device: device}
+	return &Service{device: device, slots: make(chan struct{}, 8)}
 }
 
 func (s *Service) PrepareAdd(ctx context.Context, rawURL string) (store.Subscription, error) {

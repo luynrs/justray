@@ -15,28 +15,30 @@ import (
 	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/engine"
 	"github.com/luynrs/justray/internal/ipc"
-	"github.com/luynrs/justray/internal/platform/autostart"
 )
 
 type Core struct {
 	// Lock order: opMu before stMu; no disk or engine I/O under stMu.
 	opMu    sync.Mutex
 	stMu    sync.Mutex
+	ctx     context.Context
+	cancel  context.CancelFunc
 	store   store.Disk
 	state   store.State
 	probes  map[domain.NodeRef]engine.Result
-	probing map[domain.NodeRef]*probeCall
+	probing *probeCall
 	conn    *connection.Service
 	subs    *subscription.Service
 
-	refreshes  map[string]*refreshCall
-	probeTimer *time.Timer
+	refreshes map[string]*refreshCall
+	autostart *autostartCall
+	changing  *changeCall
 
 	snapshot atomic.Pointer[ipc.Snapshot]
 	watchers map[chan ipc.Snapshot]struct{}
 }
 
-func New(st store.Disk, conn *connection.Service, subs *subscription.Service) (*Core, error) {
+func New(ctx context.Context, st store.Disk, conn *connection.Service, subs *subscription.Service) (*Core, error) {
 	if err := st.Migrate(); err != nil {
 		return nil, fmt.Errorf("migrate data: %w", err)
 	}
@@ -49,26 +51,54 @@ func New(st store.Disk, conn *connection.Service, subs *subscription.Service) (*
 		return nil, fmt.Errorf("normalize settings: %w", err)
 	}
 	state.Settings = settings
-	state.Settings.Autostart, err = autostart.Current(context.Background())
-	if err != nil {
-		log.Print(err)
-	}
+	ctx, cancel := context.WithCancel(ctx)
 	c := &Core{
+		ctx: ctx, cancel: cancel,
 		store: st, state: state, conn: conn, subs: subs,
 		probes:    map[domain.NodeRef]engine.Result{},
-		probing:   map[domain.NodeRef]*probeCall{},
 		refreshes: map[string]*refreshCall{},
 		watchers:  map[chan ipc.Snapshot]struct{}{},
 	}
 	c.publish()
+	c.opMu.Lock()
+	value, err := c.readAutostart(ctx, nil)
+	c.stMu.Lock()
+	c.state.Settings.Autostart = value
+	c.publishLocked()
+	c.stMu.Unlock()
+	c.opMu.Unlock()
+	if err != nil {
+		log.Print(err)
+	}
 	return c, nil
 }
 
 func (c *Core) Shutdown() {
-	c.opMu.Lock()
-	defer c.opMu.Unlock()
-	c.conn.Shutdown()
-	c.publish()
+	c.cancel()
+	done := make(chan struct{})
+	go func() {
+		c.opMu.Lock()
+		for c.changing != nil {
+			finished := c.changing.done
+			c.opMu.Unlock()
+			<-finished
+			c.opMu.Lock()
+		}
+		c.stMu.Lock()
+		probe := c.probing
+		c.stMu.Unlock()
+		if probe != nil {
+			<-probe.done
+		}
+		c.conn.Shutdown()
+		c.publish()
+		c.opMu.Unlock()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+	}
 }
 
 func (c *Core) current() store.State {
@@ -86,6 +116,7 @@ func (c *Core) commit(state store.State) error {
 		return err
 	}
 	c.stMu.Lock()
+	state.Settings.Autostart = c.state.Settings.Autostart
 	c.state = state
 	c.stMu.Unlock()
 	return nil

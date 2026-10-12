@@ -64,7 +64,7 @@ func TestWatchLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	logger := log.New(io.Discard, "", 0)
-	app, err := core.New(store.Disk{Dir: directory}, connection.New(t.Context(), directory, nil, nil, logger), subscription.New(t.Context(), logger))
+	app, err := core.New(t.Context(), store.Disk{Dir: directory}, connection.New(t.Context(), directory, nil, nil, logger), subscription.New(t.Context(), logger))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,13 +78,19 @@ func TestWatchLifecycle(t *testing.T) {
 	go func() { watchDone <- client.Watch(t.Context(), func(snapshot ipc.Snapshot) { updates <- snapshot }) }()
 	var snapshot ipc.Snapshot
 	readSnapshot := func() error {
-		select {
-		case snapshot = <-updates:
-			return nil
-		case err := <-watchDone:
-			return err
-		case <-time.After(3 * time.Second):
-			return errors.New("watch did not deliver snapshot")
+		timer := time.NewTimer(3 * time.Second)
+		defer timer.Stop()
+		for {
+			select {
+			case snapshot = <-updates:
+				if !snapshot.Status.Busy {
+					return nil
+				}
+			case err := <-watchDone:
+				return err
+			case <-timer.C:
+				return errors.New("watch did not deliver completed snapshot")
+			}
 		}
 	}
 	if err := readSnapshot(); err != nil || snapshot.Settings.Port != domain.DefaultPort {
@@ -407,7 +413,7 @@ func TestSubscriptionRefresh(t *testing.T) {
 	directory := t.TempDir()
 	disk := store.Disk{Dir: directory}
 	logger := log.New(io.Discard, "", 0)
-	app, err := core.New(disk, connection.New(t.Context(), directory, nil, nil, logger), subscription.New(t.Context(), logger))
+	app, err := core.New(t.Context(), disk, connection.New(t.Context(), directory, nil, nil, logger), subscription.New(t.Context(), logger))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -589,8 +595,8 @@ func TestSubscriptionRefresh(t *testing.T) {
 		if err := <-done; !errors.Is(err, context.Canceled) {
 			t.Fatalf("canceled refresh: %v", err)
 		}
-		if providerCtx.Err() != context.Canceled {
-			t.Fatal("canceled refresh did not stop its HTTP request")
+		if providerCtx.Err() != nil {
+			t.Fatal("canceled owner stopped the shared HTTP request")
 		}
 		close(release)
 		if err := <-followerDone; err != nil {
@@ -619,7 +625,7 @@ func TestSwitch(t *testing.T) {
 	b := domain.NodeRef{SubscriptionID: "sub", NodeID: "b"}
 	tun := true
 	start := func(failB, failTun error) (*core.Core, func()) {
-		app, err := core.New(disk, connection.New(t.Context(), directory, func(context.Context, string) engine.Engine {
+		app, err := core.New(t.Context(), disk, connection.New(t.Context(), directory, func(context.Context, string) engine.Engine {
 			return &switchEngine{failB: failB, failTun: failTun}
 		}, nil, logger), subscription.New(t.Context(), logger))
 		if err != nil {

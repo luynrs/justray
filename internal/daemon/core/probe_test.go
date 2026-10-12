@@ -24,15 +24,20 @@ func probeCore(t *testing.T, n int, probe func(context.Context, domain.Node, dom
 		nodes[i] = domain.Node{ID: fmt.Sprint(i), Name: "example node", Server: fmt.Sprintf("node-%d.example", i), Port: 443}
 	}
 	app := testCore(t, &fakeEngine{}, store.State{Subscriptions: []store.Subscription{{ID: "s", Nodes: nodes}}})
-	app.conn = connection.New(context.Background(), t.TempDir(), nil, func(targets []engine.Target, settings domain.Settings, logPath string, onResult func(int, engine.Result, error)) {
+	app.conn = connection.New(context.Background(), t.TempDir(), nil, func(ctx context.Context, nodes []domain.Node, settings domain.Settings, logPath string, onResult func(int, engine.Result)) error {
+		errs := make([]error, len(nodes))
 		var workers sync.WaitGroup
-		for i, target := range targets {
+		for i, node := range nodes {
 			workers.Go(func() {
-				result, err := probe(target.Context, target.Node, settings, logPath)
-				onResult(i, result, err)
+				result, err := probe(ctx, node, settings, logPath)
+				errs[i] = err
+				if err == nil {
+					onResult(i, result)
+				}
 			})
 		}
 		workers.Wait()
+		return errors.Join(errs...)
 	}, log.New(io.Discard, "", 0))
 	return app
 }
@@ -119,5 +124,46 @@ func TestProbeProgress(t *testing.T) {
 			<-done
 			t.Fatal("results were withheld until the slow probe completed")
 		}
+	}
+}
+
+func TestProbePreempt(t *testing.T) {
+	probe := func(ctx context.Context, node domain.Node, _ domain.Settings, _ string) (engine.Result, error) {
+		if node.ID == "0" {
+			<-ctx.Done()
+			return engine.Result{}, ctx.Err()
+		}
+		return engine.Result{Alive: true, Duration: 10}, nil
+	}
+	app := probeCore(t, 2, probe)
+	_, updates, stop := app.Watch()
+	defer stop()
+
+	firstDone := make(chan error, 1)
+	go func() { firstDone <- app.Probe(t.Context(), "s", "0") }()
+
+	deadline := time.After(time.Second)
+	for {
+		select {
+		case update := <-updates:
+			if update.Nodes[0].Probing {
+				goto started
+			}
+		case <-deadline:
+			t.Fatal("first probe did not start")
+		}
+	}
+started:
+	if err := app.Probe(t.Context(), "s", "1"); err != nil {
+		t.Fatalf("probe of node 1 failed: %v", err)
+	}
+
+	if err := <-firstDone; !errors.Is(err, context.Canceled) {
+		t.Fatalf("preempted probe returned: %v", err)
+	}
+
+	snapshot := app.Snapshot()
+	if !snapshot.Nodes[1].Probed || !snapshot.Nodes[1].Alive {
+		t.Fatalf("node 1 not probed: %+v", snapshot.Nodes[1])
 	}
 }

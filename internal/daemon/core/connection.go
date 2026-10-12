@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/luynrs/justray/internal/daemon/store"
 	"github.com/luynrs/justray/internal/domain"
@@ -12,49 +13,49 @@ import (
 )
 
 func (c *Core) Restore() error {
-	c.opMu.Lock()
-	defer c.opMu.Unlock()
-	state := c.current()
-	if state.Pending != nil {
-		if node, ref, err := find(state.Subscriptions, state.Pending.Ref); err == nil {
-			if err := c.conn.Restore(node, ref, state.Settings, state.Pending.Tun); errors.Is(err, ipc.ErrElevate) {
-				return err
+	return c.change(c.ctx, false, func(ctx context.Context) error {
+		state := c.current()
+		if state.Pending != nil {
+			if node, ref, err := find(state.Subscriptions, state.Pending.Ref); err == nil {
+				if err := c.external(func() error { return c.conn.Restore(node, ref, state.Settings, state.Pending.Tun) }); errors.Is(err, ipc.ErrElevate) {
+					return err
+				}
+				if status := c.conn.Status(); status.Connected && status.NodeRef == ref && status.Tun == state.Pending.Tun {
+					state.Active, state.Last, state.Tun = ref, ref, state.Pending.Tun
+				}
 			}
-			if status := c.conn.Status(); status.Connected && status.NodeRef == ref && status.Tun == state.Pending.Tun {
-				state.Active, state.Last, state.Tun = ref, ref, state.Pending.Tun
-			}
-		}
-		state.Pending = nil
-		if err := c.commit(state); err != nil {
-			return err
-		}
-	}
-	if !c.conn.Status().Connected && state.Active.NodeID != "" {
-		if node, ref, err := find(state.Subscriptions, state.Active); err == nil {
-			if err := c.conn.Restore(node, ref, state.Settings, state.Tun); errors.Is(err, ipc.ErrElevate) {
+			state.Pending = nil
+			state.Collapsed = c.current().Collapsed
+			if err := c.commit(state); err != nil {
 				return err
 			}
 		}
-	}
-	c.publish()
-	return nil
+		if !c.conn.Status().Connected && state.Active.NodeID != "" {
+			if node, ref, err := find(state.Subscriptions, state.Active); err == nil {
+				if err := c.external(func() error { return c.conn.Restore(node, ref, state.Settings, state.Tun) }); errors.Is(err, ipc.ErrElevate) {
+					return err
+				}
+			}
+		}
+		return nil
+	})
 }
 
 func (c *Core) RestoreFailed(err error) {
-	c.opMu.Lock()
-	defer c.opMu.Unlock()
-	state := c.current()
-	if state.Pending != nil {
-		state.Pending = nil
-		err = errors.Join(err, c.commit(state))
-		if !state.Tun && state.Active.NodeID != "" {
-			if node, ref, findErr := find(state.Subscriptions, state.Active); findErr == nil {
-				err = errors.Join(err, c.conn.Restore(node, ref, state.Settings, false))
+	_ = c.change(c.ctx, false, func(context.Context) error {
+		state := c.current()
+		if state.Pending != nil {
+			state.Pending = nil
+			err = errors.Join(err, c.commit(state))
+			if !state.Tun && state.Active.NodeID != "" {
+				if node, ref, findErr := find(state.Subscriptions, state.Active); findErr == nil {
+					err = errors.Join(err, c.external(func() error { return c.conn.Restore(node, ref, state.Settings, false) }))
+				}
 			}
 		}
-	}
-	c.conn.SetError(err)
-	c.publish()
+		c.conn.SetError(err)
+		return nil
+	})
 }
 
 func (c *Core) RestartRequested() <-chan struct{} { return c.conn.RestartRequested() }
@@ -71,85 +72,92 @@ func (c *Core) RequestRestart(err error) {
 	}
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
+	ctx, cancel := context.WithTimeout(c.ctx, 30*time.Second)
+	defer cancel()
+	for c.changing != nil {
+		done := c.changing.done
+		c.opMu.Unlock()
+		select {
+		case <-done:
+		case <-ctx.Done():
+			c.opMu.Lock()
+			return
+		}
+		c.opMu.Lock()
+	}
+	if ctx.Err() != nil {
+		return
+	}
 	if c.current().Pending == request.Pending {
 		c.conn.RequestRestart()
 	}
 }
 
 func (c *Core) Connect(ctx context.Context, nodeID, subscriptionID string, mode *bool) error {
-	c.opMu.Lock()
-	defer c.opMu.Unlock()
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	previous := c.current()
-	before := c.conn.Status()
-	if before.Connected {
-		previous.Active, previous.Last, previous.Tun = before.NodeRef, before.NodeRef, before.Tun
-	}
-	previous.Pending = nil
-	next := previous
-	n, ref, err := find(next.Subscriptions, domain.NodeRef{SubscriptionID: subscriptionID, NodeID: nodeID})
-	if err != nil {
-		return err
-	}
-	next.Active, next.Last = ref, ref
-	if mode != nil {
-		next.Tun = *mode
-	}
-	return c.finishConnection(ctx, previous, next, before, c.conn.Connect(ctx, n, ref, next.Settings, next.Tun))
+	return c.change(ctx, false, func(ctx context.Context) error {
+		previous := c.current()
+		before := c.conn.Status()
+		if before.Connected {
+			previous.Active, previous.Last, previous.Tun = before.NodeRef, before.NodeRef, before.Tun
+		}
+		previous.Pending = nil
+		next := previous
+		n, ref, err := find(next.Subscriptions, domain.NodeRef{SubscriptionID: subscriptionID, NodeID: nodeID})
+		if err != nil {
+			return err
+		}
+		next.Active, next.Last = ref, ref
+		if mode != nil {
+			next.Tun = *mode
+		}
+		return c.finishConnection(ctx, previous, next, before, c.external(func() error { return c.conn.Connect(ctx, n, ref, next.Settings, next.Tun) }))
+	})
 }
 
 func (c *Core) Disconnect(ctx context.Context) error {
-	c.opMu.Lock()
-	defer c.opMu.Unlock()
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	next := c.current()
-	next.Active = domain.NodeRef{}
-	next.Pending = nil
-	return c.finishDisconnect(ctx, next, true)
+	return c.change(ctx, false, func(ctx context.Context) error {
+		next := c.current()
+		next.Active = domain.NodeRef{}
+		next.Pending = nil
+		return c.finishDisconnect(ctx, next, true)
+	})
 }
 
 func (c *Core) finishDisconnect(ctx context.Context, next store.State, dropConn bool) error {
 	if err := c.commit(next); err != nil {
 		return err
 	}
-	var disconnectErr error
 	if dropConn {
-		disconnectErr = c.conn.Disconnect(context.WithoutCancel(ctx))
+		return c.external(func() error { return c.conn.Disconnect(context.WithoutCancel(ctx)) })
 	}
-	c.publish()
-	return disconnectErr
+	return nil
 }
 
 func (c *Core) SetTun(ctx context.Context, enable bool) error {
-	c.opMu.Lock()
-	defer c.opMu.Unlock()
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	previous := c.current()
-	before := c.conn.Status()
-	if before.Connected {
-		previous.Active, previous.Last, previous.Tun = before.NodeRef, before.NodeRef, before.Tun
-	}
-	previous.Pending = nil
-	next := previous
-	next.Tun = enable
-	var applyErr error
-	if before.Connected && before.Tun != enable {
-		node, ref, err := find(next.Subscriptions, before.NodeRef)
-		if err != nil {
-			return err
+	return c.change(ctx, false, func(ctx context.Context) error {
+		previous := c.current()
+		before := c.conn.Status()
+		if before.Connected {
+			previous.Active, previous.Last, previous.Tun = before.NodeRef, before.NodeRef, before.Tun
 		}
-		applyErr = c.conn.Apply(ctx, node, ref, next.Settings, enable)
-	}
-	return c.finishConnection(ctx, previous, next, before, applyErr)
+		previous.Pending = nil
+		next := previous
+		next.Tun = enable
+		var applyErr error
+		if before.Connected && before.Tun != enable {
+			node, ref, err := find(next.Subscriptions, before.NodeRef)
+			if err != nil {
+				return err
+			}
+			applyErr = c.external(func() error { return c.conn.Apply(ctx, node, ref, next.Settings, enable) })
+		}
+		return c.finishConnection(ctx, previous, next, before, applyErr)
+	})
 }
 
 func (c *Core) finishConnection(ctx context.Context, previous, next store.State, before ipc.Status, err error) error {
+	previous.Collapsed = c.current().Collapsed
+	next.Collapsed = previous.Collapsed
 	if cancellation := ctx.Err(); cancellation != nil {
 		err = cancellation
 	}
@@ -172,7 +180,6 @@ func (c *Core) finishConnection(ctx context.Context, previous, next store.State,
 	if err == nil || errors.Is(err, ipc.ErrElevate) {
 		c.conn.SetError(nil)
 	}
-	c.publish()
 	return err
 }
 
@@ -183,13 +190,13 @@ func (c *Core) restoreLive(ctx context.Context, state store.State, before ipc.St
 	}
 	ctx = context.WithoutCancel(ctx)
 	if !before.Connected {
-		return c.conn.Disconnect(ctx)
+		return c.external(func() error { return c.conn.Disconnect(ctx) })
 	}
 	node, ref, err := find(state.Subscriptions, before.NodeRef)
 	if err != nil {
 		return err
 	}
-	return c.conn.Connect(ctx, node, ref, state.Settings, before.Tun)
+	return c.external(func() error { return c.conn.Connect(ctx, node, ref, state.Settings, before.Tun) })
 }
 
 func find(subs []store.Subscription, query domain.NodeRef) (domain.Node, domain.NodeRef, error) {

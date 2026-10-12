@@ -181,10 +181,10 @@ try {
 		$restart = $false
 		step "Restarting daemon..."
 		Start-Process "$dir\justrayd.exe" -WindowStyle Hidden
-		for ($attempt = 0; $attempt -lt 45; $attempt++) {
-			$status = & "$dir\justray.exe" status --json 2>$null
-			if ($status) { break }
-			Start-Sleep -Seconds 1
+		$timer = [Diagnostics.Stopwatch]::StartNew()
+		while (-not (& "$dir\justray.exe" status --json 2>$null)) {
+			if ($timer.Elapsed.TotalSeconds -ge 30) { throw "Failed to restore daemon" }
+			Start-Sleep -Milliseconds 50
 		}
 		& "$dir\justray.exe" status > $null
 		if ($LASTEXITCODE) { throw "Failed to restore daemon" }

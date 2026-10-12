@@ -24,25 +24,14 @@ import (
 	"github.com/luynrs/justray/internal/engine/outbound"
 )
 
-const maxWorkers = 8
-
-var queue = struct {
-	sync.Mutex
-	active  int
-	servers map[string]int
-	changed chan struct{}
-}{servers: make(map[string]int), changed: make(chan struct{})}
-
-type Target struct {
-	Context context.Context
-	Node    domain.Node
-}
-
-func Probe(targets []Target, settings domain.Settings, logPath string, onResult func(int, Result, error)) {
-	if len(targets) == 0 {
-		return
+func Probe(ctx context.Context, nodes []domain.Node, settings domain.Settings, logPath string, onResult func(int, Result)) error {
+	if err := ctx.Err(); err != nil {
+		return err
 	}
-	runtimeCtx, cancel := context.WithCancel(withRegistry(context.WithoutCancel(targets[0].Context)))
+	if len(nodes) == 0 {
+		return nil
+	}
+	runtimeCtx, cancel := context.WithCancel(withRegistry(ctx))
 	defer cancel()
 	startup := time.AfterFunc(4*time.Second, cancel)
 	settings, err := settings.Normalize()
@@ -50,8 +39,10 @@ func Probe(targets []Target, settings domain.Settings, logPath string, onResult 
 	if err == nil {
 		instance, err = sbox.New(sbox.Options{Options: *probeConfig(settings, logPath), Context: runtimeCtx})
 	}
-	if err == nil {
+	if instance != nil {
 		defer func() { _ = instance.Close() }()
+	}
+	if err == nil {
 		err = instance.Start()
 	}
 	if !startup.Stop() && err == nil {
@@ -61,53 +52,46 @@ func Probe(targets []Target, settings domain.Settings, logPath string, onResult 
 		err = runtimeCtx.Err()
 	}
 	if err != nil {
-		for i := range targets {
-			onResult(i, Result{}, err)
-		}
-		return
+		return err
 	}
+	servers := make(map[string][]int)
+	for i, node := range nodes {
+		server := net.JoinHostPort(strings.ToLower(node.Server), strconv.Itoa(node.Port))
+		servers[server] = append(servers[server], i)
+	}
+	slots := make(chan struct{}, 8)
 	var workers sync.WaitGroup
-	for i, target := range targets {
-		workers.Go(func() {
-			ctx := service.ContextWithRegistry(target.Context, service.RegistryFromContext(runtimeCtx))
-			result, err := probe(ctx, target.Node, instance, "p"+strconv.Itoa(i), settings.ProbeURL)
-			onResult(i, result, err)
-		})
+	for _, indices := range servers {
+		jobs := make(chan int, len(indices))
+		for _, index := range indices {
+			jobs <- index
+		}
+		close(jobs)
+		for range min(2, len(indices)) {
+			workers.Go(func() {
+				for index := range jobs {
+					select {
+					case slots <- struct{}{}:
+					case <-runtimeCtx.Done():
+						return
+					}
+					result, err := probe(runtimeCtx, nodes[index], instance, "p"+strconv.Itoa(index), settings.ProbeURL)
+					<-slots
+					if err == nil {
+						onResult(index, result)
+					}
+				}
+			})
+		}
 	}
 	workers.Wait()
+	return runtimeCtx.Err()
 }
 
 func probe(ctx context.Context, node domain.Node, instance *sbox.Box, tag, url string) (Result, error) {
-	server := net.JoinHostPort(strings.ToLower(node.Server), strconv.Itoa(node.Port))
-	queue.Lock()
-	for ctx.Err() == nil && (queue.active >= maxWorkers || queue.servers[server] >= 2) {
-		changed := queue.changed
-		queue.Unlock()
-		select {
-		case <-changed:
-		case <-ctx.Done():
-		}
-		queue.Lock()
-	}
 	if err := ctx.Err(); err != nil {
-		queue.Unlock()
 		return Result{}, err
 	}
-	queue.active++
-	queue.servers[server]++
-	queue.Unlock()
-	defer func() {
-		queue.Lock()
-		defer queue.Unlock()
-		queue.active--
-		queue.servers[server]--
-		if queue.servers[server] == 0 {
-			delete(queue.servers, server)
-		}
-		close(queue.changed)
-		queue.changed = make(chan struct{})
-	}()
-
 	requestCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
 	requestCtx = adapter.WithContext(requestCtx, &adapter.InboundContext{Outbound: tag})

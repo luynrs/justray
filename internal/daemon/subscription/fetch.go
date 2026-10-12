@@ -37,6 +37,12 @@ func (s *Service) Refresh(ctx context.Context, sub store.Subscription) (store.Su
 	if s.device.Get("X-Hwid") == "" {
 		return sub, fmt.Errorf("device id unavailable")
 	}
+	select {
+	case s.slots <- struct{}{}:
+		defer func() { <-s.slots }()
+	case <-ctx.Done():
+		return sub, ctx.Err()
+	}
 	req.Header = s.device.Clone()
 	req.Header.Set("X-Hwid", hash(s.device.Get("X-Hwid")+req.URL.Hostname()))
 

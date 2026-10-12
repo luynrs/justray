@@ -56,7 +56,7 @@ func watch(ctx context.Context, c *ipc.Client, ch chan<- pushed) tea.Cmd {
 				return nil
 			}
 			select {
-			case <-time.After(100 * time.Millisecond):
+			case <-time.After(50 * time.Millisecond):
 			case <-ctx.Done():
 				return nil
 			}

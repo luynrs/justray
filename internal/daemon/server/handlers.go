@@ -16,11 +16,10 @@ import (
 
 func (s *Server) handle(conn net.Conn) {
 	semHeld := true
+	stop := context.AfterFunc(s.ctx, func() { _ = conn.Close() })
 	defer func() {
+		stop()
 		_ = conn.Close()
-		s.mu.Lock()
-		delete(s.active, conn)
-		s.mu.Unlock()
 		if semHeld {
 			<-s.sem
 		}

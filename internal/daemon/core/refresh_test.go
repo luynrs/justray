@@ -96,6 +96,15 @@ func TestRefreshCanceled(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("refresh did not stop")
 	}
+	finished := time.NewTimer(time.Second)
+	defer finished.Stop()
+	for app.Snapshot().Subscriptions[1].Refreshing {
+		select {
+		case <-updates:
+		case <-finished.C:
+			t.Fatal("refresh did not finish cancellation")
+		}
+	}
 	if state, err := app.store.Load(); err != nil || state.Subscriptions[0].UpdatedAt.IsZero() ||
 		!state.Subscriptions[1].UpdatedAt.IsZero() || app.Snapshot().Subscriptions[1].Refreshing {
 		t.Fatalf("cancellation lost completed work or saved unfinished work: %+v, %v", state.Subscriptions, err)

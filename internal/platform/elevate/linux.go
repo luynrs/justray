@@ -3,11 +3,13 @@
 package elevate
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"os"
 	"os/exec"
 	"syscall"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -39,7 +41,12 @@ func Restart(dir string) error {
 		if _, err := exec.LookPath(elevate); err != nil {
 			elevate = "sudo"
 		}
-		if err := exec.Command(elevate, "setcap", "cap_net_admin+ep", target).Run(); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := exec.CommandContext(ctx, elevate, "setcap", "cap_net_admin+ep", target).Run(); err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			return errors.New("could not grant permissions")
 		}
 	}

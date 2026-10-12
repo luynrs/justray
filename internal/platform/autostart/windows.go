@@ -32,60 +32,38 @@ func withFolder(ctx context.Context, action func(scheduler, folder *ole.IDispatc
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	type outcome struct {
-		err error
-	}
-	done := make(chan outcome, 1)
-	go func() {
-		runtime.LockOSThread()
-		defer runtime.UnlockOSThread()
-		if err := ole.CoInitializeEx(0, ole.COINIT_MULTITHREADED); err != nil {
-			if comError, ok := errors.AsType[*ole.OleError](err); !ok || comError.Code() != uintptr(windows.S_FALSE) {
-				done <- outcome{err: err}
-				return
-			}
-		}
-		defer ole.CoUninitialize()
-		object, err := oleutil.CreateObject("Schedule.Service")
-		if err != nil {
-			done <- outcome{err: err}
-			return
-		}
-		defer object.Release()
-		scheduler, err := object.QueryInterface(ole.IID_IDispatch)
-		if err != nil {
-			done <- outcome{err: err}
-			return
-		}
-		defer scheduler.Release()
-		connected, err := oleutil.CallMethod(scheduler, "Connect")
-		if err != nil {
-			done <- outcome{err: err}
-			return
-		}
-		defer func() { _ = connected.Clear() }()
-		folder, err := oleutil.CallMethod(scheduler, "GetFolder", `\`)
-		if err != nil {
-			done <- outcome{err: err}
-			return
-		}
-		defer func() { _ = folder.Clear() }()
-		if err := ctx.Err(); err != nil {
-			done <- outcome{err: err}
-			return
-		}
-		done <- outcome{err: action(scheduler, folder.ToIDispatch())}
-	}()
-	select {
-	case <-ctx.Done():
-		<-done
-		return ctx.Err()
-	case item := <-done:
-		if err := ctx.Err(); err != nil {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	if err := ole.CoInitializeEx(0, ole.COINIT_MULTITHREADED); err != nil {
+		if comError, ok := errors.AsType[*ole.OleError](err); !ok || comError.Code() != uintptr(windows.S_FALSE) {
 			return err
 		}
-		return item.err
 	}
+	defer ole.CoUninitialize()
+	object, err := oleutil.CreateObject("Schedule.Service")
+	if err != nil {
+		return err
+	}
+	defer object.Release()
+	scheduler, err := object.QueryInterface(ole.IID_IDispatch)
+	if err != nil {
+		return err
+	}
+	defer scheduler.Release()
+	connected, err := oleutil.CallMethod(scheduler, "Connect")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = connected.Clear() }()
+	folder, err := oleutil.CallMethod(scheduler, "GetFolder", `\`)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = folder.Clear() }()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return action(scheduler, folder.ToIDispatch())
 }
 
 func Enabled(ctx context.Context) (bool, error) {

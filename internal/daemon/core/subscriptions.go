@@ -12,32 +12,31 @@ import (
 )
 
 func (c *Core) AddSubscription(ctx context.Context, rawURL string) (ipc.Subscription, error) {
+	ctx, cancel := c.requestContext(ctx)
+	defer cancel()
 	sub, err := c.subs.PrepareAdd(ctx, rawURL)
 	if err != nil {
 		return ipc.Subscription{}, err
 	}
-	c.opMu.Lock()
-	defer c.opMu.Unlock()
-	if err := ctx.Err(); err != nil {
-		return ipc.Subscription{}, err
-	}
-	next := c.current()
-	sub.Nodes = assignNodeIDs(sub.Nodes, nil)
-	if parser.IsLink(sub.URL) {
-		i := slices.IndexFunc(next.Subscriptions, func(s store.Subscription) bool { return s.ID == "default" })
-		if i < 0 {
-			i = len(next.Subscriptions)
-			next.Subscriptions = append(next.Subscriptions, store.Subscription{ID: "default", Name: "Default"})
+	err = c.change(ctx, true, func(context.Context) error {
+		next := c.current()
+		sub.Nodes = assignNodeIDs(sub.Nodes, nil)
+		if parser.IsLink(sub.URL) {
+			i := slices.IndexFunc(next.Subscriptions, func(s store.Subscription) bool { return s.ID == "default" })
+			if i < 0 {
+				i = len(next.Subscriptions)
+				next.Subscriptions = append(next.Subscriptions, store.Subscription{ID: "default", Name: "Default"})
+			}
+			next.Subscriptions[i].Nodes = append(next.Subscriptions[i].Nodes, sub.Nodes...)
+			sub = next.Subscriptions[i]
+		} else {
+			next.Subscriptions = append(next.Subscriptions, sub)
 		}
-		next.Subscriptions[i].Nodes = append(next.Subscriptions[i].Nodes, sub.Nodes...)
-		sub = next.Subscriptions[i]
-	} else {
-		next.Subscriptions = append(next.Subscriptions, sub)
-	}
-	if err := c.commit(next); err != nil {
+		return c.commit(next)
+	})
+	if err != nil {
 		return ipc.Subscription{}, err
 	}
-	c.publish()
 	return subView(sub, false), nil
 }
 
@@ -81,50 +80,50 @@ func assignNodeIDs(nodes, previous []domain.Node) []domain.Node {
 }
 
 func (c *Core) RemoveSubscription(ctx context.Context, id string) error {
-	c.opMu.Lock()
-	defer c.opMu.Unlock()
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	next := c.current()
-	count := len(next.Subscriptions)
-	next.Subscriptions = slices.DeleteFunc(next.Subscriptions, func(s store.Subscription) bool {
-		return s.ID == id
+	return c.change(ctx, false, func(ctx context.Context) error {
+		next := c.current()
+		count := len(next.Subscriptions)
+		next.Subscriptions = slices.DeleteFunc(next.Subscriptions, func(s store.Subscription) bool {
+			return s.ID == id
+		})
+		if len(next.Subscriptions) == count {
+			return fmt.Errorf("subscription %q not found", id)
+		}
+		dropConn := c.sanitizeRefs(&next, store.Subscription{ID: id})
+		next.Collapsed = slices.DeleteFunc(next.Collapsed, func(s string) bool {
+			return s == id
+		})
+		return c.finishDisconnect(ctx, next, dropConn)
 	})
-	if len(next.Subscriptions) == count {
-		return fmt.Errorf("subscription %q not found", id)
-	}
-	dropConn := c.sanitizeRefs(&next, store.Subscription{ID: id})
-	next.Collapsed = slices.DeleteFunc(next.Collapsed, func(s string) bool {
-		return s == id
-	})
-	return c.finishDisconnect(ctx, next, dropConn)
 }
 
 func (c *Core) RemoveNode(ctx context.Context, ref domain.NodeRef) error {
-	c.opMu.Lock()
-	defer c.opMu.Unlock()
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	next := c.current()
-	i := slices.IndexFunc(next.Subscriptions, func(sub store.Subscription) bool {
-		return (ref.SubscriptionID == "" || sub.ID == ref.SubscriptionID) && sub.URL == "" &&
-			slices.ContainsFunc(sub.Nodes, func(node domain.Node) bool { return node.ID == ref.NodeID })
+	return c.change(ctx, false, func(ctx context.Context) error {
+		next := c.current()
+		i := slices.IndexFunc(next.Subscriptions, func(sub store.Subscription) bool {
+			return (ref.SubscriptionID == "" || sub.ID == ref.SubscriptionID) && sub.URL == "" &&
+				slices.ContainsFunc(sub.Nodes, func(node domain.Node) bool { return node.ID == ref.NodeID })
+		})
+		if i < 0 {
+			return fmt.Errorf("node %q not found", ref.NodeID)
+		}
+		next.Subscriptions[i].Nodes = slices.DeleteFunc(slices.Clone(next.Subscriptions[i].Nodes), func(node domain.Node) bool { return node.ID == ref.NodeID })
+		dropConn := c.sanitizeRefs(&next, next.Subscriptions[i])
+		return c.finishDisconnect(ctx, next, dropConn)
 	})
-	if i < 0 {
-		return fmt.Errorf("node %q not found", ref.NodeID)
-	}
-	next.Subscriptions[i].Nodes = slices.DeleteFunc(slices.Clone(next.Subscriptions[i].Nodes), func(node domain.Node) bool { return node.ID == ref.NodeID })
-	dropConn := c.sanitizeRefs(&next, next.Subscriptions[i])
-	return c.finishDisconnect(ctx, next, dropConn)
 }
 
 func (c *Core) MoveSubscription(ctx context.Context, id string, dir int) error {
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
+	if err := c.ctx.Err(); err != nil {
+		return err
+	}
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	if c.changing != nil {
+		return errChanging
 	}
 	next := c.current()
 	i := slices.IndexFunc(next.Subscriptions, func(sub store.Subscription) bool { return sub.ID == id })

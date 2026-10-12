@@ -99,7 +99,7 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) needsSpinner() bool {
-	return m.busy || m.startup != nil ||
+	return m.busy || m.snapshot.Status.Busy || m.startup != nil ||
 		slices.ContainsFunc(m.snapshot.Nodes, func(node ipc.Node) bool { return node.Probing }) ||
 		slices.ContainsFunc(m.snapshot.Subscriptions, func(subscription ipc.Subscription) bool { return subscription.Refreshing })
 }

@@ -34,6 +34,9 @@ func (c *Core) publish() {
 // Caller holds stMu.
 func (c *Core) publishLocked() {
 	state := c.state
+	if c.changing != nil {
+		state = c.changing.state
+	}
 	subs := make([]ipc.Subscription, len(state.Subscriptions))
 	for i, sub := range state.Subscriptions {
 		subs[i] = subView(sub, c.refreshes[sub.ID] != nil)
@@ -48,7 +51,7 @@ func (c *Core) publishLocked() {
 		Nodes:         c.nodes(state.Subscriptions),
 		Status:        c.status(state),
 		Selected:      selected,
-		Collapsed:     slices.Clone(state.Collapsed),
+		Collapsed:     slices.Clone(c.state.Collapsed),
 	}
 	c.snapshot.Store(snapshot)
 	for ch := range c.watchers {
@@ -66,6 +69,10 @@ func (c *Core) publishLocked() {
 
 func (c *Core) status(state store.State) ipc.Status {
 	status := c.conn.Status()
+	if c.changing != nil {
+		status = c.changing.before
+		status.Busy = true
+	}
 	if !status.Connected {
 		status.Port = state.Settings.Port
 		status.Tun = state.Tun
@@ -88,7 +95,7 @@ func (c *Core) nodes(subscriptions []store.Subscription) []ipc.Node {
 				Server:         node.Server,
 				Port:           node.Port,
 				SubscriptionID: subscription.ID,
-				Probing:        c.probing[ref] != nil,
+				Probing:        c.probing != nil && c.probing.ctx.Err() == nil && c.probing.pending[ref],
 			}
 			if result, ok := c.probes[ref]; ok {
 				item.Probed, item.Alive, item.Duration = true, result.Alive, result.Duration
@@ -97,9 +104,11 @@ func (c *Core) nodes(subscriptions []store.Subscription) []ipc.Node {
 			out = append(out, item)
 		}
 	}
-	for ref := range c.probes {
-		if !live[ref] {
-			delete(c.probes, ref)
+	if c.changing == nil {
+		for ref := range c.probes {
+			if !live[ref] {
+				delete(c.probes, ref)
+			}
 		}
 	}
 	return out

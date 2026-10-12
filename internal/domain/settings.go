@@ -98,7 +98,6 @@ func (s Settings) Normalize() (Settings, error) {
 		one("direct lan", &s.BypassLocal, "on", Toggle),
 		one("block quic", &s.BlockQUIC, "off", Toggle),
 		one("force tty", &s.ForceTTY, "off", Toggle),
-		one("autostart", &s.Autostart, "off", Toggle),
 		one("emoji", &s.Emoji, "off", Toggle),
 		text("dns", &s.DNS, DefaultDNS, "an IP address or an https:// URL", isDNS),
 		text("probe url", &s.ProbeURL, DefaultProbeURL, "a url", isURL),
@@ -106,6 +105,9 @@ func (s Settings) Normalize() (Settings, error) {
 		canon(&s.Proxy),
 		canon(&s.Block),
 		disjoint(s.Direct, s.Proxy),
+	}
+	if s.Autostart != "" {
+		checks = append(checks, one("autostart", &s.Autostart, "off", Toggle))
 	}
 	for _, err := range checks {
 		if err != nil {

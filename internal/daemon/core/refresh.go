@@ -6,17 +6,26 @@ import (
 	"fmt"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/luynrs/justray/internal/daemon/store"
 	"github.com/luynrs/justray/internal/domain"
 )
 
 type refreshCall struct {
-	done chan struct{}
-	err  error
+	ctx     context.Context
+	cancel  context.CancelFunc
+	done    chan struct{}
+	waiters int
+	err     error
 }
 
 func (c *Core) RefreshSubscriptions(ctx context.Context, ids ...string) error {
+	ctx, cancel := c.requestContext(ctx)
+	defer cancel()
+	if err := c.ctx.Err(); err != nil {
+		return err
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -77,7 +86,7 @@ func (c *Core) sanitizeRefs(state *store.State, updated store.Subscription) bool
 	return status.Connected && status.NodeRef.SubscriptionID == updated.ID && !nodeExists(status.NodeRef)
 }
 
-func (c *Core) refresh(ctx context.Context, sub store.Subscription) (err error) {
+func (c *Core) refresh(ctx context.Context, sub store.Subscription) error {
 	var call *refreshCall
 	for {
 		if err := ctx.Err(); err != nil {
@@ -85,6 +94,15 @@ func (c *Core) refresh(ctx context.Context, sub store.Subscription) (err error) 
 		}
 		c.stMu.Lock()
 		call = c.refreshes[sub.ID]
+		if call != nil && call.ctx.Err() != nil {
+			c.stMu.Unlock()
+			select {
+			case <-call.done:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+			continue
+		}
 		if call == nil {
 			index := slices.IndexFunc(c.state.Subscriptions, func(current store.Subscription) bool { return current.ID == sub.ID })
 			if index < 0 {
@@ -92,64 +110,78 @@ func (c *Core) refresh(ctx context.Context, sub store.Subscription) (err error) 
 				return fmt.Errorf("subscription %q not found", sub.ID)
 			}
 			sub = c.state.Subscriptions[index]
-			call = &refreshCall{done: make(chan struct{})}
+			jobCtx, cancel := context.WithTimeout(c.ctx, 30*time.Second)
+			call = &refreshCall{ctx: jobCtx, cancel: cancel, done: make(chan struct{})}
 			c.refreshes[sub.ID] = call
 			c.publishLocked()
-			c.stMu.Unlock()
-			break
+			go c.refreshSubscription(call, sub)
 		}
+		call.waiters++
 		c.stMu.Unlock()
-		select {
-		case <-call.done:
-			if call.err != context.Canceled && call.err != context.DeadlineExceeded {
-				return call.err
-			}
-		case <-ctx.Done():
-			return ctx.Err()
-		}
+		break
 	}
 	defer func() {
 		c.stMu.Lock()
-		call.err = err
-		if err != nil && ctx.Err() != nil {
-			call.err = ctx.Err()
+		call.waiters--
+		if call.waiters == 0 {
+			call.cancel()
 		}
+		c.stMu.Unlock()
+	}()
+	select {
+	case <-call.done:
+		return call.err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (c *Core) refreshSubscription(call *refreshCall, sub store.Subscription) {
+	var err error
+	defer func() {
+		if err != nil && call.ctx.Err() != nil {
+			err = call.ctx.Err()
+		}
+		call.cancel()
+		c.stMu.Lock()
+		call.err = err
 		delete(c.refreshes, sub.ID)
 		c.publishLocked()
 		close(call.done)
 		c.stMu.Unlock()
 	}()
-
-	sub, err = c.subs.Refresh(ctx, sub)
+	sub, err = c.subs.Refresh(call.ctx, sub)
 	if err != nil {
-		return err
+		return
 	}
-	c.opMu.Lock()
-	defer c.opMu.Unlock()
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	next := c.current()
-	index := slices.IndexFunc(next.Subscriptions, func(current store.Subscription) bool { return current.ID == sub.ID })
-	if index < 0 {
-		return fmt.Errorf("subscription %q not found", sub.ID)
-	}
-	sub.Nodes = assignNodeIDs(sub.Nodes, next.Subscriptions[index].Nodes)
-	next.Subscriptions[index] = sub
-	dropConn := c.sanitizeRefs(&next, sub)
-	if err := c.commit(next); err != nil {
-		return err
-	}
-	ctx = context.WithoutCancel(ctx)
-	if dropConn {
-		return c.conn.Disconnect(ctx)
-	}
-	if status := c.conn.Status(); status.Connected && status.NodeRef.SubscriptionID == sub.ID {
-		node, ref, err := find(next.Subscriptions, status.NodeRef)
-		if err != nil {
+	var change *changeCall
+	change, err = c.startChange(call.ctx, true, func(ctx context.Context) error {
+		next := c.current()
+		index := slices.IndexFunc(next.Subscriptions, func(current store.Subscription) bool { return current.ID == sub.ID })
+		if index < 0 {
+			return fmt.Errorf("subscription %q not found", sub.ID)
+		}
+		sub.Nodes = assignNodeIDs(sub.Nodes, next.Subscriptions[index].Nodes)
+		next.Subscriptions[index] = sub
+		dropConn := c.sanitizeRefs(&next, sub)
+		if err := c.commit(next); err != nil {
 			return err
 		}
-		return c.conn.Apply(ctx, node, ref, next.Settings, status.Tun)
+		ctx = context.WithoutCancel(ctx)
+		if dropConn {
+			return c.external(func() error { return c.conn.Disconnect(ctx) })
+		}
+		if status := c.conn.Status(); status.Connected && status.NodeRef.SubscriptionID == sub.ID {
+			node, ref, err := find(next.Subscriptions, status.NodeRef)
+			if err != nil {
+				return err
+			}
+			return c.external(func() error { return c.conn.Apply(ctx, node, ref, next.Settings, status.Tun) })
+		}
+		return nil
+	})
+	if err == nil {
+		<-change.done
+		err = change.err
 	}
-	return nil
 }

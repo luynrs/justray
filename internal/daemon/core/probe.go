@@ -15,102 +15,115 @@ type probeCall struct {
 	ctx     context.Context
 	cancel  context.CancelFunc
 	done    chan struct{}
-	ref     domain.NodeRef
+	target  domain.NodeRef
+	pending map[domain.NodeRef]bool
 	waiters int
 	err     error
 }
 
 func (c *Core) Probe(ctx context.Context, sub, id string) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	state := c.current()
-	refs, nodes, err := probeTargets(state.Subscriptions, sub, id)
-	if err != nil {
-		return err
-	}
-	if len(nodes) > 512 {
-		return fmt.Errorf("too many nodes to probe: %d (maximum 512)", len(nodes))
-	}
-	var calls []*probeCall
-	var targets []engine.Target
-	var started []*probeCall
+	ctx, cancel := c.requestContext(ctx)
+	defer cancel()
 	c.stMu.Lock()
-	for i, ref := range refs {
-		call := c.probing[ref]
-		if call == nil {
-			nodeCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-			call = &probeCall{ctx: nodeCtx, cancel: cancel, done: make(chan struct{}), ref: ref}
-			targets = append(targets, engine.Target{Context: nodeCtx, Node: nodes[i]})
-			started = append(started, call)
-			c.probing[ref] = call
+	if err := ctx.Err(); err != nil {
+		c.stMu.Unlock()
+		return err
+	}
+	target := domain.NodeRef{SubscriptionID: sub, NodeID: id}
+	for c.probing != nil && (c.probing.target != target || c.probing.ctx.Err() != nil) {
+		c.probing.cancel()
+		done := c.probing.done
+		c.stMu.Unlock()
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return ctx.Err()
 		}
-		call.waiters++
-		calls = append(calls, call)
+		c.stMu.Lock()
+		if err := ctx.Err(); err != nil {
+			c.stMu.Unlock()
+			return err
+		}
 	}
-	if len(started) > 0 {
+	call := c.probing
+	if call == nil {
+		refs, nodes, err := probeTargets(c.state.Subscriptions, sub, id)
+		if err != nil {
+			c.stMu.Unlock()
+			return err
+		}
+		if len(nodes) > 512 {
+			c.stMu.Unlock()
+			return fmt.Errorf("too many nodes to probe: %d (maximum 512)", len(nodes))
+		}
+		jobCtx, cancel := context.WithTimeout(c.ctx, 30*time.Second)
+		call = &probeCall{
+			ctx: jobCtx, cancel: cancel, done: make(chan struct{}),
+			target: target, pending: make(map[domain.NodeRef]bool, len(refs)),
+		}
+		for _, ref := range refs {
+			call.pending[ref] = true
+		}
+		c.probing = call
 		c.publishLocked()
+		go c.runProbe(call, refs, nodes, c.state.Settings.Clone())
 	}
+	call.waiters++
 	c.stMu.Unlock()
 	defer func() {
 		c.stMu.Lock()
 		defer c.stMu.Unlock()
-		changed := false
-		for _, call := range calls {
-			call.waiters--
-			if call.waiters == 0 {
-				call.cancel()
-				if c.probing[call.ref] == call {
-					delete(c.probing, call.ref)
-					changed = true
-				}
-			}
-		}
-		if changed {
+		call.waiters--
+		if call.waiters == 0 && c.probing == call {
+			call.cancel()
 			c.publishLocked()
 		}
 	}()
-	if len(targets) > 0 {
-		go c.conn.Probe(targets, state.Settings, func(index int, result engine.Result, err error) {
-			call := started[index]
+	select {
+	case <-call.done:
+		return errors.Join(call.err, ctx.Err())
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (c *Core) runProbe(call *probeCall, refs []domain.NodeRef, nodes []domain.Node, settings domain.Settings) {
+	done := make(chan error, 1)
+	changed := false
+	go func() {
+		done <- c.conn.Probe(call.ctx, nodes, settings, func(index int, result engine.Result) {
 			c.stMu.Lock()
 			defer c.stMu.Unlock()
-			if call.ctx.Err() != nil {
-				return
-			}
-			call.err = err
-			if err == nil {
-				c.probes[call.ref] = result
-			}
-			call.cancel()
-			// inter. res
-			if c.probeTimer == nil {
-				c.probeTimer = time.AfterFunc(100*time.Millisecond, func() {
-					c.stMu.Lock()
-					defer c.stMu.Unlock()
-					for ref, call := range c.probing {
-						if call.ctx.Err() == nil {
-							continue
-						}
-						delete(c.probing, ref)
-						close(call.done)
-					}
-					c.publishLocked()
-					c.probeTimer = nil
-				})
+			if call.ctx.Err() == nil {
+				c.probes[refs[index]] = result
+				delete(call.pending, refs[index])
+				changed = true
 			}
 		})
-	}
-	var result error
-	for _, call := range calls {
+	}()
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
 		select {
-		case <-call.done:
-			result = errors.Join(result, call.err)
-		case <-ctx.Done():
-			return ctx.Err()
+		case <-ticker.C:
+			// inter. res
+			c.stMu.Lock()
+			if changed {
+				c.publishLocked()
+				changed = false
+			}
+			c.stMu.Unlock()
+		case err := <-done:
+			call.cancel()
+			c.stMu.Lock()
+			call.err = err
+			c.probing = nil
+			c.publishLocked()
+			close(call.done)
+			c.stMu.Unlock()
+			return
 		}
 	}
-	return errors.Join(result, ctx.Err())
 }
 
 func probeTargets(subscriptions []store.Subscription, subID, nodeID string) ([]domain.NodeRef, []domain.Node, error) {

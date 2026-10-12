@@ -46,7 +46,7 @@ func TestStop(t *testing.T) {
 		if reply == "real" {
 			version.Version = "999.0.0"
 			logger := log.New(io.Discard, "", 0)
-			app, err := core.New(store.Disk{Dir: dir}, connection.New(t.Context(), dir, engine.New, engine.Probe, logger), subscription.New(t.Context(), logger))
+			app, err := core.New(t.Context(), store.Disk{Dir: dir}, connection.New(t.Context(), dir, engine.New, engine.Probe, logger), subscription.New(t.Context(), logger))
 			if err != nil {
 				t.Fatal(err)
 			}

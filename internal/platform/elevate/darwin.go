@@ -3,12 +3,14 @@
 package elevate
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 const helper = "/Library/PrivilegedHelperTools/justrayd"
@@ -37,7 +39,14 @@ func Restart(_ string) error {
 			" && { " + command + " }"
 	}
 	script := `do shell script "` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(command) + `" with administrator privileges`
-	if output, err := exec.Command("osascript", "-e", script).CombinedOutput(); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second-time.Second)
+	defer cancel()
+	process := exec.CommandContext(ctx, "osascript", "-e", script)
+	process.WaitDelay = time.Second
+	if output, err := process.CombinedOutput(); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		return fmt.Errorf("start helper failed (%w, %s)", err, strings.TrimSpace(string(output)))
 	}
 	return nil
