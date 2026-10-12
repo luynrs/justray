@@ -41,6 +41,7 @@ func build(n domain.Node, s domain.Settings, logPath string, tun bool) (*option.
 			{Type: C.TypeSelector, Tag: "proxy", Options: &option.SelectorOutboundOptions{Outbounds: []string{"proxy-node"}}},
 		},
 		DNS: &option.DNSOptions{RawDNSOptions: option.RawDNSOptions{
+			ReverseMapping:   true,
 			DNSClientOptions: option.DNSClientOptions{Strategy: dnsStrategy[s.IPVersion]},
 			Servers:          dnsServers(s, detour(s), "remote"),
 			Final:            "remote",
