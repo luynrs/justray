@@ -288,7 +288,7 @@ func (m Model) click(x, y int) (tea.Model, tea.Cmd) {
 	m.cursor = cursor
 	m.cursor, m.scroll = tree.Reveal(rows, m.cursor, m.scroll, m.height())
 
-	if r, _ := tree.At(rows, m.cursor); clicked || r.Kind == tree.Header {
+	if r, _ := tree.At(rows, m.cursor); clicked {
 		return m.activate(r)
 	}
 	return m, nil
