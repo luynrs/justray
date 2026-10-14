@@ -122,5 +122,21 @@ Package manager and script installations also provide `jray` as a short alias fo
 | `o`          | Open settings           | `Esc`         | Back / cancel           |
 | `Tab`        | Switch panel            | `q`, `Ctrl+C` | Exit TUI                |
 
+### Screenshots
+
+Main UI
+
+![JustRay](.github/assets/screenshots/main.png)
+
+![JustRay (Add)](.github/assets/screenshots/add.png)
+
+Main UI in TTY mode
+
+![JustRay (TTY)](.github/assets/screenshots/tty.png)
+
+Settings UI
+
+![JustRay (Settings)](.github/assets/screenshots/settings.png)
+
 ### License
 [GPL-3.0-or-later](LICENSE)
