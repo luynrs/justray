@@ -155,5 +155,8 @@ func reply(conn net.Conn, result any, err error) error {
 			resp.Error.Type = "version_mismatch"
 		}
 	}
+	if err := conn.SetWriteDeadline(time.Now().Add(ipc.IdleTimeout)); err != nil {
+		return err
+	}
 	return json.NewEncoder(conn).Encode(resp)
 }

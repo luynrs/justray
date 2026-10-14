@@ -33,7 +33,7 @@ type singboxOutbound struct {
 	DownMbps       int           `json:"down_mbps"`
 	Congestion     string        `json:"congestion_control"`
 	UDPRelayMode   string        `json:"udp_relay_mode"`
-	Version        int           `json:"version"`
+	Version        flexInt       `json:"version"`
 	Username       string        `json:"username"`
 	Detour         string        `json:"detour"`
 	PrivateKey     string        `json:"private_key"`
@@ -41,18 +41,18 @@ type singboxOutbound struct {
 	PreSharedKey   string        `json:"pre_shared_key"`
 	LocalAddress   stringOrSlice `json:"local_address"`
 	Address        stringOrSlice `json:"address"`
-	Reserved       []int         `json:"reserved"`
+	Reserved       []uint8       `json:"reserved"`
 	MTU            uint32        `json:"mtu"`
 
 	Obfs  json.RawMessage `json:"obfs"`
 	Peers []struct {
-		Server       string `json:"server"`
-		ServerPort   int    `json:"server_port"`
-		Address      string `json:"address"`
-		Port         int    `json:"port"`
-		PublicKey    string `json:"public_key"`
-		PreSharedKey string `json:"pre_shared_key"`
-		Reserved     []int  `json:"reserved"`
+		Server       string  `json:"server"`
+		ServerPort   int     `json:"server_port"`
+		Address      string  `json:"address"`
+		Port         int     `json:"port"`
+		PublicKey    string  `json:"public_key"`
+		PreSharedKey string  `json:"pre_shared_key"`
+		Reserved     []uint8 `json:"reserved"`
 	} `json:"peers"`
 	TLS       *singboxTLSConfig       `json:"tls"`
 	Transport *singboxTransportConfig `json:"transport"`
@@ -209,7 +209,7 @@ func singboxNode(ob singboxOutbound, stlsByTag map[string]singboxOutbound) (doma
 				sni = stls.TLS.ServerName
 			}
 			n.Server, n.Port = stls.Server, stls.ServerPort
-			n.ShadowTLS = &domain.ShadowTLS{Version: cmp.Or(stls.Version, 3), Password: stls.Password, SNI: sni}
+			n.ShadowTLS = &domain.ShadowTLS{Version: cmp.Or(int(stls.Version), 3), Password: stls.Password, SNI: sni}
 		}
 	case domain.HY1:
 		auth := ob.AuthString
@@ -248,18 +248,11 @@ func singboxNode(ob singboxOutbound, stlsByTag map[string]singboxOutbound) (doma
 				res = ob.Peers[0].Reserved
 			}
 		}
-		var reserved []uint8
-		for _, b := range res {
-			if b < 0 || b > 255 {
-				return domain.Node{}, errors.New("wireguard: reserved byte out of range")
-			}
-			reserved = append(reserved, uint8(b))
-		}
 		addrs := fixCIDRs(append(append([]string(nil), ob.LocalAddress...), ob.Address...))
 		if ob.PrivateKey != "" && len(addrs) > 0 {
 			n.WireGuard = &domain.WireGuard{
 				PrivateKey: ob.PrivateKey, PeerPublicKey: peerPK, PreSharedKey: psk,
-				Address: addrs, Reserved: reserved, MTU: ob.MTU,
+				Address: addrs, Reserved: res, MTU: ob.MTU,
 			}
 		}
 	case domain.Shadow:
@@ -267,8 +260,11 @@ func singboxNode(ob singboxOutbound, stlsByTag map[string]singboxOutbound) (doma
 		if ob.TLS != nil && ob.TLS.ServerName != "" {
 			sni = ob.TLS.ServerName
 		}
-		n.ShadowTLS = &domain.ShadowTLS{Version: cmp.Or(ob.Version, 3), Password: ob.Password, SNI: sni}
+		n.ShadowTLS = &domain.ShadowTLS{Version: cmp.Or(int(ob.Version), 3), Password: ob.Password, SNI: sni}
 	case domain.SOCKS, domain.HTTP:
+		if proto == domain.SOCKS && ob.Version != 0 && ob.Version != 5 {
+			return domain.Node{}, errors.New("socks: unsupported version")
+		}
 		n.Auth = domain.Auth{Username: ob.Username, Password: ob.Password}
 	}
 

@@ -50,7 +50,9 @@ func main() {
 	defer func() { _ = logFile.Close() }()
 
 	logger.SetOutput(logFile)
-	if !sameFile(os.Stderr, logFile) {
+	stderrInfo, stderrErr := os.Stderr.Stat()
+	logInfo, logErr := logFile.Stat()
+	if stderrErr != nil || logErr != nil || !os.SameFile(stderrInfo, logInfo) {
 		logger.SetOutput(io.MultiWriter(logFile, os.Stderr))
 		if err := debug.SetCrashOutput(logFile, debug.CrashOptions{}); err != nil {
 			logger.Printf("crash log setup failed (%v)", err)
@@ -165,13 +167,4 @@ func main() {
 			return
 		}
 	}
-}
-
-func sameFile(a, b *os.File) bool {
-	ai, err := a.Stat()
-	if err != nil {
-		return false
-	}
-	bi, err := b.Stat()
-	return err == nil && os.SameFile(ai, bi)
 }

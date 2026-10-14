@@ -40,7 +40,12 @@ func (a *app) up(cmd *cobra.Command, args []string) error {
 	} else {
 		if snapshot.Status.Connected {
 			if mode != nil {
-				return a.switchMode(ctx, snapshot.Status, *mode)
+				snapshot, err = a.runOp(ctx, "Switching to "+strings.ToUpper(modeWord(*mode)), func() error {
+					return a.client.SetTun(ctx, *mode)
+				}, snapshot.Status.NodeRef, mode)
+				if err != nil {
+					return err
+				}
 			}
 			a.report(snapshot)
 			return nil
@@ -57,24 +62,19 @@ func (a *app) up(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	return a.connect(ctx, node, mode)
-}
-
-func init() {
-	upCmd.Flags().Bool("tun", false, "Connect in TUN mode")
-	upCmd.Flags().Bool("proxy", false, "Connect in proxy mode")
-}
-
-func (a *app) connect(ctx context.Context, n ipc.Node, mode *bool) error {
-	spinText := "Connecting to " + a.clean(n.Name)
-	snapshot, err := a.runOp(ctx, spinText, func() error {
-		return a.client.Connect(ctx, n.Ref(), mode)
-	}, n.Ref(), mode)
+	snapshot, err = a.runOp(ctx, "Connecting to "+a.clean(node.Name), func() error {
+		return a.client.Connect(ctx, node.Ref(), mode)
+	}, node.Ref(), mode)
 	if err != nil {
 		return err
 	}
 	a.report(snapshot)
 	return nil
+}
+
+func init() {
+	upCmd.Flags().Bool("tun", false, "Connect in TUN mode")
+	upCmd.Flags().Bool("proxy", false, "Connect in proxy mode")
 }
 
 func (a *app) runOp(ctx context.Context, text string, op func() error, ref domain.NodeRef, want *bool) (ipc.Snapshot, error) {
@@ -95,21 +95,9 @@ func (a *app) runOp(ctx context.Context, text string, op func() error, ref domai
 	stop = spin("Granting permissions")
 	defer stop()
 	if want == nil {
-		tun := true
-		want = &tun
+		want = new(true)
 	}
 	return a.client.AwaitConnection(ctx, ref, want)
-}
-
-func (a *app) switchMode(ctx context.Context, st ipc.Status, tun bool) error {
-	next, err := a.runOp(ctx, "Switching to "+strings.ToUpper(modeWord(tun)), func() error {
-		return a.client.SetTun(ctx, tun)
-	}, st.NodeRef, &tun)
-	if err != nil {
-		return err
-	}
-	a.report(next)
-	return nil
 }
 
 func (a *app) report(snapshot ipc.Snapshot) {

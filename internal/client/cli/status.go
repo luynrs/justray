@@ -45,14 +45,14 @@ func (a *app) status(cmd *cobra.Command, args []string) error {
 		out := statusOut{Connected: st.Connected, Error: st.Error}
 		if st.Connected {
 			n := lookup(st.NodeRef, snapshot.Nodes)
-			out.Mode, out.Node = modeWord(st.Tun), a.clean(st.NodeName)
-			out.Server, out.Port, out.Protocol = a.clean(n.Server), n.Port, n.Protocol
+			out.Mode, out.Node = modeWord(st.Tun), st.NodeName
+			out.Server, out.Port, out.Protocol = n.Server, n.Port, n.Protocol
 			out.Uptime = int64(st.Uptime().Seconds())
 			if !st.Tun && st.Port > 0 {
 				out.ProxyPort = st.Port
 			}
 		} else if n := lookup(snapshot.Selected, snapshot.Nodes); n.NodeID != "" {
-			out.LastNode = a.clean(n.Name)
+			out.LastNode = n.Name
 		}
 		enc := json.NewEncoder(cmd.OutOrStdout())
 		enc.SetIndent("", "  ")

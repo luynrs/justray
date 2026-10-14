@@ -15,8 +15,10 @@ func cachedCopy(source, dir string) (string, error) {
 	}
 
 	target := filepath.Join(dir, "elevated", "justrayd")
-	if verified(target, sum) {
-		return target, nil
+	if cachedInfo, err := os.Lstat(target); err == nil && cachedInfo.Mode().IsRegular() {
+		if cachedSum, err := hashFile(target); err == nil && cachedSum == sum {
+			return target, nil
+		}
 	}
 	if err := os.Remove(target); err != nil && !os.IsNotExist(err) {
 		return "", err
@@ -24,33 +26,20 @@ func cachedCopy(source, dir string) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
 		return "", err
 	}
-	return target, copyFile(source, target)
-}
-
-func verified(path, sum string) bool {
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() {
-		return false
-	}
-	got, err := hashFile(path)
-	return err == nil && got == sum
-}
-
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
+	sourceFile, err := os.Open(source)
 	if err != nil {
-		return err
+		return target, err
 	}
-	defer func() { _ = in.Close() }()
+	defer func() { _ = sourceFile.Close() }()
 
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o700)
+	targetFile, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o700)
 	if err != nil {
-		return err
+		return target, err
 	}
-	if _, err := io.Copy(out, in); err != nil {
-		_ = out.Close()
-		_ = os.Remove(dst)
-		return err
+	if _, err := io.Copy(targetFile, sourceFile); err != nil {
+		_ = targetFile.Close()
+		_ = os.Remove(target)
+		return target, err
 	}
-	return out.Close()
+	return target, targetFile.Close()
 }

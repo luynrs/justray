@@ -31,25 +31,20 @@ func (m Model) activate(r tree.Row) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) collapse() (tea.Model, tea.Cmd) {
-	r, ok := m.at()
+	row, ok := m.at()
 	if !ok {
 		return m, nil
 	}
-	id := r.Sub.SubscriptionID
-	if r.Kind == tree.Node {
-		m.toHeader(id)
-	}
-	return m, action(false, nil, func() error { return m.client.SetCollapsed(m.watch, id, new(true)) })
-}
-
-func (m *Model) toHeader(id string) {
-	rows := m.rows()
-	for i, idx := range tree.Selectable(rows) {
-		if rows[idx].Kind == tree.Header && rows[idx].Sub.SubscriptionID == id {
-			m.cursor = i
-			return
+	if row.Kind == tree.Node {
+		rows := m.rows()
+		for i, index := range tree.Selectable(rows) {
+			if rows[index].Kind == tree.Header && rows[index].Sub.SubscriptionID == row.Sub.SubscriptionID {
+				m.cursor, m.scroll = tree.Reveal(rows, i, m.scroll, m.height())
+				break
+			}
 		}
 	}
+	return m, action(false, nil, func() error { return m.client.SetCollapsed(m.watch, row.Sub.SubscriptionID, new(true)) })
 }
 
 func (m Model) expand() (tea.Model, tea.Cmd) {
@@ -61,29 +56,19 @@ func (m Model) expand() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) probe() (tea.Model, tea.Cmd) {
-	r, ok := m.at()
-	if !ok {
+	row, ok := m.at()
+	if !ok || row.Node.Probing {
 		return m, nil
 	}
-	if r.Kind == tree.Node {
-		if r.Node.Probing {
-			return m, nil
-		}
-		return m, action(false, m.start, func() error { return m.client.Probe(m.watch, r.Node.SubscriptionID, r.Node.NodeID) })
-	}
-	return m, action(false, m.start, func() error { return m.client.Probe(m.watch, r.Sub.SubscriptionID, "") })
+	return m, action(false, m.start, func() error { return m.client.Probe(m.watch, row.Sub.SubscriptionID, row.Node.NodeID) })
 }
 
 func (m Model) refresh() (tea.Model, tea.Cmd) {
-	r, ok := m.at()
-	if !ok {
+	row, ok := m.at()
+	if !ok || !row.Sub.Refreshable {
 		return m, nil
 	}
-	id := r.Sub.SubscriptionID
-	if !r.Sub.Refreshable {
-		return m, nil
-	}
-	return m, action(false, m.start, func() error { return m.client.RefreshSubscription(m.watch, id) })
+	return m, action(false, m.start, func() error { return m.client.RefreshSubscription(m.watch, row.Sub.SubscriptionID) })
 }
 
 func (m Model) moveSub(dir int) (tea.Model, tea.Cmd) {

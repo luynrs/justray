@@ -96,7 +96,7 @@ func writeJSON(path string, value any) error {
 }
 
 func write(path string, data []byte) error {
-	tmp, err := os.OpenFile(path+".tmp", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
 	if err != nil {
 		return err
 	}

@@ -200,7 +200,7 @@ func (a *app) subList(cmd *cobra.Command, args []string) error {
 				nodes[j] = nodeOut{n.NodeID, n.Name, n.Protocol, n.Server, n.Port, n.Probed, n.Alive, n.Duration, n.Failure, n.Error}
 			}
 			s := subOut{ID: g.Sub.SubscriptionID, Name: g.Sub.Name, Warning: g.Sub.Warning, Nodes: nodes}
-			if tr := g.Sub.Traffic; tr.TotalBytes > 0 || tr.UploadBytes > 0 || tr.DownloadBytes > 0 {
+			if tr := g.Sub.Traffic; tr.TotalBytes > 0 || tr.UploadBytes > 0 || tr.DownloadBytes > 0 || !tr.ExpiresAt.IsZero() {
 				s.Traffic = new(domain.Traffic(tr))
 			}
 			result[i] = s

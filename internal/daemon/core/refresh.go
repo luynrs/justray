@@ -154,8 +154,7 @@ func (c *Core) refreshSubscription(call *refreshCall, sub store.Subscription) {
 	if err != nil {
 		return
 	}
-	var change *changeCall
-	change, err = c.startChange(call.ctx, true, func(ctx context.Context) error {
+	change, err := c.startChange(call.ctx, true, func(ctx context.Context) error {
 		next := c.current()
 		index := slices.IndexFunc(next.Subscriptions, func(current store.Subscription) bool { return current.ID == sub.ID })
 		if index < 0 {

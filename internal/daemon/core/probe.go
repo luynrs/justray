@@ -31,6 +31,10 @@ func (c *Core) Probe(ctx context.Context, sub, id string) error {
 	}
 	target := domain.NodeRef{SubscriptionID: sub, NodeID: id}
 	for c.probing != nil && (c.probing.target != target || c.probing.ctx.Err() != nil) {
+		if _, _, err := probeTargets(c.state.Subscriptions, sub, id); err != nil {
+			c.stMu.Unlock()
+			return err
+		}
 		c.probing.cancel()
 		done := c.probing.done
 		c.stMu.Unlock()
@@ -51,10 +55,6 @@ func (c *Core) Probe(ctx context.Context, sub, id string) error {
 		if err != nil {
 			c.stMu.Unlock()
 			return err
-		}
-		if len(nodes) > 512 {
-			c.stMu.Unlock()
-			return fmt.Errorf("too many nodes to probe: %d (maximum 512)", len(nodes))
 		}
 		jobCtx, cancel := context.WithTimeout(c.ctx, 30*time.Second)
 		call = &probeCall{
@@ -143,6 +143,9 @@ func probeTargets(subscriptions []store.Subscription, subID, nodeID string) ([]d
 	}
 	if len(nodes) == 0 {
 		return nil, nil, fmt.Errorf("nothing to probe")
+	}
+	if len(nodes) > 512 {
+		return nil, nil, fmt.Errorf("too many nodes to probe: %d (maximum 512)", len(nodes))
 	}
 	return refs, nodes, nil
 }

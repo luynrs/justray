@@ -49,6 +49,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.saving = false
 		if msg.err != nil {
 			m.err, m.errAt = msg.err.Error(), time.Now()
+		} else {
+			m.dialog = nil
 		}
 		return m, m.syncTTY()
 
@@ -118,6 +120,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "ctrl+c" {
 		return m.quit()
 	}
+	if m.saving {
+		return m, nil
+	}
 	showHelp := false
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
@@ -139,9 +144,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateModal(msg)
 	}
 	if m.dialog != nil {
-		if _, wheel := msg.(tea.MouseWheelMsg); wheel && m.h < topLines+footerLines+1 {
-			m.dialog.CancelNavigation()
-			return m, nil
+		if mouse, ok := msg.(tea.MouseMsg); ok && m.h < topLines+footerLines+1 {
+			if _, wheel := msg.(tea.MouseWheelMsg); wheel || mouse.Mouse().Y != 0 {
+				m.dialog.CancelNavigation()
+				return m, nil
+			}
 		}
 		closed, cmd := m.dialog.Update(msg)
 		if closed {
@@ -212,7 +219,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.resizeModal()
 		return m, m.editor.Focus()
 	case "o":
-		if m.saving || m.snapshot.Settings.Port == 0 {
+		if m.snapshot.Settings.Port == 0 {
 			return m, nil
 		}
 		m.dialog = settings.New(m.snapshot.Settings, topLines)
@@ -278,6 +285,9 @@ func (m Model) click(x, y int) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	if m.h < topLines+footerLines+1 {
+		return m, nil
+	}
 
 	rows := m.rows()
 	cursor, ok := tree.Point(rows, m.scroll, m.height(), topLines, y)
@@ -306,7 +316,6 @@ func (m Model) closeSettings() (Model, tea.Cmd) {
 		return m, m.syncTTY()
 	}
 	m.saving = true
-	m.dialog = nil
 	m.err = ""
 	return m, tea.Batch(m.syncTTY(), func() tea.Msg {
 		if m.start != nil {
