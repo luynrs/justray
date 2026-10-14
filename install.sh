@@ -45,6 +45,10 @@ else
 	for candidate in "$HOME/.local/bin" "$HOME/bin" /usr/local/bin; do
 		case ":$PATH:" in
 			*":$candidate:"*)
+				if [ "$candidate" != /usr/local/bin ]; then
+					mkdir -p "$candidate" 2>/dev/null || continue
+				fi
+				[ -d "$candidate" ] && [ -w "$candidate" ] || continue
 				dir="$candidate"
 				break
 				;;
