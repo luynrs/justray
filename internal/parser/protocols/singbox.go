@@ -193,7 +193,7 @@ func singboxNode(ob singboxOutbound, stlsByTag map[string]singboxOutbound) (doma
 		n.Auth = domain.Auth{UUID: ob.UUID, AlterID: ob.AlterID, Method: cmp.Or(ob.Security, "auto")}
 	case domain.Trojan:
 		n.Auth = domain.Auth{Password: ob.Password}
-		if n.TLS == nil {
+		if ob.TLS == nil {
 			n.TLS = &domain.TLS{SNI: server}
 		}
 	case domain.SS:

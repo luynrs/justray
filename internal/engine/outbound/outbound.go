@@ -97,6 +97,8 @@ func proxy(n domain.Node, tag string, transportOptions *option.V2RayTransportOpt
 		}
 		return &option.Outbound{Type: C.TypeHysteria2, Tag: tag, Options: &option.Hysteria2OutboundOptions{
 			ServerOptions:               server(n),
+			UpMbps:                      n.UpMbps,
+			DownMbps:                    n.DownMbps,
 			Password:                    n.Auth.Password,
 			Obfs:                        obfs,
 			OutboundTLSOptionsContainer: option.OutboundTLSOptionsContainer{TLS: tls},
