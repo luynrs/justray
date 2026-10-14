@@ -100,11 +100,11 @@ func (s *Model) TabBar(width int) string {
 	if !s.compactTabs {
 		return b.String()
 	}
-	return style.Segment(" "+tabs[s.tab].name+" ", true) + style.Dim.Render(fmt.Sprintf(" %d/%d", s.tab+1, len(tabs)))
+	return style.Segment(" "+tabs[s.tab].name+" ", true) + style.Gray.Render(fmt.Sprintf(" %d/%d", s.tab+1, len(tabs)))
 }
 
 func (s *Model) tabAt(x int) (int, bool) {
-	pos := lipgloss.Width(style.Title.Render("JustRay")+" "+style.Dim.Render(version.String())) + 2
+	pos := lipgloss.Width(style.Blue.Bold(true).Render("JustRay")+" "+style.Gray.Render(version.String())) + 2
 	if s.compactTabs {
 		width := lipgloss.Width(style.Segment(" "+tabs[s.tab].name+" ", true))
 		return s.tab, x >= pos && x < pos+width
@@ -125,14 +125,14 @@ func (s *Model) fieldBlock(f field, i int) (lines, choices []string) {
 
 	bar := "  "
 	if selected {
-		bar = style.Accent.Render(style.Bar())
+		bar = style.Cyan.Render(style.Bar())
 	}
 
 	switch {
 	case !f.editable():
 		line := bar + f.name
 		if f.hint != "" {
-			line += " " + style.Dim.Render(f.hint)
+			line += " " + style.Gray.Render(f.hint)
 		}
 		lines, choices = []string{line}, []string{""}
 	case f.bare:
@@ -148,9 +148,9 @@ func (s *Model) fieldBlock(f field, i int) (lines, choices []string) {
 		if selected && s.input.Focused() {
 			body = s.input.View()
 		} else if !selected {
-			body = style.Dim.Render(body)
+			body = style.Gray.Render(body)
 		}
-		text := style.Dim.Render(prefix) + body
+		text := style.Gray.Render(prefix) + body
 		lines, choices = []string{bar + text}, []string{""}
 	default:
 		lines = []string{bar + f.name}
@@ -175,9 +175,9 @@ func (s *Model) valueLines(f field, selected bool, bar string) (lines, choices [
 	if len(f.enum) > 0 && selected {
 		cur := f.value(s.cur)
 		for _, opt := range f.enum {
-			line := bar + style.Dim.Render(style.Dot(false)+" "+opt)
+			line := bar + style.Gray.Render(style.Dot(false)+" "+opt)
 			if opt == cur {
-				line = bar + style.Accent.Render(style.Dot(true)+" "+opt)
+				line = bar + style.Cyan.Render(style.Dot(true)+" "+opt)
 			}
 			lines = append(lines, line)
 			choices = append(choices, opt)
@@ -189,5 +189,5 @@ func (s *Model) valueLines(f field, selected bool, bar string) (lines, choices [
 	if v == "" {
 		v = cmp.Or(f.hint, "auto")
 	}
-	return []string{bar + style.Dim.Render(v)}, []string{""}
+	return []string{bar + style.Gray.Render(v)}, []string{""}
 }

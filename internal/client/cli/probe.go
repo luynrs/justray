@@ -25,7 +25,7 @@ func (a *app) probe(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if len(snapshot.Nodes) == 0 {
-		out(style.Dim.Render("No nodes to probe. Add a subscription first: " + cmd.Root().CommandPath() + " subscription add <url>"))
+		out(style.Gray.Render("No nodes to probe. Add a subscription first: " + cmd.Root().CommandPath() + " subscription add <url>"))
 		return nil
 	}
 
@@ -63,7 +63,7 @@ func (a *app) probe(cmd *cobra.Command, args []string) error {
 		return errors.Join(probeErr, err)
 	}
 	if probeErr != nil {
-		out(style.Dim.Render("Last known results"))
+		out(style.Gray.Render("Last known results"))
 	}
 
 	if nodeID != "" {
@@ -74,11 +74,11 @@ func (a *app) probe(cmd *cobra.Command, args []string) error {
 		if probeErr == nil {
 			done("Probed " + a.clean(n.Name))
 		}
-		lat := style.Dim.Render("not tested")
+		lat := style.Gray.Render("not tested")
 		if n.Probed && !n.Alive {
-			lat = style.Dead.Render(n.Latency())
+			lat = style.Red.Render(n.Latency())
 		} else if n.Probed {
-			lat = style.Alive.Render(n.Latency())
+			lat = style.Green.Render(n.Latency())
 		}
 		pairs := append([][2]string{{"Latency", lat}}, a.nodeFields(n)...)
 		if n.Error != "" {

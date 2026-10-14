@@ -13,7 +13,7 @@ import (
 func (d Data) Render(r Row, selected bool, width int) string {
 	bar := "  "
 	if selected {
-		bar = style.Accent.Render(style.Bar())
+		bar = style.Cyan.Render(style.Bar())
 	}
 
 	switch r.Kind {
@@ -31,9 +31,9 @@ func subHeader(s ipc.Subscription, collapsed, selected, emoji bool) string {
 	arrow := style.Arrow(collapsed)
 	clean := style.Sanitize(s.Name, emoji)
 	if selected {
-		return style.Strong.Render(arrow + " " + clean)
+		return style.Cyan.Bold(true).Render(arrow + " " + clean)
 	}
-	return arrow + " " + style.Name.Render(clean)
+	return arrow + " " + style.Bold.Render(clean)
 }
 
 func subMeta(s ipc.Subscription, spinner string) string {
@@ -48,35 +48,35 @@ func subMeta(s ipc.Subscription, spinner string) string {
 	if s.NodeCount == 1 {
 		plural = ""
 	}
-	return style.Dim.Render(fmt.Sprintf("%d node%s %s %s", s.NodeCount, plural, style.Sep(), age))
+	return style.Gray.Render(fmt.Sprintf("%d node%s %s %s", s.NodeCount, plural, style.Sep(), age))
 }
 
 func (d Data) node(n ipc.Node, selected bool) string {
 	name := style.Sanitize(n.Name, d.Emoji)
 	if selected {
-		name = style.Accent.Render(name)
+		name = style.Cyan.Render(name)
 	}
 	line := "  " + d.dot(n) + " " + name
 	if lat := n.Latency(); lat != "" {
-		line += " " + style.Dim.Render(lat)
+		line += " " + style.Gray.Render(lat)
 	}
 	return line
 }
 
 func info(n ipc.Node) string {
-	return style.Dim.Render(fmt.Sprintf("%s:%d %s %s", style.Sanitize(n.Server, true), n.Port, style.Sep(), n.Protocol))
+	return style.Gray.Render(fmt.Sprintf("%s:%d %s %s", style.Sanitize(n.Server, true), n.Port, style.Sep(), n.Protocol))
 }
 
 func (d Data) dot(n ipc.Node) string {
 	switch {
 	case d.connected() && d.Status.NodeRef == n.Ref():
-		return style.Alive.Render(style.Dot(true))
+		return style.Green.Render(style.Dot(true))
 	case n.Probing:
-		return style.Pending.Render(cmp.Or(d.Spinner, style.Dot(false)))
+		return style.Yellow.Render(cmp.Or(d.Spinner, style.Dot(false)))
 	case !n.Probed:
-		return style.Dim.Render(style.Dot(false))
+		return style.Gray.Render(style.Dot(false))
 	case n.Alive:
-		return style.Alive.Render(style.Dot(false))
+		return style.Green.Render(style.Dot(false))
 	}
-	return style.Dead.Render(style.Dot(false))
+	return style.Red.Render(style.Dot(false))
 }

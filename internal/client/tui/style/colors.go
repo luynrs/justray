@@ -9,65 +9,61 @@ import (
 )
 
 var (
-	green  = lipgloss.Color("2")
-	yellow = lipgloss.Color("3")
-	red    = lipgloss.Color("1")
-)
+	Black   = lipgloss.NewStyle().Foreground(lipgloss.Black)
+	Red     = lipgloss.NewStyle().Foreground(lipgloss.Red)
+	Green   = lipgloss.NewStyle().Foreground(lipgloss.Green)
+	Yellow  = lipgloss.NewStyle().Foreground(lipgloss.Yellow)
+	Blue    = lipgloss.NewStyle().Foreground(lipgloss.Blue)
+	Magenta = lipgloss.NewStyle().Foreground(lipgloss.Magenta)
+	Cyan    = lipgloss.NewStyle().Foreground(lipgloss.Cyan)
+	White   = lipgloss.NewStyle().Foreground(lipgloss.White)
 
-var (
-	Title      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("4"))
-	MutedTitle = Title.Foreground(lipgloss.Color("#3d4a52"))
-	Accent     = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
-	Strong     = Accent.Bold(true)
-	Name       = lipgloss.NewStyle().Bold(true)
-	Key        = Name
-	Dim        = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	Err        = lipgloss.NewStyle().Bold(true).Foreground(red)
+	Gray          = lipgloss.NewStyle().Foreground(lipgloss.BrightBlack)
+	BrightRed     = lipgloss.NewStyle().Foreground(lipgloss.BrightRed)
+	BrightGreen   = lipgloss.NewStyle().Foreground(lipgloss.BrightGreen)
+	BrightYellow  = lipgloss.NewStyle().Foreground(lipgloss.BrightYellow)
+	BrightBlue    = lipgloss.NewStyle().Foreground(lipgloss.BrightBlue)
+	BrightMagenta = lipgloss.NewStyle().Foreground(lipgloss.BrightMagenta)
+	BrightCyan    = lipgloss.NewStyle().Foreground(lipgloss.BrightCyan)
+	BrightWhite   = lipgloss.NewStyle().Foreground(lipgloss.BrightWhite)
 
-	pill    = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(Title.GetForeground()).Bold(true)
-	pillCap = lipgloss.NewStyle().Foreground(Title.GetForeground())
-
-	Alive   = lipgloss.NewStyle().Foreground(green)
-	Dead    = lipgloss.NewStyle().Foreground(red)
-	Pending = lipgloss.NewStyle().Foreground(yellow)
+	Bold = lipgloss.NewStyle().Bold(true)
 
 	Input = textinput.Styles{
-		Focused: textinput.StyleState{Placeholder: Dim, Suggestion: Dim},
-		Blurred: textinput.StyleState{Text: Dim, Placeholder: Dim, Suggestion: Dim},
-		Cursor:  textinput.CursorStyle{Color: Accent.GetForeground(), Blink: true},
+		Focused: textinput.StyleState{Placeholder: Gray, Suggestion: Gray},
+		Blurred: textinput.StyleState{Text: Gray, Placeholder: Gray, Suggestion: Gray},
+		Cursor:  textinput.CursorStyle{Color: Cyan.GetForeground(), Blink: true},
 	}
 	Editor = textarea.Styles{
-		Focused: textarea.StyleState{Placeholder: Dim, Selection: lipgloss.NewStyle().Reverse(true)},
-		Blurred: textarea.StyleState{Text: Dim, Placeholder: Dim, Selection: lipgloss.NewStyle().Reverse(true)},
-		Cursor:  textarea.CursorStyle{Color: Accent.GetForeground(), Blink: true},
+		Focused: textarea.StyleState{Placeholder: Gray, Selection: lipgloss.NewStyle().Reverse(true)},
+		Blurred: textarea.StyleState{Text: Gray, Placeholder: Gray, Selection: lipgloss.NewStyle().Reverse(true)},
+		Cursor:  textarea.CursorStyle{Color: Cyan.GetForeground(), Blink: true},
 	}
 )
 
 func KeyHint(key, description string) string {
-	return Key.Render(key) + Dim.Render(" "+description)
+	return Bold.Render(key) + Gray.Render(" "+description)
 }
 
-// Segment is one tab, same width either way
 func Segment(s string, active bool) string {
 	if !active {
-		return " " + Dim.Render(s) + " "
+		return " " + Gray.Render(s) + " "
 	}
 	if TTY {
-		return Strong.Render("[" + s + "]")
+		return Cyan.Bold(true).Render("[" + s + "]")
 	}
-	return pillCap.Render("▐") + pill.Render(s) + pillCap.Render("▌")
+	return Blue.Render("▐") + Blue.Bold(true).Reverse(true).Render(s) + Blue.Render("▌")
 }
 
 func Progress(fraction float64) string {
-	fill := green
+	fill := Green
 	switch {
 	case fraction >= 0.9:
-		fill = red
+		fill = Red
 	case fraction >= 0.75:
-		fill = yellow
+		fill = Yellow
 	}
 	n := max(0, min(12, int(fraction*12+0.5)))
 	full, empty := pick("=", "█"), pick("-", "░")
-	return lipgloss.NewStyle().Foreground(fill).Render(strings.Repeat(full, n)) +
-		Dim.Render(strings.Repeat(empty, 12-n))
+	return fill.Render(strings.Repeat(full, n)) + Gray.Render(strings.Repeat(empty, 12-n))
 }

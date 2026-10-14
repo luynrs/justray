@@ -17,7 +17,7 @@ import (
 
 func out(s string) { _, _ = lipgloss.Println(s) }
 
-func done(text string) { out(style.Alive.Bold(true).Render(style.Check()) + " " + text) }
+func done(text string) { out(style.Green.Bold(true).Render(style.Check()) + " " + text) }
 
 func fields(pairs ...[2]string) {
 	w := 0
@@ -26,7 +26,7 @@ func fields(pairs ...[2]string) {
 	}
 	lines := make([]string, len(pairs))
 	for i, p := range pairs {
-		lines[i] = "  " + style.Pad(style.Dim.Render(p[0]+":"), w+1) + " " + p[1]
+		lines[i] = "  " + style.Pad(style.Gray.Render(p[0]+":"), w+1) + " " + p[1]
 	}
 	out(strings.Join(lines, "\n"))
 }
@@ -48,7 +48,7 @@ func stateHeadline(st ipc.Status) {
 		done(upperFirst(text))
 		return
 	}
-	out(style.Dim.Render(style.Sep()) + " " + upperFirst(text))
+	out(style.Gray.Render(style.Sep()) + " " + upperFirst(text))
 }
 
 func (a *app) nodeDetails(st ipc.Status, nodes []ipc.Node) {
@@ -83,7 +83,7 @@ func (a *app) nodeName(name, id string) string {
 	if id == "" {
 		return a.clean(name)
 	}
-	return a.clean(name) + " " + style.Dim.Render("("+displayID(id)+")")
+	return a.clean(name) + " " + style.Gray.Render("("+displayID(id)+")")
 }
 
 func displayID(id string) string { return id[:min(8, len(id))] }
@@ -104,7 +104,7 @@ func upperFirst(s string) string {
 }
 
 func Fail(err error) {
-	_, _ = lipgloss.Fprintln(os.Stderr, style.Err.Bold(true).Render(style.Cross()), style.Sanitize(err.Error(), true))
+	_, _ = lipgloss.Fprintln(os.Stderr, style.Red.Bold(true).Render(style.Cross()), style.Sanitize(err.Error(), true))
 }
 
 func (a *app) clean(s string) string { return style.Sanitize(s, a.emoji) }
@@ -118,7 +118,7 @@ func spin(text string) func() {
 	go func() {
 		defer close(stopped)
 		for i := 0; ; i++ {
-			_, _ = lipgloss.Printf("\r%s %s", style.Accent.Render(s.Frames[i%len(s.Frames)]), text)
+			_, _ = lipgloss.Printf("\r%s %s", style.Cyan.Render(s.Frames[i%len(s.Frames)]), text)
 			select {
 			case <-quit:
 				return

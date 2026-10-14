@@ -40,7 +40,7 @@ func (a *app) subAdd(cmd *cobra.Command, args []string) error {
 		done("Added " + a.clean(sub.Name))
 		fields([2]string{"ID", sub.SubscriptionID}, [2]string{"Nodes", strconv.Itoa(sub.NodeCount)}, [2]string{"Traffic", style.Usage(domain.Traffic(sub.Traffic))})
 		if sub.Warning != "" {
-			out(style.Pending.Render("Warning: " + a.clean(sub.Warning)))
+			out(style.Yellow.Render("Warning: " + a.clean(sub.Warning)))
 		}
 	} else {
 		done("Added node to " + a.clean(sub.Name))
@@ -111,7 +111,7 @@ func (a *app) subRefresh(cmd *cobra.Command, args []string) error {
 	}
 	if len(args) == 0 {
 		if len(snapshot.Subscriptions) == 0 {
-			out(style.Dim.Render("No subscriptions yet. Add one: " + cmd.Parent().CommandPath() + " add <url>"))
+			out(style.Gray.Render("No subscriptions yet. Add one: " + cmd.Parent().CommandPath() + " add <url>"))
 			return nil
 		}
 		stop := spin("Refreshing subscriptions")
@@ -120,7 +120,7 @@ func (a *app) subRefresh(cmd *cobra.Command, args []string) error {
 		if snap, snapErr := a.client.Snapshot(cmd.Context()); snapErr == nil {
 			for _, sub := range snap.Subscriptions {
 				if sub.Warning != "" {
-					out(style.Pending.Render("Warning: " + a.clean(sub.Name) + ": " + a.clean(sub.Warning)))
+					out(style.Yellow.Render("Warning: " + a.clean(sub.Name) + ": " + a.clean(sub.Warning)))
 				}
 			}
 		}
@@ -151,7 +151,7 @@ func (a *app) subRefresh(cmd *cobra.Command, args []string) error {
 			if s.SubscriptionID == sub.SubscriptionID {
 				fields([2]string{"ID", s.SubscriptionID}, [2]string{"Nodes", strconv.Itoa(s.NodeCount)}, [2]string{"Traffic", style.Usage(domain.Traffic(s.Traffic))})
 				if s.Warning != "" {
-					out(style.Pending.Render("Warning: " + a.clean(s.Warning)))
+					out(style.Yellow.Render("Warning: " + a.clean(s.Warning)))
 				}
 				break
 			}
@@ -211,7 +211,7 @@ func (a *app) subList(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(subs) == 0 {
-		out(style.Dim.Render("No subscriptions yet. Add one: " + cmd.Parent().CommandPath() + " add <url>"))
+		out(style.Gray.Render("No subscriptions yet. Add one: " + cmd.Parent().CommandPath() + " add <url>"))
 		return nil
 	}
 	a.showTree(subs, snapshot.Nodes)
@@ -230,12 +230,12 @@ func (a *app) showTree(subs []ipc.Subscription, nodes []ipc.Node) {
 			out("")
 		}
 		if !g.Sub.Refreshable {
-			out(style.Name.Render(a.clean(g.Sub.Name)))
+			out(style.Bold.Render(a.clean(g.Sub.Name)))
 		} else {
-			out(style.Name.Render(a.clean(g.Sub.Name)) + "  " + style.Dim.Render(g.Sub.SubscriptionID))
-			out(style.Usage(domain.Traffic(g.Sub.Traffic)) + style.Dim.Render(" "+style.Sep()+" updated "+style.Since(g.Sub.UpdatedAt)))
+			out(style.Bold.Render(a.clean(g.Sub.Name)) + "  " + style.Gray.Render(g.Sub.SubscriptionID))
+			out(style.Usage(domain.Traffic(g.Sub.Traffic)) + style.Gray.Render(" "+style.Sep()+" updated "+style.Since(g.Sub.UpdatedAt)))
 			if g.Sub.Warning != "" {
-				out(style.Pending.Render("Warning: " + a.clean(g.Sub.Warning)))
+				out(style.Yellow.Render("Warning: " + a.clean(g.Sub.Warning)))
 			}
 		}
 
@@ -253,18 +253,18 @@ func (a *app) showTree(subs []ipc.Subscription, nodes []ipc.Node) {
 
 func (a *app) nodeLine(n ipc.Node, branch string, nameW, infoW int) string {
 	name := style.Pad(a.nodeName(n.Name, ""), nameW)
-	info := style.Dim.Render(style.Pad(a.serverProto(n), infoW))
-	id := style.Dim.Render(style.Pad(displayID(n.NodeID), 8))
+	info := style.Gray.Render(style.Pad(a.serverProto(n), infoW))
+	id := style.Gray.Render(style.Pad(displayID(n.NodeID), 8))
 	prefix := "  "
 	if branch != "" {
-		prefix = style.Dim.Render(branch) + " "
+		prefix = style.Gray.Render(branch) + " "
 	}
 	line := fmt.Sprintf("%s%s  %s  %s", prefix, name, info, id)
 	if n.Probed {
 		if n.Alive {
-			line += "  " + style.Alive.Render(n.Latency())
+			line += "  " + style.Green.Render(n.Latency())
 		} else {
-			line += "  " + style.Dead.Render(n.Latency())
+			line += "  " + style.Red.Render(n.Latency())
 		}
 	}
 	return line

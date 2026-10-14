@@ -64,11 +64,11 @@ func (m Model) content() string {
 }
 
 func (m Model) titleLeft() string {
-	left := style.Title.Render("JustRay") + " " + style.Dim.Render(version.String())
+	left := style.Blue.Bold(true).Render("JustRay") + " " + style.Gray.Render(version.String())
 	if m.dialog != nil {
 		left += "  " + m.dialog.TabBar(max(m.w-lipgloss.Width(left)-2, 10))
 	} else if m.filter.Focused() || m.filter.Value() != "" {
-		left += " " + style.Dim.Render("~ Search:") + " " + m.filter.View()
+		left += " " + style.Gray.Render("~ Search:") + " " + m.filter.View()
 	}
 	return left
 }
@@ -106,9 +106,9 @@ func (m Model) tree(rows []tree.Row) string {
 			lines = append(lines, m.clip(data.Render(r, selected, m.w)))
 		}
 	case m.filter.Value() != "":
-		lines = append(lines, m.clip("    "+style.Dim.Render(fmt.Sprintf("No matches for %q", m.filter.Value()))))
+		lines = append(lines, m.clip("    "+style.Gray.Render(fmt.Sprintf("No matches for %q", m.filter.Value()))))
 	default:
-		lines = append(lines, m.clip("    "+style.Dim.Render("No subscriptions yet.")))
+		lines = append(lines, m.clip("    "+style.Gray.Render("No subscriptions yet.")))
 	}
 
 	return strings.Join(lines, "\n")
@@ -126,27 +126,27 @@ func (m Model) footer(rows []tree.Row) string {
 	var status string
 	switch {
 	case m.connected():
-		iconStyle := style.Alive
+		iconStyle := style.Green
 		if m.busy || m.snapshot.Status.Busy {
-			iconStyle = style.Pending
+			iconStyle = style.Yellow
 		}
-		status = iconStyle.Render(icon) + " " + style.Sanitize(m.snapshot.Status.NodeName, m.emoji()) + " " + style.Dim.Render(style.Sep()) + " " + style.Uptime(m.snapshot.Status.Uptime())
+		status = iconStyle.Render(icon) + " " + style.Sanitize(m.snapshot.Status.NodeName, m.emoji()) + " " + style.Gray.Render(style.Sep()) + " " + style.Uptime(m.snapshot.Status.Uptime())
 	case m.startup != nil:
-		status = style.Pending.Render(icon) + " " + style.Dim.Render("starting daemon")
+		status = style.Yellow.Render(icon) + " " + style.Gray.Render("starting daemon")
 	case m.busy:
-		status = style.Pending.Render(icon) + " " + style.Dim.Render("connecting")
+		status = style.Yellow.Render(icon) + " " + style.Gray.Render("connecting")
 	default:
-		status = style.Dim.Render(icon) + " " + style.Dim.Render("disconnected")
+		status = style.Gray.Render(icon) + " " + style.Gray.Render("disconnected")
 	}
 	err := m.err
 	if m.dialog != nil {
 		err = cmp.Or(m.dialog.Err(), err)
 	}
 	if err != "" {
-		status += "  " + style.Dead.Render(style.Sanitize(err, true))
+		status += "  " + style.Red.Render(style.Sanitize(err, true))
 	} else if r, ok := tree.At(rows, m.cursor); m.dialog == nil && ok && r.Sub.Warning != "" {
 		warnLine, _, _ := strings.Cut(r.Sub.Warning, "\n")
-		status += "   " + style.Pending.Render(style.Sanitize(warnLine, true))
+		status += "   " + style.Yellow.Render(style.Sanitize(warnLine, true))
 	}
 
 	hint := m.helpHint()
@@ -154,13 +154,13 @@ func (m Model) footer(rows []tree.Row) string {
 	case m.activeModal != modalNone:
 		hint = ansi.Truncate(style.KeyHint("esc", "cancel"), m.w, "")
 	case m.editing():
-		hint = ansi.Truncate(style.KeyHint(style.Enter(), "apply")+style.Dim.Render(" "+style.Sep()+" ")+style.KeyHint("esc", "cancel"), m.w, "")
+		hint = ansi.Truncate(style.KeyHint(style.Enter(), "apply")+style.Gray.Render(" "+style.Sep()+" ")+style.KeyHint("esc", "cancel"), m.w, "")
 	case m.dialog != nil && m.dialog.Dirty():
 		action := "apply"
 		if m.dialog.Err() != "" {
 			action = "cancel"
 		}
-		prefix := style.KeyHint("esc", action) + style.Dim.Render(" "+style.Sep()+" ")
+		prefix := style.KeyHint("esc", action) + style.Gray.Render(" "+style.Sep()+" ")
 		if lipgloss.Width(prefix)+lipgloss.Width(hint) <= m.w {
 			hint = prefix + hint
 		}
@@ -175,7 +175,7 @@ func (m Model) helpHint() string {
 	if m.w >= len("? shortcuts")+4 {
 		return style.KeyHint("?", "shortcuts")
 	}
-	return style.Key.Render("?")
+	return style.Bold.Render("?")
 }
 
 func (m Model) clip(s string) string { return style.Clip(s, m.w) }

@@ -141,7 +141,7 @@ func (m Model) modalView(background string) string {
 		title = "Add"
 		if m.editor.Value() == "" {
 			editorStyles := m.editor.Styles()
-			editorStyles.Focused.CursorLine = style.Dim
+			editorStyles.Focused.CursorLine = style.Gray
 			m.editor.SetStyles(editorStyles)
 		}
 		content = m.editor.View()
@@ -158,7 +158,7 @@ func (m Model) modalView(background string) string {
 		warning := ansi.Hardwrap("This action can't be undone.", layout.body.Dx(), true)
 		questionLines := max(layout.body.Dy()-lipgloss.Height(warning), 1)
 		name = ansi.Truncate(style.Sanitize(name, m.emoji()), max(layout.body.Dx()*questionLines-len(question)-1, 0), "...")
-		content = ansi.Hardwrap(question+style.Name.Render(name)+"?", layout.body.Dx(), true) + "\n" + warning
+		content = ansi.Hardwrap(question+style.Bold.Render(name)+"?", layout.body.Dx(), true) + "\n" + warning
 	}
 	width, height := layout.bounds.Dx(), layout.bounds.Dy()
 	if width < 4 || height < 3 {
@@ -169,35 +169,26 @@ func (m Model) modalView(background string) string {
 	if style.TTY {
 		border = lipgloss.ASCIIBorder()
 	}
-	window := lipgloss.NewStyle().Border(border).BorderForeground(style.Title.GetForeground()).
+	window := lipgloss.NewStyle().Border(border).BorderForeground(style.Blue.GetForeground()).
 		Padding(layout.body.Min.Y-layout.bounds.Min.Y-1, layout.body.Min.X-layout.bounds.Min.X-1).
 		Width(width).Height(height).Render(content)
-	edge := style.Title.Bold(false)
 	frame := strings.Split(window, "\n")
 	titlePadding := min(2, width-4)
 	title = ansi.Truncate(title, width-4-titlePadding, "")
-	frame[0] = edge.Render(border.TopLeft+strings.Repeat(border.Top, titlePadding)+" ") + style.Name.Render(title) +
-		edge.Render(" "+strings.Repeat(border.Top, width-4-titlePadding-lipgloss.Width(title))+border.TopRight)
+	frame[0] = style.Blue.Render(border.TopLeft+strings.Repeat(border.Top, titlePadding)+" ") + style.Bold.Render(title) +
+		style.Blue.Render(" "+strings.Repeat(border.Top, width-4-titlePadding-lipgloss.Width(title))+border.TopRight)
 	if m.activeModal == modalAdd || m.activeModal == modalDelete {
 		hint := style.KeyHint(style.Enter(), "submit")
 		hintWidth := lipgloss.Width(hint)
 		if width >= hintWidth+6 {
-			frame[height-1] = edge.Render(border.BottomLeft+strings.Repeat(border.Bottom, width-hintWidth-6)+" ") +
-				hint + edge.Render(" "+strings.Repeat(border.Bottom, 2)+border.BottomRight)
+			frame[height-1] = style.Blue.Render(border.BottomLeft+strings.Repeat(border.Bottom, width-hintWidth-6)+" ") +
+				hint + style.Blue.Render(" "+strings.Repeat(border.Bottom, 2)+border.BottomRight)
 		}
 	}
 	canvas := lipgloss.NewCanvas(m.w, m.h).Compose(lipgloss.NewLayer(background))
 	for row := range canvas.Height() {
 		for column := range canvas.Width() {
-			cell := canvas.CellAt(column, row)
-			if cell.Style.Fg == style.Title.GetForeground() {
-				cell.Style.Fg = style.MutedTitle.GetForeground()
-			} else {
-				cell.Style.Attrs |= uv.AttrFaint
-			}
-			if cell.Style.Bg == style.Title.GetForeground() {
-				cell.Style.Bg = style.MutedTitle.GetForeground()
-			}
+			canvas.CellAt(column, row).Style.Attrs |= uv.AttrFaint
 		}
 	}
 	lipgloss.NewLayer(strings.Join(frame, "\n")).Draw(canvas, layout.bounds)
