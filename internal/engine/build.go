@@ -11,7 +11,6 @@ import (
 	"github.com/sagernet/sing/common/json/badoption"
 
 	"github.com/luynrs/justray/internal/domain"
-	"github.com/luynrs/justray/internal/engine/outbound"
 )
 
 var dnsStrategy = map[string]option.DomainStrategy{
@@ -20,12 +19,7 @@ var dnsStrategy = map[string]option.DomainStrategy{
 	"mixed": option.DomainStrategy(C.DomainStrategyPreferIPv4),
 }
 
-func build(n domain.Node, s domain.Settings, logPath string, tun bool) (*option.Options, error) {
-	ep, obs, err := outbound.New(n, "proxy-node")
-	if err != nil {
-		return nil, err
-	}
-
+func build(n domain.Node, s domain.Settings, logPath string, tun bool) *option.Options {
 	opts := &option.Options{
 		Log: &option.LogOptions{Level: s.LogLevel, Output: logPath},
 		Inbounds: []option.Inbound{
@@ -38,7 +32,7 @@ func build(n domain.Node, s domain.Settings, logPath string, tun bool) (*option.
 		},
 		Outbounds: []option.Outbound{
 			{Type: C.TypeDirect, Tag: "direct", Options: &option.DirectOutboundOptions{}},
-			{Type: C.TypeSelector, Tag: "proxy", Options: &option.SelectorOutboundOptions{Outbounds: []string{"proxy-node"}}},
+			{Type: "justray-node", Tag: "proxy", Options: &n},
 		},
 		DNS: &option.DNSOptions{RawDNSOptions: option.RawDNSOptions{
 			ReverseMapping:   true,
@@ -57,14 +51,10 @@ func build(n domain.Node, s domain.Settings, logPath string, tun bool) (*option.
 		opts.DNS.Servers = append(opts.DNS.Servers, dnsServers(s, "", "node")...)
 		opts.Route.DefaultDomainResolver.Server = "node"
 	}
-	if ep != nil {
-		opts.Endpoints = append(opts.Endpoints, *ep)
-	}
-	opts.Outbounds = append(opts.Outbounds, obs...)
 	if tun {
 		opts.Inbounds = append(opts.Inbounds, tunInbound(s))
 	}
-	return opts, nil
+	return opts
 }
 
 func probeConfig(s domain.Settings, logPath string) *option.Options {

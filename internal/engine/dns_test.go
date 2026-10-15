@@ -114,10 +114,7 @@ func TestDNSResolution(t *testing.T) {
 		lookup(t, "203.0.113.53", func(options *option.Options) {
 			settings, _ := (domain.Settings{}).Normalize()
 			settings.DNS, settings.IPVersion = "203.0.113.53", "ipv4"
-			built, err := build(domain.Node{Protocol: domain.HTTP, Server: "proxy.example.test", Port: proxy.Listener.Addr().(*net.TCPAddr).Port}, settings, "", false)
-			if err != nil {
-				t.Fatal(err)
-			}
+			built := build(domain.Node{Protocol: domain.HTTP, Server: "proxy.example.test", Port: proxy.Listener.Addr().(*net.TCPAddr).Port}, settings, "", false)
 			built.Inbounds = nil
 			built.DNS.Servers[1].Options.(*option.RemoteDNSServerOptions).Server = "127.0.0.1"
 			built.DNS.Servers[1].Options.(*option.RemoteDNSServerOptions).ServerPort = uint16(packetConn.LocalAddr().(*net.UDPAddr).Port)
@@ -180,10 +177,7 @@ func TestDNSRouting(t *testing.T) {
 	settings, _ := (domain.Settings{}).Normalize()
 	node := domain.Node{ID: "node", Protocol: domain.VLESS, Server: "node.example", Port: 443, Auth: domain.Auth{UUID: "11111111-1111-1111-1111-111111111111"}}
 	settings.DNS = "1.1.1.1"
-	options, err := build(node, settings, "", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	options := build(node, settings, "", true)
 	servers := options.DNS.Servers
 	if len(servers) != 2 || servers[0].Type != C.DNSTypeTCP || servers[0].Options.(*option.RemoteDNSServerOptions).Detour != "proxy" ||
 		servers[1].Type != C.DNSTypeUDP || servers[1].Options.(*option.RemoteDNSServerOptions).Detour != "" || options.Route.DefaultDomainResolver.Server != "node" {
@@ -203,10 +197,7 @@ func TestDNSRouting(t *testing.T) {
 	}
 
 	settings.DNS = "https://dns.example/dns-query"
-	options, err = build(node, settings, "", false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	options = build(node, settings, "", false)
 	servers = options.DNS.Servers
 	if len(servers) != 4 || servers[0].Type != C.DNSTypeHTTPS || servers[1].Type != C.DNSTypeLocal ||
 		servers[2].Type != C.DNSTypeHTTPS || servers[3].Type != C.DNSTypeLocal ||
@@ -217,10 +208,7 @@ func TestDNSRouting(t *testing.T) {
 	}
 
 	settings.Mode = domain.DirectAll
-	options, err = build(node, settings, "", false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	options = build(node, settings, "", false)
 	if len(options.DNS.Servers) != 2 || options.Route.DefaultDomainResolver.Server != "remote" || options.Route.Final != "direct" {
 		t.Fatalf("direct DNS routing: %+v", options.DNS.Servers)
 	}

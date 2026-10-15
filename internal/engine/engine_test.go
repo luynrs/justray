@@ -4,6 +4,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -65,15 +67,20 @@ func TestNodeSwitch(t *testing.T) {
 	if err := box.Apply(t.Context(), Spec{Node: first, Settings: settings}); err != nil {
 		t.Fatal(err)
 	}
+	client := &http.Client{Transport: &http.Transport{
+		Proxy:             http.ProxyURL(&url.URL{Scheme: "http", Host: net.JoinHostPort("127.0.0.1", strconv.Itoa(settings.Port))}),
+		DisableKeepAlives: true,
+	}}
+	defer client.CloseIdleConnections()
 	request := func() {
 		t.Helper()
-		outbound, ok := box.inst.Outbound().Outbound("proxy")
-		if !ok {
-			t.Fatal("proxy outbound missing")
-		}
-		_, err := delay(t.Context(), outbound, "http://example.test/")
+		response, err := client.Head("http://example.test/")
 		if err != nil {
 			t.Fatal(err)
+		}
+		_ = response.Body.Close()
+		if response.StatusCode != http.StatusNoContent {
+			t.Fatalf("proxy status: %s", response.Status)
 		}
 	}
 	request()
@@ -90,12 +97,15 @@ func TestNodeSwitch(t *testing.T) {
 	}
 	broken := second
 	broken.ID = "broken"
-	broken.Protocol = "unknown"
-	if err := box.Apply(t.Context(), Spec{Node: broken, Settings: settings}); err == nil {
-		t.Fatal("invalid node switch succeeded")
+	broken.Reality = &domain.Reality{PublicKey: "invalid-key"}
+	for _, protocol := range []domain.Proto{"unknown", domain.VLESS} {
+		broken.Protocol = protocol
+		if err := box.Apply(t.Context(), Spec{Node: broken, Settings: settings}); err == nil {
+			t.Fatal("invalid node switch succeeded")
+		}
+		request()
 	}
-	request()
-	if box.node.ID != second.ID || secondCalls.Load() != 3 {
+	if box.node.ID != second.ID || secondCalls.Load() != 4 {
 		t.Fatal("failed node switch lost the working proxy")
 	}
 }

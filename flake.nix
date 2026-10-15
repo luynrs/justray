@@ -68,7 +68,7 @@
               ];
             };
 
-            vendorHash = "sha256-R+g6FTc14wDHO7QKkwlWLFK7S6It+aKh4o5TwGRkJNY=";
+            vendorHash = "sha256-8b5zszwPDBDHI3fjaKYFmtRCetAHMhTTlJJkPJmmHUA=";
             proxyVendor = true;
 
             subPackages = [
@@ -84,6 +84,17 @@
             ];
 
             nativeBuildInputs = [ pkgs.installShellFiles ];
+
+            preCheck = lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+              cp internal/platform/device/other.go "$TMPDIR/device-other.go"
+              printf '%s\n' 0123456789abcdef0123456789abcdef > "$TMPDIR/machine-id"
+              substituteInPlace internal/platform/device/other.go \
+                --replace-fail /etc/machine-id "$TMPDIR/machine-id"
+            '';
+
+            postCheck = lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+              mv "$TMPDIR/device-other.go" internal/platform/device/other.go
+            '';
 
             postInstall = ''
               ln -s justray $out/bin/jray

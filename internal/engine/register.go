@@ -9,12 +9,13 @@ import (
 	"github.com/sagernet/sing-box/adapter/inbound"
 	"github.com/sagernet/sing-box/adapter/outbound"
 	boxservice "github.com/sagernet/sing-box/adapter/service"
+	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/dns"
 	"github.com/sagernet/sing-box/dns/transport"
 	"github.com/sagernet/sing-box/dns/transport/local"
+	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/protocol/anytls"
 	"github.com/sagernet/sing-box/protocol/direct"
-	"github.com/sagernet/sing-box/protocol/group"
 	"github.com/sagernet/sing-box/protocol/http"
 	"github.com/sagernet/sing-box/protocol/hysteria"
 	"github.com/sagernet/sing-box/protocol/hysteria2"
@@ -24,11 +25,12 @@ import (
 	"github.com/sagernet/sing-box/protocol/socks"
 	"github.com/sagernet/sing-box/protocol/trojan"
 	"github.com/sagernet/sing-box/protocol/tuic"
-	"github.com/sagernet/sing-box/protocol/tun"
 	"github.com/sagernet/sing-box/protocol/vless"
 	"github.com/sagernet/sing-box/protocol/vmess"
 	"github.com/sagernet/sing-box/protocol/wireguard"
 	_ "github.com/sagernet/sing-box/transport/v2rayxhttp"
+
+	"github.com/luynrs/justray/internal/domain"
 )
 
 var ( // read-only, built once instead of on every connect/probe
@@ -47,14 +49,14 @@ func withRegistry(ctx context.Context) context.Context {
 func inboundRegistry() *inbound.Registry {
 	registry := inbound.NewRegistry()
 	mixed.RegisterInbound(registry)
-	tun.RegisterInbound(registry)
+	inbound.Register[option.TunInboundOptions](registry, C.TypeTun, newManagedTun)
 	return registry
 }
 
 func outboundRegistry() *outbound.Registry {
 	registry := outbound.NewRegistry()
+	outbound.Register[domain.Node](registry, "justray-node", newProxyOutbound)
 	direct.RegisterOutbound(registry)
-	group.RegisterSelector(registry)
 	vless.RegisterOutbound(registry)
 	vmess.RegisterOutbound(registry)
 	trojan.RegisterOutbound(registry)

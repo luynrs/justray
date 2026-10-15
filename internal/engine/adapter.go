@@ -3,7 +3,6 @@ package engine
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"syscall"
 
@@ -14,7 +13,6 @@ import (
 	"github.com/sagernet/sing/service"
 
 	"github.com/luynrs/justray/internal/domain"
-	"github.com/luynrs/justray/internal/engine/outbound"
 	"github.com/luynrs/justray/internal/platform/elevate"
 	"github.com/luynrs/justray/internal/platform/link"
 )
@@ -71,16 +69,12 @@ func (e *box) Apply(ctx context.Context, spec Spec) error {
 }
 
 func (e *box) start(ctx context.Context, spec Spec) error {
-	opts, err := build(spec.Node, spec.Settings, e.logPath, spec.Tun)
-	if err != nil {
-		return err
-	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 
 	runtimeCtx := withRegistry(e.lifetime)
-	inst, err := startBox(runtimeCtx, *opts)
+	inst, err := startBox(runtimeCtx, *build(spec.Node, spec.Settings, e.logPath, spec.Tun))
 	if err != nil {
 		return err
 	}
@@ -107,72 +101,81 @@ func startBox(ctx context.Context, opts option.Options) (*sbox.Box, error) {
 }
 
 func (e *box) swap(n domain.Node) error {
-	if err := e.apply(n); err != nil {
-		if rbErr := e.apply(e.node); rbErr != nil {
-			_ = e.Stop()
-			return errors.Join(err, fmt.Errorf("swap rollback failed: %w", rbErr))
-		}
+	managed, _ := e.inst.Outbound().Outbound("proxy")
+	proxy := managed.(*proxyOutbound)
+	runtime, err := newNodeRuntime(e.runtime, e.inst.Router(), proxy.logger, "proxy-node", n)
+	if err != nil {
 		return err
+	}
+	for _, stage := range adapter.ListStartStages[1:] {
+		if err := runtime.start(stage); err != nil {
+			_ = runtime.scope.Close()
+			return err
+		}
+	}
+	registrar := e.inst.Outbound().(adapter.InternalOutboundRegistrar)
+	previous := proxy.current.Load()
+	registrar.RemoveInternal(previous.Tag())
+	if err := registrar.AddInternal(runtime.Outbound); err != nil {
+		_ = registrar.AddInternal(previous.Outbound)
+		_ = runtime.scope.Close()
+		return err
+	}
+	if err := proxy.Selector.Start(adapter.StartStateStart, nil); err != nil {
+		registrar.RemoveInternal(runtime.Tag())
+		_ = registrar.AddInternal(previous.Outbound)
+		_ = runtime.scope.Close()
+		return err
+	}
+	proxy.current.Store(runtime)
+	_ = previous.scope.Close()
+	if invalidator, ok := e.inst.Router().(adapter.ReachabilityInvalidator); ok {
+		invalidator.InvalidateReachability()
+	}
+	if detour(e.settings) != "" {
+		for _, transport := range service.FromContext[adapter.DNSTransportManager](e.runtime).Transports() {
+			if transport.OutboundTag() == "proxy" {
+				transport.Reset()
+			}
+		}
+		service.FromContext[adapter.DNSRouter](e.runtime).ClearCache()
 	}
 	e.node = n
 	return nil
 }
 
-func (e *box) apply(n domain.Node) error {
-	endpoint, outbounds, err := outbound.New(n, "proxy-node")
-	if err != nil {
-		return err
-	}
-
-	router := e.inst.Router()
-	logger := e.inst.LogFactory().NewLogger("outbound/proxy")
-
-	_ = e.inst.Outbound().Remove("proxy")
-	_ = e.inst.Endpoint().Remove("proxy-node")
-	_ = e.inst.Outbound().Remove("proxy-node")
-	_ = e.inst.Outbound().Remove("proxy-node-stls")
-	if endpoint != nil {
-		if err := e.inst.Endpoint().Create(e.runtime, router, logger, endpoint.Tag, endpoint.Type, endpoint.Options); err != nil {
+func (e *box) tunAdd() error {
+	logger := e.inst.LogFactory().NewLogger("inbound/tun[tun-in]")
+	inbound, loaded := e.inst.Inbound().Get("tun-in")
+	if !loaded {
+		if err := e.inst.Inbound().Create(e.runtime, e.inst.Router(), logger, "tun-in", C.TypeTun, tunInbound(e.settings).Options); err != nil {
 			return err
 		}
+		inbound, _ = e.inst.Inbound().Get("tun-in")
 	}
-	for _, ob := range outbounds {
-		if err := e.inst.Outbound().Create(e.runtime, router, logger, ob.Tag, ob.Type, ob.Options); err != nil {
-			return err
-		}
-	}
-	if err := e.inst.Outbound().Create(e.runtime, router, logger, "proxy", C.TypeSelector, &option.SelectorOutboundOptions{Outbounds: []string{"proxy-node"}}); err != nil {
-		return err
-	}
-	if detour(e.settings) != "" {
-		servers := dnsServers(e.settings, detour(e.settings), "remote")
-		for i := len(servers) - 1; i >= 0; i-- {
-			if err := service.FromContext[adapter.DNSTransportManager](e.runtime).Create(e.runtime, e.inst.LogFactory().NewLogger("dns/"+servers[i].Tag), servers[i].Tag, servers[i].Type, servers[i].Options); err != nil {
-				return err
+	managed := inbound.(*managedTun)
+	for attempt := 0; ; attempt++ {
+		err := managed.initialize(e.runtime)
+		for _, stage := range adapter.ListStartStages[1:] {
+			if err == nil {
+				err = managed.Start(stage, nil)
 			}
 		}
-		service.FromContext[adapter.DNSRouter](e.runtime).ClearCache()
-	}
-	return nil
-}
-
-func (e *box) tunAdd() error {
-	inb := tunInbound(e.settings)
-	logger := e.inst.LogFactory().NewLogger("inbound/tun[tun-in]")
-
-	err := e.inst.Inbound().Create(e.runtime, e.inst.Router(), logger, "tun-in", C.TypeTun, inb.Options)
-	if errors.Is(err, syscall.EBUSY) {
+		if err == nil {
+			e.tun = true
+			return nil
+		}
+		_ = managed.stop()
+		if !errors.Is(err, syscall.EBUSY) || attempt == 1 {
+			return err
+		}
 		link.Delete(domain.TunInterface)
-		err = e.inst.Inbound().Create(e.runtime, e.inst.Router(), logger, "tun-in", C.TypeTun, inb.Options)
 	}
-	if err == nil {
-		e.tun = true
-	}
-	return err
 }
 
 func (e *box) tunRemove() error {
-	if err := e.inst.Inbound().Remove("tun-in"); err != nil {
+	inbound, _ := e.inst.Inbound().Get("tun-in")
+	if err := inbound.(*managedTun).stop(); err != nil {
 		return err
 	}
 	e.tun = false
@@ -191,7 +194,11 @@ func (e *box) Stop() error {
 	e.runtime = nil
 	e.tun = false
 
-	err := inst.Close()
+	var err error
+	if inbound, loaded := inst.Inbound().Get("tun-in"); loaded {
+		err = inbound.(*managedTun).stop()
+	}
+	err = errors.Join(err, inst.Close())
 	if errors.Is(err, os.ErrClosed) {
 		err = nil
 	}
