@@ -52,7 +52,7 @@ func Segment(s string, active bool) string {
 	if TTY {
 		return Cyan.Bold(true).Render("[" + s + "]")
 	}
-	return Blue.Render("▐") + Blue.Bold(true).Reverse(true).Render(s) + Blue.Render("▌")
+	return White.Background(Blue.GetForeground()).Bold(true).Render(" " + s + " ")
 }
 
 func Progress(fraction float64) string {
