@@ -5,11 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/netip"
 	"net/url"
 	"slices"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/sagernet/sing-quic/hysteria"
 
 	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/engine/outbound"
@@ -137,6 +140,9 @@ func validateNode(node domain.Node) error {
 	}
 	if node.Server == "" || !domain.ValidPort(node.Port) {
 		return errors.New("missing host or valid port")
+	}
+	if node.Protocol == domain.HY2 && (min(node.UpMbps, node.DownMbps) < 0 || max(node.UpMbps, node.DownMbps) > math.MaxInt/hysteria.MbpsToBps) {
+		return errors.New("hy2: bandwidth out of range")
 	}
 	switch node.Protocol {
 	case domain.VLESS, domain.VMess, domain.TUIC:

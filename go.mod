@@ -14,6 +14,7 @@ require (
 	github.com/sagernet/netlink v0.0.0-20260919000536-5d76abd97cf7
 	github.com/sagernet/sing v0.9.6
 	github.com/sagernet/sing-box v1.14.3
+	github.com/sagernet/sing-quic v0.7.1
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/sys v0.49.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -75,7 +76,6 @@ require (
 	github.com/sagernet/nftables v0.3.0-mod.4 // indirect
 	github.com/sagernet/quic-go v0.61.0-sing-box-mod.9 // indirect
 	github.com/sagernet/sing-mux v0.3.9 // indirect
-	github.com/sagernet/sing-quic v0.7.1 // indirect
 	github.com/sagernet/sing-shadowsocks v0.2.9 // indirect
 	github.com/sagernet/sing-shadowsocks2 v0.2.2 // indirect
 	github.com/sagernet/sing-shadowtls v0.2.1 // indirect

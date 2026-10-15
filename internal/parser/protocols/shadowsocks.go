@@ -2,6 +2,7 @@ package protocols
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -32,7 +33,7 @@ func ParseShadowsocks(uri string) (domain.Node, error) {
 	plugin := parsePluginQuery(query)
 	at := strings.LastIndexByte(rest, '@')
 	if at < 0 {
-		return domain.Node{}, fmt.Errorf("ss: missing host")
+		return domain.Node{}, errors.New("ss: missing host")
 	}
 	userinfo := rest[:at]
 	if !legacy {

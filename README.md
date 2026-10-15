@@ -65,6 +65,8 @@ Nix:
 
 The flake supports Linux (x86_64/aarch64) and Apple Silicon. On Intel Macs, use Homebrew or binaries
 
+The Home Manager module starts the daemon on Linux; on macOS it only installs the package.
+
 ```bash
 # Run directly
 nix run github:luynrs/justray
@@ -119,8 +121,8 @@ Package manager and script installations also provide `jray` as a short alias fo
 | `t` / `T`    | Ping selected / all     | `r` / `R`     | Refresh selected / all |
 | `m`          | Switch mode (PROXY / TUN) | `/`         | Filter nodes            |
 | `a`          | Add subscription / node | `d`           | Delete subscription     |
-| `o`          | Open settings           | `Esc`         | Back / cancel           |
-| `Tab`        | Switch panel            | `q`, `Ctrl+C` | Exit TUI                |
+| `o`          | Open settings           | `Esc`         | Save settings / cancel edit |
+| `Tab`        | Switch settings tabs    | `q`, `Ctrl+C` | Exit TUI                |
 
 ### Screenshots
 

@@ -65,6 +65,8 @@ Nix：
 
 Flake 支持 Linux（x86_64/aarch64）和 Apple Silicon。Intel Mac 请使用 Homebrew 或预编译的二进制文件
 
+Home Manager 模块在 Linux 上启动后台服务；在 macOS 上仅安装软件包。
+
 ```bash
 # 直接运行
 nix run github:luynrs/justray
@@ -119,8 +121,8 @@ nix run github:luynrs/justray
 | `t` / `T` | 测量选中节点 / 所有节点的延迟 | `r` / `R` | 更新选中订阅 / 所有订阅 |
 | `m` | 切换模式（PROXY / TUN） | `/` | 筛选节点 |
 | `a` | 添加订阅 / 节点 | `d` | 删除订阅 |
-| `o` | 打开设置 | `Esc` | 返回 / 取消 |
-| `Tab` | 切换面板 | `q`、`Ctrl+C` | 退出 TUI |
+| `o` | 打开设置 | `Esc` | 保存设置 / 取消编辑 |
+| `Tab` | 切换设置标签页 | `q`、`Ctrl+C` | 退出 TUI |
 
 ### 许可证
 

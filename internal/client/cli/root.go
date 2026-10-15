@@ -150,7 +150,7 @@ func Execute() int {
 		if errors.Is(err, context.Canceled) && command != stopCmd {
 			return 0
 		}
-		Fail(errors.New(a.clean(err.Error())))
+		a.fail(err)
 		return 1
 	}
 	return 0
@@ -276,7 +276,10 @@ func spawn(bin, dir string) error {
 }
 
 func justrayd(ctx context.Context) (string, error) {
-	path, _ := exec.LookPath(exeName("justrayd"))
+	path, err := exec.LookPath(exeName("justrayd"))
+	if err != nil {
+		path = ""
+	}
 	candidates := []string{nextToSelf("justrayd"), path}
 	for _, bin := range candidates {
 		if bin == "" {

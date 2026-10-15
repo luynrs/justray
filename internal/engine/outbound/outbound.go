@@ -2,6 +2,7 @@ package outbound
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"net/netip"
 
@@ -25,7 +26,7 @@ func New(n domain.Node, tag string) (*option.Endpoint, []option.Outbound, error)
 	}
 	if n.Protocol == domain.Shadow {
 		if n.ShadowTLS == nil {
-			return nil, nil, fmt.Errorf("shadowtls: missing settings")
+			return nil, nil, errors.New("shadowtls: missing settings")
 		}
 		return nil, []option.Outbound{shadowTLS(n, tag)}, nil
 	}
@@ -168,7 +169,7 @@ func shadowTLS(n domain.Node, tag string) option.Outbound {
 func wireguard(n domain.Node, tag string) (*option.Endpoint, error) {
 	w := n.WireGuard
 	if w == nil || w.PrivateKey == "" || len(w.Address) == 0 {
-		return nil, fmt.Errorf("wireguard: no key material")
+		return nil, errors.New("wireguard: no key material")
 	}
 	address := make([]netip.Prefix, 0, len(w.Address))
 	for _, s := range w.Address {

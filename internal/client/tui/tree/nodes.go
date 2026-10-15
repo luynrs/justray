@@ -64,7 +64,7 @@ func (d Data) node(n ipc.Node, selected bool) string {
 }
 
 func info(n ipc.Node) string {
-	return style.Gray.Render(fmt.Sprintf("%s:%d %s %s", style.Sanitize(n.Server, true), n.Port, style.Sep(), n.Protocol))
+	return style.Gray.Render(fmt.Sprintf("%s %s %s", domain.ServerAddress(style.Sanitize(n.Server, true), n.Port), style.Sep(), n.Protocol))
 }
 
 func (d Data) dot(n ipc.Node) string {

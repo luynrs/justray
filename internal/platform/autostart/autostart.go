@@ -10,9 +10,7 @@ import (
 )
 
 func Current(ctx context.Context) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	enabled, err := Enabled(ctx)
+	enabled, err := enabled(ctx)
 	if err != nil {
 		return "", fmt.Errorf("read autostart: %w", err)
 	}
@@ -22,20 +20,18 @@ func Current(ctx context.Context) (string, error) {
 	return "off", nil
 }
 
-func Set(ctx context.Context, enabled bool) error {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
+func Set(ctx context.Context, wantEnabled bool) error {
 	var err error
-	if enabled {
-		err = Enable(ctx)
+	if wantEnabled {
+		err = enable(ctx)
 	} else {
-		err = Disable(ctx)
+		err = disable(ctx)
 	}
 	if err != nil {
 		return err
 	}
-	actual, err := Enabled(ctx)
-	if err == nil && actual != enabled {
+	actual, err := enabled(ctx)
+	if err == nil && actual != wantEnabled {
 		err = errors.New("autostart state did not change")
 	}
 	return err

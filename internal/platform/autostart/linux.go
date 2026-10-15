@@ -35,7 +35,7 @@ func unitPath() (string, error) {
 }
 
 // Enabled counts foreign units as enabled too
-func Enabled(ctx context.Context) (bool, error) {
+func enabled(ctx context.Context) (bool, error) {
 	path, err := unitPath()
 	if err != nil {
 		return false, err
@@ -66,7 +66,7 @@ func symlinked(path string) bool {
 	return err == nil && info.Mode()&os.ModeSymlink != 0
 }
 
-func Enable(ctx context.Context) error {
+func enable(ctx context.Context) error {
 	path, err := unitPath()
 	if err != nil {
 		return err
@@ -97,7 +97,7 @@ func Enable(ctx context.Context) error {
 	return err
 }
 
-func Disable(ctx context.Context) error {
+func disable(ctx context.Context) error {
 	path, err := unitPath()
 	if err != nil {
 		return err

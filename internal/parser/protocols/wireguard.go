@@ -2,7 +2,7 @@ package protocols
 
 import (
 	"cmp"
-	"fmt"
+	"errors"
 	"net/url"
 	"strconv"
 	"strings"
@@ -30,13 +30,13 @@ func ParseWireGuard(uri string) (domain.Node, error) {
 	reservedRaw := queryAny(u, q, "reserved", "reserved_bytes", "reserved-bytes")
 	reserved := parseReserved(reservedRaw)
 	if reservedRaw != "" && reserved == nil {
-		return domain.Node{}, fmt.Errorf("wireguard: invalid reserved bytes")
+		return domain.Node{}, errors.New("wireguard: invalid reserved bytes")
 	}
 	var mtu uint64
 	if q.Get("mtu") != "" {
 		mtu, err = strconv.ParseUint(q.Get("mtu"), 10, 32)
 		if err != nil {
-			return domain.Node{}, fmt.Errorf("wireguard: invalid mtu")
+			return domain.Node{}, errors.New("wireguard: invalid mtu")
 		}
 	}
 

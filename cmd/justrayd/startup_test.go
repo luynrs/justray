@@ -2,9 +2,10 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,18 +15,24 @@ import (
 	"testing"
 	"time"
 
+	"github.com/luynrs/justray/internal/daemon/store"
 	"github.com/luynrs/justray/internal/ipc"
 	"github.com/luynrs/justray/internal/platform/elevate"
 )
+
+func requireNoError(test *testing.T, err error) {
+	test.Helper()
+	if err != nil {
+		test.Fatal(err)
+	}
+}
 
 func TestStartup(t *testing.T) {
 	if runtime.GOOS == "darwin" {
 		t.Setenv("TMPDIR", "/tmp")
 	}
 	home, err := os.MkdirTemp("", "jr-")
-	if err != nil {
-		t.Fatal(err)
-	}
+	requireNoError(t, err)
 	t.Cleanup(func() { _ = os.RemoveAll(home) })
 	bin := filepath.Join(home, "bin")
 	build := exec.Command("go", "build", "-ldflags=-s -w", "-o", bin+string(os.PathSeparator), "./cmd/justray", "./cmd/justrayd")
@@ -38,38 +45,30 @@ func TestStartup(t *testing.T) {
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	directory, err := ipc.Dir()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := ipc.EnsureDir(directory); err != nil {
-		t.Fatal(err)
-	}
+	requireNoError(t, err)
+	requireNoError(t, ipc.EnsureDir(directory))
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
+	requireNoError(t, err)
 	port := listener.Addr().(*net.TCPAddr).Port
 	_ = listener.Close()
-	if err := os.WriteFile(ipc.Config(directory), fmt.Appendf(nil, `{"connection":{"port":%d}}`, port), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	requireNoError(t, os.WriteFile(ipc.Config(directory), fmt.Appendf(nil, `{"connection":{"port":%d}}`, port), 0o600))
 	client := ipc.New(ipc.Socket(directory))
-	run := func(args ...string) {
+	run := func(args ...string) string {
 		t.Helper()
 		ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 		defer cancel()
-		if output, err := exec.CommandContext(ctx, filepath.Join(bin, "justray"), args...).CombinedOutput(); err != nil {
+		output, err := exec.CommandContext(ctx, filepath.Join(bin, "justray"), args...).CombinedOutput()
+		if err != nil {
 			t.Fatalf("%v: %s, %v", args, output, err)
 		}
+		return string(output)
 	}
 	t.Cleanup(func() { _ = client.Shutdown(context.Background()) })
 	start := func() <-chan struct{} {
 		t.Helper()
 		cmd := exec.Command(filepath.Join(bin, "justrayd"))
 		cmd.Stderr = t.Output()
-		if err := cmd.Start(); err != nil {
-			t.Fatal(err)
-		}
+		requireNoError(t, cmd.Start())
 		done := make(chan struct{})
 		go func() { _ = cmd.Wait(); close(done) }()
 		t.Cleanup(func() { _ = cmd.Process.Kill(); <-done })
@@ -98,6 +97,30 @@ func TestStartup(t *testing.T) {
 		t.Fatalf("stop without daemon: %s, %v", output, err)
 	}
 	run("sub", "add", "socks://127.0.0.1:19090#fixture")
+	for _, fixture := range []struct{ name, body, endpoint string }{
+		{"ipv6", "socks://[2001:db8::1]:19090#ipv6", "[2001:db8::1]:19090"},
+		{"json-ipv6", `{"outbounds":[{"tag":"json-ipv6","type":"socks","server":"[2001:db8::2]","server_port":19091}]}`, "[2001:db8::2]:19091"},
+		{"yaml-ipv6", "proxies:\n  - {name: yaml-ipv6, type: socks5, server: '[2001:db8::3]', port: 19092}\n", "[2001:db8::3]:19092"},
+	} {
+		source := fixture.body
+		if !strings.HasPrefix(source, "socks://") {
+			feed := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				_, _ = fmt.Fprint(writer, fixture.body)
+			}))
+			defer feed.Close()
+			source = feed.URL
+		}
+		run("sub", "add", source)
+		if output := run("sub", "list"); !strings.Contains(output, fixture.endpoint) {
+			t.Errorf("imported endpoint missing from subscription list: %s", output)
+		}
+		if output := run("up", fixture.name, "--proxy"); !strings.Contains(output, fixture.endpoint) {
+			t.Errorf("imported endpoint missing from connection details: %s", output)
+		}
+		if output := run("logs", "daemon"); !strings.Contains(output, "connected ("+fixture.name+", socks "+fixture.endpoint+")") {
+			t.Errorf("imported endpoint missing from connection log: %s", output)
+		}
+	}
 	run("up", "fixture", "--proxy")
 	run("stop")
 	start()
@@ -110,9 +133,7 @@ func TestStartup(t *testing.T) {
 	run("stop")
 
 	listener, err = net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
-	if err != nil {
-		t.Fatal(err)
-	}
+	requireNoError(t, err)
 	t.Cleanup(func() { _ = listener.Close() })
 	start()
 	ready(false)
@@ -126,27 +147,14 @@ func TestStartup(t *testing.T) {
 	if runtime.GOOS != "linux" || !elevate.Needed(syscall.EPERM) {
 		return
 	}
-	data, err := os.ReadFile(ipc.State(directory))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var state map[string]any
-	if err := json.Unmarshal(data, &state); err != nil {
-		t.Fatal(err)
-	}
-	state["tun"] = true
-	data, err = json.Marshal(state)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(ipc.State(directory), data, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	disk := store.Disk{Dir: directory}
+	state, err := disk.Load()
+	requireNoError(t, err)
+	state.Tun = true
+	requireNoError(t, disk.SaveState(state))
 	auth := filepath.Join(home, "auth")
 	t.Setenv("TEST_AUTH", auth)
-	if err := os.WriteFile(filepath.Join(bin, "pkexec"), []byte("#!/bin/sh\necho request >> \"$TEST_AUTH\"\nwhile [ ! -f \"$TEST_AUTH.release\" ]; do sleep 0.02; done\nexit 1\n"), 0o700); err != nil {
-		t.Fatal(err)
-	}
+	requireNoError(t, os.WriteFile(filepath.Join(bin, "pkexec"), []byte("#!/bin/sh\necho request >> \"$TEST_AUTH\"\nwhile [ ! -f \"$TEST_AUTH.release\" ]; do sleep 0.02; done\nexit 1\n"), 0o700))
 	t.Cleanup(func() { _ = os.WriteFile(auth+".release", nil, 0o600) })
 	start()
 	deadline := time.Now().Add(10 * time.Second)
@@ -177,9 +185,7 @@ func TestStartup(t *testing.T) {
 		t.Fatalf("client did not wait for authorization: %s", result)
 	default:
 	}
-	if err := os.WriteFile(auth+".release", nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	requireNoError(t, os.WriteFile(auth+".release", nil, 0o600))
 	if result := <-statusResult; !strings.Contains(result, "could not grant permissions") {
 		t.Fatalf("waiting client: %s", result)
 	}
@@ -190,7 +196,7 @@ func TestStartup(t *testing.T) {
 		t.Fatal("duplicate did not exit")
 	}
 	run("up", "--proxy")
-	data, err = os.ReadFile(auth)
+	data, err := os.ReadFile(auth)
 	if err != nil || string(data) != "request\n" {
 		t.Fatalf("elevation requests: %q, %v", data, err)
 	}

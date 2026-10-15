@@ -19,7 +19,7 @@ import (
 
 func (s *Service) Refresh(ctx context.Context, sub store.Subscription) (store.Subscription, error) {
 	if sub.URL == "" {
-		return sub, fmt.Errorf("subscription URL or share link is required")
+		return sub, errors.New("subscription URL or share link is required")
 	}
 	if parser.IsLink(sub.URL) {
 		node, err := parser.ParseURI(sub.URL)
@@ -32,10 +32,10 @@ func (s *Service) Refresh(ctx context.Context, sub store.Subscription) (store.Su
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sub.URL, nil)
 	if err != nil || req.URL.Host == "" || (req.URL.Scheme != "https" && req.URL.Scheme != "http") {
-		return sub, fmt.Errorf("a valid URL or share link is required")
+		return sub, errors.New("a valid URL or share link is required")
 	}
 	if s.device.Get("X-Hwid") == "" {
-		return sub, fmt.Errorf("device id unavailable")
+		return sub, errors.New("device id unavailable")
 	}
 	select {
 	case s.slots <- struct{}{}:
@@ -50,13 +50,13 @@ func (s *Service) Refresh(ctx context.Context, sub store.Subscription) (store.Su
 		Timeout: 8 * time.Second,
 		CheckRedirect: func(r *http.Request, via []*http.Request) error {
 			if r.URL.Scheme != "https" && r.URL.Scheme != "http" {
-				return fmt.Errorf("subscription redirect must use http or https")
+				return errors.New("subscription redirect must use http or https")
 			}
 			if via[len(via)-1].URL.Scheme == "https" && r.URL.Scheme == "http" {
-				return fmt.Errorf("insecure redirect from HTTPS to HTTP")
+				return errors.New("insecure redirect from HTTPS to HTTP")
 			}
 			if len(via) >= 10 {
-				return fmt.Errorf("stopped after 10 redirects")
+				return errors.New("stopped after 10 redirects")
 			}
 			if r.URL.Host != via[0].URL.Host {
 				for k := range s.device {
@@ -77,9 +77,9 @@ func (s *Service) Refresh(ctx context.Context, sub store.Subscription) (store.Su
 	case resp.StatusCode != http.StatusOK:
 		return sub, fmt.Errorf("http %d", resp.StatusCode)
 	case resp.Header.Get("X-Hwid-Max-Devices-Reached") == "true":
-		return sub, fmt.Errorf("device limit reached")
+		return sub, errors.New("device limit reached")
 	case resp.Header.Get("X-Hwid-Not-Supported") == "true":
-		return sub, fmt.Errorf("subscription requires device ID")
+		return sub, errors.New("subscription requires device ID")
 	}
 
 	const maxBody = 10 << 20
@@ -88,7 +88,7 @@ func (s *Service) Refresh(ctx context.Context, sub store.Subscription) (store.Su
 		return sub, err
 	}
 	if len(body) > maxBody {
-		return sub, fmt.Errorf("subscription response exceeds 10MB limit")
+		return sub, errors.New("subscription response exceeds 10MB limit")
 	}
 	nodes, warning, err := parser.ParseSubscription(body)
 	if err != nil {

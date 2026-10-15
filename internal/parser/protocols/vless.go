@@ -2,6 +2,7 @@ package protocols
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -15,7 +16,7 @@ func ParseVLESS(uri string) (domain.Node, error) {
 		return domain.Node{}, err
 	}
 	if u.User == nil || u.User.Username() == "" {
-		return domain.Node{}, fmt.Errorf("vless: missing uuid")
+		return domain.Node{}, errors.New("vless: missing uuid")
 	}
 
 	q := u.Query()

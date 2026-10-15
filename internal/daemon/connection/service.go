@@ -146,7 +146,7 @@ func (s *Service) apply(ctx context.Context, n domain.Node, ref domain.NodeRef, 
 	s.eng = eng
 	s.status.Store(&ipc.Status{Connected: true, NodeRef: ref, NodeName: n.Name, StartedAt: started, Tun: tun, Port: settings.Port})
 	if previous.NodeRef != ref || resetStarted {
-		s.log.Printf("connected (%s, %s %s:%d)", n.Name, n.Protocol, n.Server, n.Port)
+		s.log.Printf("connected (%s, %s %s)", n.Name, n.Protocol, domain.ServerAddress(n.Server, n.Port))
 	}
 	return nil
 }

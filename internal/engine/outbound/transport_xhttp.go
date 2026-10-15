@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -18,13 +19,13 @@ func xhttpOptions(transport domain.Transport) (option.V2RayXHTTPOptions, error) 
 	fields := make(map[string]json.RawMessage)
 	if transport.Extra != "" {
 		if err := json.Unmarshal([]byte(transport.Extra), &fields); err != nil {
-			return option.V2RayXHTTPOptions{}, fmt.Errorf("xhttp: extra must be a JSON object")
+			return option.V2RayXHTTPOptions{}, errors.New("xhttp: extra must be a JSON object")
 		}
 	}
 	if extra, ok := fields["extra"]; ok {
 		var nested map[string]json.RawMessage
 		if err := json.Unmarshal(extra, &nested); err != nil {
-			return option.V2RayXHTTPOptions{}, fmt.Errorf("xhttp: extra must be a JSON object")
+			return option.V2RayXHTTPOptions{}, errors.New("xhttp: extra must be a JSON object")
 		}
 		if nested == nil {
 			nested = make(map[string]json.RawMessage)
@@ -43,7 +44,7 @@ func xhttpOptions(transport domain.Transport) (option.V2RayXHTTPOptions, error) 
 	}
 	for _, name := range []string{"download_settings", "download"} {
 		if value, ok := fields[name]; ok && !bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
-			return option.V2RayXHTTPOptions{}, fmt.Errorf("xhttp: downloadSettings is not supported by sing-box-lx")
+			return option.V2RayXHTTPOptions{}, errors.New("xhttp: downloadSettings is not supported by sing-box-lx")
 		}
 		delete(fields, name)
 	}
@@ -78,7 +79,7 @@ func xhttpOptions(transport domain.Transport) (option.V2RayXHTTPOptions, error) 
 	if value, ok := fields["xmux"]; ok && !bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
 		var xmux map[string]json.RawMessage
 		if err := json.Unmarshal(value, &xmux); err != nil {
-			return option.V2RayXHTTPOptions{}, fmt.Errorf("xhttp: xmux must be a JSON object")
+			return option.V2RayXHTTPOptions{}, errors.New("xhttp: xmux must be a JSON object")
 		}
 		if err := xhttpNames(xmux); err != nil {
 			return option.V2RayXHTTPOptions{}, err
@@ -94,7 +95,7 @@ func xhttpOptions(transport domain.Transport) (option.V2RayXHTTPOptions, error) 
 	options.Host = cmp.Or(transport.Host, options.Host)
 	options.Mode = cmp.Or(transport.Mode, options.Mode, "auto")
 	if strings.Contains(options.Path, "?") {
-		return options, fmt.Errorf("xhttp: query parameters in path are not supported by sing-box-lx")
+		return options, errors.New("xhttp: query parameters in path are not supported by sing-box-lx")
 	}
 	for name, values := range options.Headers {
 		if strings.EqualFold(name, "Host") && len(values) > 0 {
@@ -109,10 +110,10 @@ func xhttpOptions(transport domain.Transport) (option.V2RayXHTTPOptions, error) 
 	switch options.Mode {
 	case "auto", "packet-up", "stream-up", "stream-one":
 	default:
-		return options, fmt.Errorf("xhttp: mode must be auto, packet-up, stream-up or stream-one")
+		return options, errors.New("xhttp: mode must be auto, packet-up, stream-up or stream-one")
 	}
 	if options.Mode != "packet-up" && (options.UplinkHTTPMethod == "GET" || options.UplinkDataPlacement == "header" || options.UplinkDataPlacement == "cookie") {
-		return options, fmt.Errorf("xhttp: GET and header/cookie uploads require packet-up mode")
+		return options, errors.New("xhttp: GET and header/cookie uploads require packet-up mode")
 	}
 	return options, nil
 }

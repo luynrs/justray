@@ -201,7 +201,7 @@ func (c *Core) restoreLive(ctx context.Context, state store.State, before ipc.St
 
 func find(subs []store.Subscription, query domain.NodeRef) (domain.Node, domain.NodeRef, error) {
 	if query.NodeID == "" {
-		return domain.Node{}, domain.NodeRef{}, fmt.Errorf("node not found")
+		return domain.Node{}, domain.NodeRef{}, errors.New("node not found")
 	}
 	var node domain.Node
 	var ref domain.NodeRef

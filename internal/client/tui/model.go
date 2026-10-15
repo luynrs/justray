@@ -2,9 +2,6 @@ package tui
 
 import (
 	"context"
-	"io"
-	"log"
-	"os"
 	"slices"
 	"time"
 
@@ -174,20 +171,6 @@ func (m Model) quit() (tea.Model, tea.Cmd) {
 }
 
 func Run(c *ipc.Client, start func(context.Context) error) error {
-	defer log.SetOutput(log.Writer())
-	defer log.SetPrefix(log.Prefix())
-	defer log.SetFlags(log.Flags())
-	log.SetOutput(io.Discard)
-	log.SetPrefix("tui: ")
-	log.SetFlags(log.LstdFlags)
-
-	if dir, err := ipc.Dir(); err == nil {
-		if f, err := os.OpenFile(ipc.TUILog(dir), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
-			defer func() { _ = f.Close() }()
-			log.SetOutput(f)
-		}
-	}
-
 	m := New(c, start)
 	defer m.stop()
 	_, err := tea.NewProgram(m).Run()

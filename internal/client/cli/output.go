@@ -5,8 +5,6 @@ import (
 	"os"
 	"strings"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
 	"charm.land/lipgloss/v2"
 
@@ -33,22 +31,22 @@ func fields(pairs ...[2]string) {
 
 func state(st ipc.Status) string {
 	if st.Connected {
-		text := "connected via " + strings.ToUpper(modeWord(st.Tun))
+		text := "Connected via " + strings.ToUpper(modeWord(st.Tun))
 		if uptime := st.Uptime(); uptime > 0 {
 			text += " for " + style.Uptime(uptime)
 		}
 		return text
 	}
-	return "disconnected"
+	return "Disconnected"
 }
 
 func stateHeadline(st ipc.Status) {
 	text := state(st)
 	if st.Connected {
-		done(upperFirst(text))
+		done(text)
 		return
 	}
-	out(style.Gray.Render(style.Sep()) + " " + upperFirst(text))
+	out(style.Gray.Render(style.Sep()) + " " + text)
 }
 
 func (a *app) nodeDetails(st ipc.Status, nodes []ipc.Node) {
@@ -74,7 +72,7 @@ func (a *app) nodeFields(n ipc.Node) [][2]string {
 		return nil
 	}
 	return [][2]string{
-		{"Server", fmt.Sprintf("%s:%d", a.clean(n.Server), n.Port)},
+		{"Server", domain.ServerAddress(a.clean(n.Server), n.Port)},
 		{"Protocol", n.Protocol},
 	}
 }
@@ -95,16 +93,8 @@ func modeWord(tun bool) string {
 	return "proxy"
 }
 
-func upperFirst(s string) string {
-	if s == "" {
-		return ""
-	}
-	r, size := utf8.DecodeRuneInString(s)
-	return string(unicode.ToUpper(r)) + s[size:]
-}
-
-func Fail(err error) {
-	_, _ = lipgloss.Fprintln(os.Stderr, style.Red.Bold(true).Render(style.Cross()), style.Sanitize(err.Error(), true))
+func (application *app) fail(err error) {
+	_, _ = lipgloss.Fprintln(os.Stderr, style.Red.Bold(true).Render(style.Cross()), application.clean(err.Error()))
 }
 
 func (a *app) clean(s string) string { return style.Sanitize(s, a.emoji) }

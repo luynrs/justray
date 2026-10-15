@@ -142,7 +142,7 @@ func probeTargets(subscriptions []store.Subscription, subID, nodeID string) ([]d
 		}
 	}
 	if len(nodes) == 0 {
-		return nil, nil, fmt.Errorf("nothing to probe")
+		return nil, nil, errors.New("nothing to probe")
 	}
 	if len(nodes) > 512 {
 		return nil, nil, fmt.Errorf("too many nodes to probe: %d (maximum 512)", len(nodes))

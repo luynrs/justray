@@ -5,8 +5,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
+	"math"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -57,17 +59,20 @@ func (instance *switchEngine) Apply(_ context.Context, spec engine.Spec) error {
 func (instance *switchEngine) Stop() error   { instance.running = false; return nil }
 func (instance *switchEngine) Running() bool { return instance.running }
 
+func requireNoError(test *testing.T, err error) {
+	test.Helper()
+	if err != nil {
+		test.Fatal(err)
+	}
+}
+
 func TestWatchLifecycle(t *testing.T) {
 	directory := t.TempDir()
 	listener, err := net.Listen("unix", filepath.Join(directory, "daemon.sock"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	requireNoError(t, err)
 	logger := log.New(io.Discard, "", 0)
 	app, err := core.New(t.Context(), store.Disk{Dir: directory}, connection.New(t.Context(), directory, nil, nil, logger), subscription.New(t.Context(), logger))
-	if err != nil {
-		t.Fatal(err)
-	}
+	requireNoError(t, err)
 	server := New(t.Context(), logger, app)
 	serveDone := make(chan error, 1)
 	go func() { serveDone <- server.Serve(listener) }()
@@ -98,9 +103,7 @@ func TestWatchLifecycle(t *testing.T) {
 	}
 	for _, ver := range []string{"", version.Version + "-other"} {
 		conn, err := net.Dial("unix", listener.Addr().String())
-		if err != nil {
-			t.Fatal(err)
-		}
+		requireNoError(t, err)
 		_ = conn.SetDeadline(time.Now().Add(time.Second))
 		err = json.NewEncoder(conn).Encode(ipc.Request{Version: ver, Method: "SetTun", Arguments: ipc.Arguments{Tun: new(true)}})
 		if err != nil {
@@ -127,9 +130,7 @@ func TestWatchLifecycle(t *testing.T) {
 		t.Fatalf("subscription snapshot: %+v, %v", snapshot, err)
 	}
 	for _, count := range []int{1, 0} {
-		if err := client.SetCollapsed(t.Context(), added.SubscriptionID, nil); err != nil {
-			t.Fatal(err)
-		}
+		requireNoError(t, client.SetCollapsed(t.Context(), added.SubscriptionID, nil))
 		if err := readSnapshot(); err != nil || len(snapshot.Collapsed) != count {
 			t.Fatalf("collapse toggle: %v, %v", snapshot.Collapsed, err)
 		}
@@ -140,18 +141,14 @@ func TestWatchLifecycle(t *testing.T) {
 	if err := readSnapshot(); err != nil || len(snapshot.Nodes) != 2 || snapshot.Nodes[0].NodeID == snapshot.Nodes[1].NodeID {
 		t.Fatalf("duplicate link snapshot: %+v, %v", snapshot, err)
 	}
-	if err := client.SetTun(t.Context(), true); err != nil {
-		t.Fatal(err)
-	}
+	requireNoError(t, client.SetTun(t.Context(), true))
 	if err := readSnapshot(); err != nil || !snapshot.Status.Tun {
 		t.Fatalf("TUN snapshot: %+v, %v", snapshot, err)
 	}
 	settings := snapshot.Settings
 	settings.DNS = "1.1.1.1"
 	settings.ForceTTY = "on"
-	if err := client.SetSettings(t.Context(), snapshot.Settings, settings); err != nil {
-		t.Fatal(err)
-	}
+	requireNoError(t, client.SetSettings(t.Context(), snapshot.Settings, settings))
 	config, err := os.ReadFile(ipc.Config(directory))
 	if err != nil || strings.Contains(string(config), `"autostart"`) {
 		t.Fatalf("autostart stored in config: %s, %v", config, err)
@@ -342,9 +339,7 @@ func TestWatchLifecycle(t *testing.T) {
 				if control.name == "keys" {
 					mode = "[  TUN  ]"
 				}
-				if err := client.SetTun(t.Context(), control.name == "keys"); err != nil {
-					t.Fatal(err)
-				}
+				requireNoError(t, client.SetTun(t.Context(), control.name == "keys"))
 				if frame := waitFor(t, "", mode); strings.Contains(frame, "Scroll anchor") || !strings.Contains(frame, "Remote-four") {
 					t.Fatalf("daemon update moved the viewport back to the selection:\n%s", frame)
 				}
@@ -356,6 +351,48 @@ func TestWatchLifecycle(t *testing.T) {
 				check(t, scroll(control.up), "|   o Scroll anchor", "v Default")
 			})
 		}
+		screen("gga", tea.WindowSizeMsg{Width: 80, Height: 20})
+		screen("\r", tea.PasteMsg{Content: "socks://[2001:db8::1]:19090#IPv6"})
+		waitFor(t, "", "[2001:db8::1]:19090")
+		addresses := []struct {
+			name, server string
+			port         int
+			want         string
+		}{
+			{"raw IPv6", "2001:db8::1", 19090, "[2001:db8::1]:19090"},
+			{"bracketed IPv6", "[2001:db8::2]", 19091, "[2001:db8::2]:19091"},
+			{"raw zone", "fe80::1%eth0", 19092, "[fe80::1%eth0]:19092"},
+			{"bracketed zone", "[fe80::2%eth0]", 19093, "[fe80::2%eth0]:19093"},
+			{"mapped IPv6", "[::ffff:192.0.2.1]", 19094, "[::ffff:192.0.2.1]:19094"},
+			{"IPv4", "192.0.2.1", 1, "192.0.2.1:1"},
+			{"DNS", "proxy.example.test", 65535, "proxy.example.test:65535"},
+		}
+		for _, format := range []struct{ name, body, node, separator string }{
+			{"JSON", `{"outbounds":[%s]}`, `{"tag":%q,"type":"socks","server":%q,"server_port":%d}`, ","},
+			{"YAML", "proxies:\n%s", "  - {name: %q, type: socks5, server: %q, port: %d}", "\n"},
+		} {
+			t.Run("server addresses/"+format.name, func(t *testing.T) {
+				nodes := make([]string, len(addresses))
+				for i, address := range addresses {
+					nodes[i] = fmt.Sprintf(format.node, format.name+" "+address.name, address.server, address.port)
+				}
+				feed := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+					writer.Header().Set("Profile-Title", format.name)
+					_, _ = fmt.Fprintf(writer, format.body, strings.Join(nodes, format.separator))
+				}))
+				defer feed.Close()
+				screen("gga", tea.WindowSizeMsg{Width: 100, Height: 40})
+				screen("\r", tea.PasteMsg{Content: feed.URL})
+				frame := waitFor(t, "", format.name+" DNS")
+				for _, address := range addresses {
+					_, line, found := strings.Cut(frame, format.name+" "+address.name)
+					line, _, _ = strings.Cut(line, "\n")
+					if !found || !strings.Contains(line, address.want) {
+						t.Fatalf("%s %s: want %q:\n%s", format.name, address.name, address.want, frame)
+					}
+				}
+			})
+		}
 	})
 
 	shutdownDone := make(chan struct{})
@@ -365,9 +402,7 @@ func TestWatchLifecycle(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("shutdown did not close Watch")
 	}
-	if err := <-serveDone; err != nil {
-		t.Fatal(err)
-	}
+	requireNoError(t, <-serveDone)
 }
 
 type refreshTransport func(*http.Request) (*http.Response, error)
@@ -414,13 +449,9 @@ func TestSubscriptionRefresh(t *testing.T) {
 	disk := store.Disk{Dir: directory}
 	logger := log.New(io.Discard, "", 0)
 	app, err := core.New(t.Context(), disk, connection.New(t.Context(), directory, nil, nil, logger), subscription.New(t.Context(), logger))
-	if err != nil {
-		t.Fatal(err)
-	}
+	requireNoError(t, err)
 	listener, err := net.Listen("unix", filepath.Join(directory, "daemon.sock"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	requireNoError(t, err)
 	server := New(t.Context(), logger, app)
 	serveDone := make(chan error, 1)
 	go func() { serveDone <- server.Serve(listener) }()
@@ -433,15 +464,19 @@ func TestSubscriptionRefresh(t *testing.T) {
 
 	client := ipc.New(listener.Addr().String())
 	added, err := client.AddSubscription(t.Context(), source.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
+	requireNoError(t, err)
 	before, err := disk.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
+	requireNoError(t, err)
 	if nodes := before.Subscriptions[0].Nodes; len(nodes) != 2 || nodes[0].ID == nodes[1].ID {
 		t.Fatalf("duplicate links were merged or given the same ID: %d nodes", len(nodes))
+	}
+	refresh := func(test *testing.T, content string) store.State {
+		test.Helper()
+		body.Store(content)
+		requireNoError(test, client.RefreshSubscription(test.Context(), added.SubscriptionID))
+		state, err := disk.Load()
+		requireNoError(test, err)
+		return state
 	}
 	for name, content := range map[string]string{
 		"clash malformed":      "proxies:\n  - {name: bad, type: trojan, server: example.com, port: [}\n",
@@ -457,6 +492,10 @@ func TestSubscriptionRefresh(t *testing.T) {
 		"xhttp xmux":           `{"outbounds":[{"type":"vless","server":"example.com","server_port":443,"uuid":"uuid","transport":{"type":"xhttp","xmux":{"max_connections":2,"max_concurrency":2}}}]}`,
 		"xhttp range":          `{"outbounds":[{"type":"vless","server":"example.com","server_port":443,"uuid":"uuid","transport":{"type":"xhttp","sc_max_each_post_bytes":1.5}}]}`,
 		"xhttp path query":     `{"outbounds":[{"type":"vless","server":"example.com","server_port":443,"uuid":"uuid","transport":{"type":"xhttp","path":"/edge/?token=value"}}]}`,
+		"hy2 negative up":      `{"outbounds":[{"type":"hysteria2","server":"example.com","server_port":443,"password":"secret","up_mbps":-1}]}`,
+		"hy2 negative down":    `{"outbounds":[{"type":"hysteria2","server":"example.com","server_port":443,"password":"secret","down_mbps":-1}]}`,
+		"hy2 up overflow":      fmt.Sprintf(`{"outbounds":[{"type":"hysteria2","server":"example.com","server_port":443,"password":"secret","up_mbps":%d}]}`, math.MaxInt/125000+1),
+		"hy2 down overflow":    fmt.Sprintf(`{"outbounds":[{"type":"hysteria2","server":"example.com","server_port":443,"password":"secret","down_mbps":%d}]}`, math.MaxInt/125000+1),
 	} {
 		t.Run(name, func(t *testing.T) {
 			body.Store(content)
@@ -469,27 +508,13 @@ func TestSubscriptionRefresh(t *testing.T) {
 			}
 		})
 	}
-	body.Store(second + "\n" + first)
-	if err := client.RefreshSubscription(t.Context(), added.SubscriptionID); err != nil {
-		t.Fatal(err)
-	}
-	after, err := disk.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
+	after := refresh(t, second+"\n"+first)
 	old, current := before.Subscriptions[0].Nodes, after.Subscriptions[0].Nodes
 	if len(current) != 2 || current[0].ID != old[1].ID || current[1].ID != old[0].ID {
 		t.Fatal("refresh did not preserve separate IDs across reordering")
 	}
 	shadowsocks := "ss://" + base64.StdEncoding.EncodeToString([]byte("aes-256-gcm:pa%2Fss@word@example.com:8388")) + "#ss"
-	body.Store(base64.StdEncoding.EncodeToString([]byte(first + "\n" + shadowsocks + "\nv2rayn://hysteria2/opaque\nvless://uuid@example.com:443?type=quic")))
-	if err := client.RefreshSubscription(t.Context(), added.SubscriptionID); err != nil {
-		t.Fatalf("mixed subscription refresh: %v", err)
-	}
-	partial, err := disk.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
+	partial := refresh(t, base64.StdEncoding.EncodeToString([]byte(first+"\n"+shadowsocks+"\nv2rayn://hysteria2/opaque\nvless://uuid@example.com:443?type=quic")))
 	if nodes := partial.Subscriptions[0].Nodes; len(nodes) != 2 || nodes[0].Name != "first" || nodes[1].Protocol != domain.SS || nodes[1].Server != "example.com" || nodes[1].Auth.Password != "pa%2Fss@word" {
 		t.Fatalf("mixed refresh did not save the supported node: %+v", nodes)
 	}
@@ -507,13 +532,27 @@ func TestSubscriptionRefresh(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(unchanged.Subscriptions, partial.Subscriptions) {
 		t.Fatalf("unusable-only refresh changed subscriptions: %v", err)
 	}
-	body.Store(first)
-	if err := client.RefreshSubscription(t.Context(), added.SubscriptionID); err != nil {
-		t.Fatal(err)
+	if clean := refresh(t, first); clean.Subscriptions[0].Warning != "" {
+		t.Fatalf("clean refresh kept the old warning: %+v", clean.Subscriptions)
 	}
-	clean, err := disk.Load()
-	if err != nil || clean.Subscriptions[0].Warning != "" {
-		t.Fatalf("clean refresh kept the old warning: %+v, %v", clean.Subscriptions, err)
+	for query, hostname := range map[string]string{
+		"":                                    "proxy.example",
+		"host=cover.example":                  "cover.example",
+		"sni=tls.example&host=cover.example":  "tls.example",
+		"peer=tls.example&host=cover.example": "tls.example",
+		"server_name=tls.example":             "tls.example",
+		"serverName=tls.example":              "tls.example",
+	} {
+		t.Run("shadowtls hostname/"+query, func(t *testing.T) {
+			after := refresh(t, "shadowtls://secret@proxy.example:443?"+query)
+			if len(after.Subscriptions[0].Nodes) != 1 {
+				t.Fatalf("shadowtls refresh: %+v", after.Subscriptions)
+			}
+			node := after.Subscriptions[0].Nodes[0]
+			if node.TLS == nil || node.ShadowTLS == nil || node.TLS.SNI != hostname || node.ShadowTLS.SNI != hostname {
+				t.Fatalf("shadowtls hostname %q: TLS=%+v, ShadowTLS=%+v", hostname, node.TLS, node.ShadowTLS)
+			}
+		})
 	}
 	for name, content := range map[string]string{
 		"clash invalid":           "proxies:\n  - {name: valid, type: trojan, server: example.com, port: 443, password: secret}\n  - {name: bad, type: tuic, server: example.com, port: 443, password: secret}",
@@ -532,16 +571,23 @@ func TestSubscriptionRefresh(t *testing.T) {
 		"xray null":               `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]}},null]}`,
 		"xray no protocol":        `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]}},{}]}`,
 		"sing-box unknown":        `{"outbounds":[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},{"type":"future-proxy","tag":"unknown"}]}`,
+		"sing-box hy2 zero":       `{"outbounds":[{"type":"hysteria2","server":"example.com","server_port":443,"password":"secret","up_mbps":0,"down_mbps":0},{"type":"future-proxy"}]}`,
+		"sing-box hy2 maximum":    fmt.Sprintf(`{"outbounds":[{"type":"hysteria2","server":"example.com","server_port":443,"password":"secret","up_mbps":%d,"down_mbps":%d},{"type":"future-proxy"}]}`, math.MaxInt/125000, math.MaxInt/125000),
 		"xray unknown":            `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]}},{"protocol":"future-proxy","tag":"unknown"}]}`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			body.Store(content)
-			if err := client.RefreshSubscription(t.Context(), added.SubscriptionID); err != nil {
-				t.Fatalf("mixed refresh: %v", err)
+			after := refresh(t, content)
+			if len(after.Subscriptions[0].Nodes) != 1 || !strings.Contains(after.Subscriptions[0].Warning, "skipped nodes: 1 (") || strings.Contains(after.Subscriptions[0].Warning, "secret") {
+				t.Fatalf("mixed refresh did not save the node and warning: %+v", after.Subscriptions)
 			}
-			after, err := disk.Load()
-			if err != nil || len(after.Subscriptions[0].Nodes) != 1 || !strings.Contains(after.Subscriptions[0].Warning, "skipped nodes: 1 (") || strings.Contains(after.Subscriptions[0].Warning, "secret") {
-				t.Fatalf("mixed refresh did not save the node and warning: %+v, %v", after.Subscriptions, err)
+			if name == "sing-box hy2 zero" || name == "sing-box hy2 maximum" {
+				expected := 0
+				if name == "sing-box hy2 maximum" {
+					expected = math.MaxInt / 125000
+				}
+				if node := after.Subscriptions[0].Nodes[0]; node.Protocol != domain.HY2 || node.UpMbps != expected || node.DownMbps != expected {
+					t.Fatalf("HY2 refresh changed bandwidth: %+v", node)
+				}
 			}
 			if strings.HasPrefix(name, "sing-box") {
 				body.Store(`{"outbounds":[{"type":"future-proxy"}]}`)
@@ -599,9 +645,7 @@ func TestSubscriptionRefresh(t *testing.T) {
 			t.Fatal("canceled owner stopped the shared HTTP request")
 		}
 		close(release)
-		if err := <-followerDone; err != nil {
-			t.Fatal(err)
-		}
+		requireNoError(t, <-followerDone)
 	})
 	snap, err := client.Snapshot(t.Context())
 	if err != nil || len(snap.Nodes) != 1 || snap.Nodes[0].Name != "first" || snap.Subscriptions[0].Refreshing ||
@@ -628,9 +672,7 @@ func TestSwitch(t *testing.T) {
 		app, err := core.New(t.Context(), disk, connection.New(t.Context(), directory, func(context.Context, string) engine.Engine {
 			return &switchEngine{failB: failB, failTun: failTun}
 		}, nil, logger), subscription.New(t.Context(), logger))
-		if err != nil {
-			t.Fatal(err)
-		}
+		requireNoError(t, err)
 		if err := app.Restore(); err != nil {
 			if !errors.Is(err, ipc.ErrElevate) {
 				t.Fatal(err)
@@ -638,9 +680,7 @@ func TestSwitch(t *testing.T) {
 			app.RestoreFailed(err)
 		}
 		listener, err := net.Listen("unix", socket)
-		if err != nil {
-			t.Fatal(err)
-		}
+		requireNoError(t, err)
 		server := New(t.Context(), logger, app)
 		done := make(chan error, 1)
 		go func() { done <- server.Serve(listener); close(done) }()
@@ -656,13 +696,9 @@ func TestSwitch(t *testing.T) {
 	}
 	check := func(ref domain.NodeRef, mode, pending bool) {
 		state, err := disk.Load()
-		if err != nil {
-			t.Fatal(err)
-		}
+		requireNoError(t, err)
 		snapshot, err := client.Snapshot(t.Context())
-		if err != nil {
-			t.Fatal(err)
-		}
+		requireNoError(t, err)
 		if state.Active != ref || state.Last != ref || state.Tun != mode || (state.Pending != nil) != pending ||
 			snapshot.Selected != ref || !pending && (!snapshot.Status.Connected || snapshot.Status.NodeRef != ref || snapshot.Status.Tun != mode) {
 			t.Fatalf("state=%+v snapshot=%+v", state, snapshot)
@@ -670,9 +706,7 @@ func TestSwitch(t *testing.T) {
 	}
 	failure := errors.New("elevation required")
 	_, stop := start(failure, failure)
-	if err := client.Connect(t.Context(), a, nil); err != nil {
-		t.Fatal(err)
-	}
+	requireNoError(t, client.Connect(t.Context(), a, nil))
 	if err := client.Connect(t.Context(), b, &tun); err == nil || errors.Is(err, ipc.ErrElevate) {
 		t.Fatalf("ordinary switch failure was treated as elevation: %v", err)
 	}

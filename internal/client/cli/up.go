@@ -101,6 +101,6 @@ func (a *app) runOp(ctx context.Context, text string, op func() error, ref domai
 }
 
 func (a *app) report(snapshot ipc.Snapshot) {
-	done(upperFirst(state(snapshot.Status)))
+	stateHeadline(snapshot.Status)
 	a.nodeDetails(snapshot.Status, snapshot.Nodes)
 }

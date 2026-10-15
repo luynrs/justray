@@ -2,6 +2,7 @@ package protocols
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -16,16 +17,17 @@ func ParseShadowTLS(uri string) (domain.Node, error) {
 	}
 	q := u.Query()
 	password := cmp.Or(userPassword(u), q.Get("password"), q.Get("auth"))
+	tls := tlsFrom(q, cmp.Or(q.Get("host"), host))
 	return domain.Node{
 		Name:     cmp.Or(u.Fragment, host),
 		Protocol: domain.Shadow,
 		Server:   host,
 		Port:     port,
-		TLS:      tlsFrom(q, host),
+		TLS:      tls,
 		ShadowTLS: &domain.ShadowTLS{
 			Version:  cmp.Or(atoi(q.Get("version")), 3),
 			Password: password,
-			SNI:      cmp.Or(q.Get("sni"), q.Get("host"), host),
+			SNI:      tls.SNI,
 		},
 	}, nil
 }
@@ -51,7 +53,7 @@ func parseShadowTLSPlugin(raw, host string) (*domain.ShadowTLS, error) {
 		}
 	}
 	if stls.Password == "" {
-		return nil, fmt.Errorf("shadow-tls: missing password")
+		return nil, errors.New("shadow-tls: missing password")
 	}
 	return stls, nil
 }

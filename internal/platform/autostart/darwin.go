@@ -39,7 +39,7 @@ func plistPath() (string, error) {
 	return filepath.Join(home, "Library", "LaunchAgents", label+".plist"), nil
 }
 
-func Enabled(ctx context.Context) (bool, error) {
+func enabled(ctx context.Context) (bool, error) {
 	path, err := plistPath()
 	if err != nil {
 		return false, err
@@ -77,7 +77,7 @@ func guiDomain() string {
 	return "gui/" + strconv.Itoa(os.Getuid())
 }
 
-func Enable(ctx context.Context) error {
+func enable(ctx context.Context) error {
 	path, err := plistPath()
 	if err != nil {
 		return err
@@ -111,7 +111,7 @@ func Enable(ctx context.Context) error {
 	return nil
 }
 
-func Disable(ctx context.Context) error {
+func disable(ctx context.Context) error {
 	path, err := plistPath()
 	if err != nil {
 		return err

@@ -3,6 +3,8 @@ package domain
 import (
 	"encoding/json"
 	"io"
+	"net"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -79,6 +81,13 @@ func (node Node) ConfigKey() string {
 }
 
 func ValidPort(port int) bool { return port >= 1 && port <= 65535 }
+
+func ServerAddress(server string, port int) string {
+	if strings.HasPrefix(server, "[") && strings.HasSuffix(server, "]") {
+		server = server[1 : len(server)-1]
+	}
+	return net.JoinHostPort(server, strconv.Itoa(port))
+}
 
 type Auth struct {
 	UUID     string `json:"uuid,omitempty"`     // vmess, vless, tuic

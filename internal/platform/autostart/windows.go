@@ -66,7 +66,7 @@ func withFolder(ctx context.Context, action func(scheduler, folder *ole.IDispatc
 	return action(scheduler, folder.ToIDispatch())
 }
 
-func Enabled(ctx context.Context) (bool, error) {
+func enabled(ctx context.Context) (bool, error) {
 	var enabled bool
 	err := withFolder(ctx, func(_, folder *ole.IDispatch) error {
 		task, err := oleutil.CallMethod(folder, "GetTask", name)
@@ -91,7 +91,7 @@ func Enabled(ctx context.Context) (bool, error) {
 	return enabled, err
 }
 
-func Enable(ctx context.Context) error {
+func enable(ctx context.Context) error {
 	executablePath, err := os.Executable()
 	if err != nil {
 		return err
@@ -170,7 +170,7 @@ func Enable(ctx context.Context) error {
 	})
 }
 
-func Disable(ctx context.Context) error {
+func disable(ctx context.Context) error {
 	return withFolder(ctx, func(_, folder *ole.IDispatch) error {
 		if err := ctx.Err(); err != nil {
 			return err

@@ -4,7 +4,7 @@ package protocols
 
 import (
 	"cmp"
-	"fmt"
+	"errors"
 
 	"github.com/luynrs/justray/internal/domain"
 )
@@ -15,7 +15,7 @@ func ParseTUIC(uri string) (domain.Node, error) {
 		return domain.Node{}, err
 	}
 	if u.User == nil || u.User.Username() == "" {
-		return domain.Node{}, fmt.Errorf("tuic: missing uuid")
+		return domain.Node{}, errors.New("tuic: missing uuid")
 	}
 
 	q := u.Query()

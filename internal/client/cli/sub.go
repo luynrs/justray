@@ -271,5 +271,5 @@ func (a *app) nodeLine(n ipc.Node, branch string, nameW, infoW int) string {
 }
 
 func (a *app) serverProto(n ipc.Node) string {
-	return fmt.Sprintf("%s:%d %s %s", a.clean(n.Server), n.Port, style.Sep(), n.Protocol)
+	return fmt.Sprintf("%s %s %s", domain.ServerAddress(a.clean(n.Server), n.Port), style.Sep(), n.Protocol)
 }

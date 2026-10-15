@@ -99,7 +99,7 @@ func ParseClash(raw []byte) ([]domain.Node, map[string]int, error) {
 	if err := yaml.Unmarshal(raw, &doc); err != nil {
 		for line := range strings.Lines(string(raw)) {
 			if strings.HasPrefix(line, "proxies:") {
-				return nil, nil, fmt.Errorf("clash: invalid YAML")
+				return nil, nil, errors.New("clash: invalid YAML")
 			}
 		}
 		return nil, nil, ErrNotFormat
@@ -128,7 +128,7 @@ func ParseClash(raw []byte) ([]domain.Node, map[string]int, error) {
 		nodes = append(nodes, node)
 	}
 	if len(nodes) == 0 && len(skipped) == 0 {
-		return nil, nil, fmt.Errorf("clash: no supported proxies")
+		return nil, nil, errors.New("clash: no supported proxies")
 	}
 	return nodes, skipped, nil
 }
@@ -194,7 +194,7 @@ func clashNode(p clashProxy) (domain.Node, error) {
 		}
 		if p.Plugin == "shadow-tls" || p.ShadowTLSOpts != nil {
 			if stlsOpts == nil {
-				return domain.Node{}, fmt.Errorf("shadowtls: missing settings")
+				return domain.Node{}, errors.New("shadowtls: missing settings")
 			}
 			n.ShadowTLS = &domain.ShadowTLS{
 				Version:  cmp.Or(stlsOpts.Version, 3),
@@ -228,7 +228,7 @@ func clashNode(p clashProxy) (domain.Node, error) {
 	case "hysteria", "hy", "hy1":
 		auth := cmp.Or(p.AuthStr, p.Password)
 		if auth == "" {
-			return domain.Node{}, fmt.Errorf("clash: hysteria missing auth")
+			return domain.Node{}, errors.New("clash: hysteria missing auth")
 		}
 		n.Protocol = domain.HY1
 		n.Auth = domain.Auth{Password: auth}
