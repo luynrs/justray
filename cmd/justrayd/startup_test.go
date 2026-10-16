@@ -237,7 +237,7 @@ func TestStartup(t *testing.T) {
 		}
 	}
 	if peerAddress == "" {
-		t.Fatal("test peer requires an IPv4 address on the default interface")
+		t.Skip("requires an IPv4 address on the default network interface")
 	}
 	peerNodes := []string{
 		fmt.Sprintf(`{"type":"wireguard","tag":"runtime-wg","server":%q,"server_port":%d,"private_key":%q,"peer_public_key":%q,"local_address":["10.0.0.2/32"]}`,
