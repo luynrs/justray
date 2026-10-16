@@ -27,6 +27,7 @@
         "with_gvisor"
         "with_grpc"
         "with_xhttp"
+        "with_awg"
         "badlinkname"
       ];
     in

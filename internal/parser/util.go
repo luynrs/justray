@@ -1,11 +1,10 @@
-package protocols
+package parser
 
 import (
 	"cmp"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
 	"net/url"
 	"strconv"
@@ -14,110 +13,50 @@ import (
 	"github.com/luynrs/justray/internal/domain"
 )
 
-var ErrNotFormat = errors.New("unrecognized subscription format")
-var errUnsupported = errors.New("unsupported protocol")
-
-func hasOutboundField(raw []byte, field string) bool {
-	var items []json.RawMessage
-	if json.Unmarshal(raw, &items) != nil {
-		items = []json.RawMessage{raw}
-	}
-	for _, entry := range items {
-		var item map[string]json.RawMessage
-		if json.Unmarshal(entry, &item) != nil {
-			continue
-		}
-		if _, ok := item[field]; ok {
-			return true
-		}
-		for _, key := range []string{"outbounds", "endpoints"} {
-			var outbounds []json.RawMessage
-			if json.Unmarshal(item[key], &outbounds) != nil {
-				continue
-			}
-			for _, entry := range outbounds {
-				var outbound map[string]json.RawMessage
-				if json.Unmarshal(entry, &outbound) != nil {
-					continue
-				}
-				if _, ok := outbound[field]; ok {
-					return true
-				}
-			}
+func decodeBase64(encoded string) ([]byte, error) {
+	if strings.Contains(encoded, "%") {
+		if unescaped, err := url.PathUnescape(encoded); err == nil {
+			encoded = unescaped
 		}
 	}
-	return false
+	encoded = strings.TrimPrefix(strings.Join(strings.Fields(encoded), ""), "\ufeff")
+	encoded = strings.TrimRight(encoded, "=")
+	if decoded, err := base64.RawURLEncoding.DecodeString(encoded); err == nil {
+		return decoded, nil
+	}
+	return base64.RawStdEncoding.DecodeString(encoded)
 }
 
-func Unbase64(s string) ([]byte, error) {
-	if strings.Contains(s, "%") {
-		if unescaped, err := url.PathUnescape(s); err == nil {
-			s = unescaped
-		}
-	}
-	s = strings.TrimPrefix(strings.Join(strings.Fields(s), ""), "\ufeff")
-	s = strings.TrimRight(s, "=")
-	if b, err := base64.RawURLEncoding.DecodeString(s); err == nil {
-		return b, nil
-	}
-	return base64.RawStdEncoding.DecodeString(s)
-}
-
-func parseURL(proto, uri string) (*url.URL, string, int, error) {
-	u, err := url.Parse(uri)
+func parseHostPort(address string) (string, int, error) {
+	host, portText, err := net.SplitHostPort(address)
 	if err != nil {
-		return nil, "", 0, fmt.Errorf("%s: %w", proto, err)
+		return "", 0, errors.New("invalid host or port")
 	}
-	host, port, err := hostPort(u.Host)
+	port, err := strconv.Atoi(portText)
 	if err != nil {
-		return nil, "", 0, fmt.Errorf("%s: %w", proto, err)
-	}
-	return u, host, port, nil
-}
-
-func hostPort(hp string) (string, int, error) {
-	host, p, err := net.SplitHostPort(hp)
-	if err != nil {
-		return "", 0, err
-	}
-	port, err := strconv.Atoi(p)
-	if err != nil {
-		return "", 0, fmt.Errorf("bad port %q", p)
+		return "", 0, errors.New("invalid port")
 	}
 	return host, port, nil
 }
 
-func splitCreds(blob string) (method, password string) {
-	if strings.Contains(blob, ":") {
-		method, password, _ = strings.Cut(blob, ":")
-		return method, password
-	}
-	if decoded, err := Unbase64(blob); err == nil && strings.Contains(string(decoded), ":") {
-		blob = string(decoded)
+func parseCredentials(blob string) (method, password string) {
+	if !strings.Contains(blob, ":") {
+		if decoded, err := decodeBase64(blob); err == nil && strings.Contains(string(decoded), ":") {
+			blob = string(decoded)
+		}
 	}
 	method, password, _ = strings.Cut(blob, ":")
 	return method, password
 }
 
-func userPassword(u *url.URL) string {
-	if u.User == nil {
-		return ""
+func userPassword(parsedURL *url.URL) string {
+	if password, found := parsedURL.User.Password(); found {
+		return password
 	}
-	if p, ok := u.User.Password(); ok {
-		return p
-	}
-	return u.User.Username()
+	return parsedURL.User.Username()
 }
 
-func userPass(u *url.URL) (string, string) {
-	if u.User == nil {
-		return "", ""
-	}
-	p, _ := u.User.Password()
-	return u.User.Username(), p
-}
-
-func fixCIDRs(list []string) []string {
+func normalizeCIDRs(list []string) []string {
 	var out []string
 	for _, a := range list {
 		if a == "" {
@@ -135,7 +74,7 @@ func fixCIDRs(list []string) []string {
 	return out
 }
 
-func transport(q url.Values) domain.Transport {
+func parseTransport(q url.Values) domain.Transport {
 	net := strings.ToLower(cmp.Or(q.Get("type"), q.Get("net"), q.Get("network"), "tcp"))
 	svc := cmp.Or(q.Get("serviceName"), q.Get("service_name"))
 	if net == "grpc" && svc == "" {
@@ -160,11 +99,6 @@ func transport(q url.Values) domain.Transport {
 	return t
 }
 
-func atoi(s string) int {
-	n, _ := strconv.Atoi(strings.TrimSpace(s))
-	return n
-}
-
 func splitComma(s string) []string {
 	var out []string
 	for p := range strings.SplitSeq(s, ",") {
@@ -186,8 +120,8 @@ func insecureFlag(q url.Values) bool {
 		truthy(q.Get("skip-cert-verify")) || truthy(q.Get("skip_cert_verify")) || truthy(q.Get("skipCertVerify"))
 }
 
-func addresses(v4, v6 string) []string {
-	return fixCIDRs(append(splitComma(v4), splitComma(v6)...))
+func parseAddresses(v4, v6 string) []string {
+	return normalizeCIDRs(append(splitComma(v4), splitComma(v6)...))
 }
 
 func cleanFingerprint(fp string, insecure bool) (string, bool) {
@@ -198,7 +132,7 @@ func cleanFingerprint(fp string, insecure bool) (string, bool) {
 }
 
 // TLS block shared by vless/trojan/anytls links
-func tlsFrom(q url.Values, host string) *domain.TLS {
+func parseTLS(q url.Values, host string) *domain.TLS {
 	fp, insecure := cleanFingerprint(cmp.Or(q.Get("fp"), q.Get("fingerprint")), insecureFlag(q) || cmp.Or(q.Get("pinSHA256"), q.Get("pinsha256")) != "")
 	return &domain.TLS{
 		SNI:         cmp.Or(q.Get("sni"), q.Get("peer"), q.Get("server_name"), q.Get("serverName"), host),

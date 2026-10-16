@@ -1,23 +1,24 @@
-package protocols
+package parser
 
 import (
 	"cmp"
 	"errors"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/luynrs/justray/internal/domain"
 )
 
-func ParseShadowsocks(uri string) (domain.Node, error) {
+func parseShadowsocks(uri string) (domain.Node, error) {
 	_, rest, _ := strings.Cut(uri, "://")
 
 	rest, remark, _ := strings.Cut(rest, "#")
 	rest, query, hasQuery := strings.Cut(rest, "?")
 	legacy := !strings.Contains(rest, "@")
 	if legacy {
-		if decoded, err := Unbase64(rest); err == nil {
+		if decoded, err := decodeBase64(rest); err == nil {
 			rest = string(decoded)
 			hostStart := -1
 			for index, character := range rest {
@@ -27,7 +28,7 @@ func ParseShadowsocks(uri string) (domain.Node, error) {
 				if hostStart < 0 || character != '#' && character != '?' {
 					continue
 				}
-				if _, _, err := hostPort(strings.TrimSuffix(rest[hostStart:index], "/")); err != nil {
+				if _, _, err := parseHostPort(strings.TrimSuffix(rest[hostStart:index], "/")); err != nil {
 					hostStart = -1
 					continue
 				}
@@ -56,8 +57,8 @@ func ParseShadowsocks(uri string) (domain.Node, error) {
 			userinfo = unescaped
 		}
 	}
-	method, password := splitCreds(userinfo)
-	host, port, err := hostPort(strings.TrimSuffix(rest[at+1:], "/")) // SIP002 allows an empty path
+	method, password := parseCredentials(userinfo)
+	host, port, err := parseHostPort(strings.TrimSuffix(rest[at+1:], "/")) // SIP002 allows an empty path
 	if err != nil {
 		return domain.Node{}, fmt.Errorf("ss: %w", err)
 	}
@@ -93,4 +94,34 @@ func parsePluginQuery(query string) string {
 		}
 	}
 	return ""
+}
+
+func parseShadowTLSPlugin(raw, host string) (*domain.ShadowTLS, error) {
+	base, opts, _ := strings.Cut(raw, ";")
+	if base != "shadow-tls" {
+		return nil, fmt.Errorf("unsupported plugin %q", base)
+	}
+	stls := &domain.ShadowTLS{Version: 3, SNI: host}
+	for option := range strings.SplitSeq(opts, ";") {
+		key, value, ok := strings.Cut(option, "=")
+		if !ok {
+			continue
+		}
+		switch key {
+		case "host", "sni":
+			stls.SNI = value
+		case "password":
+			stls.Password = value
+		case "version":
+			version, err := strconv.Atoi(strings.TrimSpace(value))
+			if err != nil {
+				return nil, errors.New("shadowtls: invalid version")
+			}
+			stls.Version = version
+		}
+	}
+	if stls.Password == "" {
+		return nil, errors.New("shadow-tls: missing password")
+	}
+	return stls, nil
 }

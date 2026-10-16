@@ -15,7 +15,7 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     env:
-      GOFLAGS: -tags=with_quic,with_utls,with_gvisor,with_grpc,with_xhttp,badlinkname
+      GOFLAGS: -tags=with_quic,with_utls,with_gvisor,with_grpc,with_xhttp,with_awg,badlinkname
     steps:
       - uses: actions/checkout@v7
         with:

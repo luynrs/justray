@@ -1,4 +1,4 @@
-package protocols
+package parser
 
 import (
 	"cmp"
@@ -9,11 +9,6 @@ import (
 
 	"github.com/luynrs/justray/internal/domain"
 )
-
-type xrayDoc struct {
-	Remarks   string            `json:"remarks"`
-	Outbounds []json.RawMessage `json:"outbounds"`
-}
 
 type xrayOutbound struct {
 	Tag            string             `json:"tag"`
@@ -97,105 +92,57 @@ type xrayTCPTransport struct {
 	} `json:"header"`
 }
 
-func ParseXray(raw []byte) ([]domain.Node, map[string]int, error) {
-	if !hasOutboundField(raw, "protocol") {
-		return nil, nil, ErrNotFormat
+func (result *parseResult) readXray(outbound xrayOutbound, remarks string, count int) {
+	name := cmp.Or(remarks, outbound.Tag)
+	if count > 1 && remarks != "" && outbound.Tag != "" && !strings.EqualFold(outbound.Tag, "proxy") {
+		name += " (" + outbound.Tag + ")"
 	}
-	var docs []xrayDoc
-	if err := json.Unmarshal(raw, &docs); err != nil {
-		var doc xrayDoc
-		if json.Unmarshal(raw, &doc) != nil {
-			return nil, nil, errors.New("xray: invalid outbound fields")
+	protocol := strings.ToLower(outbound.Protocol)
+	switch protocol {
+	case "vless", "vmess":
+		if len(outbound.Settings.Servers) > 0 || len(outbound.Settings.Vnext) == 0 {
+			result.add(domain.Node{}, errors.New("incompatible outbound settings"))
+			return
 		}
-		docs = []xrayDoc{doc}
+	case "shadowsocks", "ss":
+		if len(outbound.Settings.Vnext) > 0 || len(outbound.Settings.Servers) == 0 {
+			result.add(domain.Node{}, errors.New("incompatible outbound settings"))
+			return
+		}
+	case "trojan":
+		if len(outbound.Settings.Servers) == 0 && len(outbound.Settings.Vnext) == 0 {
+			result.add(domain.Node{}, errors.New("incompatible outbound settings"))
+			return
+		}
 	}
-
-	var nodes []domain.Node
-	skipped := make(map[string]int)
-	for _, doc := range docs {
-		proxies := make([]xrayOutbound, 0, len(doc.Outbounds))
-		for _, rawOutbound := range doc.Outbounds {
-			var ob xrayOutbound
-			if json.Unmarshal(rawOutbound, &ob) != nil || ob.Protocol == "" {
-				skipped["xray: invalid outbound fields"]++
-				continue
-			}
-			p := strings.ToLower(ob.Protocol)
-			switch p {
-			case "vless", "vmess", "trojan", "shadowsocks", "ss":
-				proxies = append(proxies, ob)
-			case "freedom", "blackhole", "dns", "loopback":
-			default:
-				skipped["unsupported"]++
-			}
+	for _, server := range outbound.Settings.Servers {
+		node := domain.Node{Name: name, Server: server.Address, Port: server.Port}
+		switch protocol {
+		case "trojan":
+			node.Protocol, node.Auth = domain.Trojan, domain.Auth{Password: server.Password}
+		case "shadowsocks", "ss":
+			node.Protocol, node.Auth = domain.SS, domain.Auth{Password: server.Password, Method: server.Method}
 		}
-		for _, ob := range proxies {
-			name := cmp.Or(doc.Remarks, ob.Tag)
-			if len(proxies) > 1 && doc.Remarks != "" && ob.Tag != "" && !strings.EqualFold(ob.Tag, "proxy") {
-				name += " (" + ob.Tag + ")"
-			}
-			proto := strings.ToLower(ob.Protocol)
-			switch proto {
-			case "vless", "vmess":
-				if len(ob.Settings.Servers) > 0 || len(ob.Settings.Vnext) == 0 {
-					skipped["incompatible outbound settings"]++
-					continue
-				}
-			case "shadowsocks", "ss":
-				if len(ob.Settings.Vnext) > 0 || len(ob.Settings.Servers) == 0 {
-					skipped["incompatible outbound settings"]++
-					continue
-				}
+		result.add(xrayNode(node, outbound.StreamSettings))
+	}
+	for _, next := range outbound.Settings.Vnext {
+		if len(next.Users) == 0 {
+			result.add(domain.Node{}, errors.New("incompatible outbound settings"))
+			continue
+		}
+		for _, user := range next.Users {
+			node := domain.Node{Name: name, Server: next.Address, Port: next.Port}
+			switch protocol {
+			case "vmess":
+				node.Protocol, node.Auth = domain.VMess, domain.Auth{UUID: user.ID, AlterID: user.AlterID, Method: cmp.Or(user.Security, "auto")}
+			case "vless":
+				node.Protocol, node.Auth = domain.VLESS, domain.Auth{UUID: user.ID, Flow: user.Flow}
 			case "trojan":
-				if len(ob.Settings.Servers) == 0 && len(ob.Settings.Vnext) == 0 {
-					skipped["incompatible outbound settings"]++
-					continue
-				}
+				node.Protocol, node.Auth = domain.Trojan, domain.Auth{Password: cmp.Or(user.Password, user.ID)}
 			}
-			for _, server := range ob.Settings.Servers {
-				node := domain.Node{Name: name, Server: server.Address, Port: server.Port}
-				switch proto {
-				case "trojan":
-					node.Protocol, node.Auth = domain.Trojan, domain.Auth{Password: server.Password}
-				case "shadowsocks", "ss":
-					node.Protocol, node.Auth = domain.SS, domain.Auth{Password: server.Password, Method: server.Method}
-				}
-				node, err := xrayNode(node, ob.StreamSettings)
-				if err != nil {
-					skipped[err.Error()]++
-					continue
-				}
-				nodes = append(nodes, node)
-			}
-			for _, next := range ob.Settings.Vnext {
-				if len(next.Users) == 0 {
-					skipped["incompatible outbound settings"]++
-					continue
-				}
-				for _, user := range next.Users {
-					node := domain.Node{Name: name, Server: next.Address, Port: next.Port}
-					switch proto {
-					case "vmess":
-						node.Protocol, node.Auth = domain.VMess, domain.Auth{UUID: user.ID, AlterID: user.AlterID, Method: cmp.Or(user.Security, "auto")}
-					case "vless":
-						node.Protocol, node.Auth = domain.VLESS, domain.Auth{UUID: user.ID, Flow: user.Flow}
-					case "trojan":
-						node.Protocol, node.Auth = domain.Trojan, domain.Auth{Password: cmp.Or(user.Password, user.ID)}
-					}
-					node, err := xrayNode(node, ob.StreamSettings)
-					if err != nil {
-						skipped[err.Error()]++
-						continue
-					}
-					nodes = append(nodes, node)
-				}
-			}
+			result.add(xrayNode(node, outbound.StreamSettings))
 		}
 	}
-	if len(nodes) == 0 && len(skipped) == 0 {
-		return nil, nil, errors.New("no supported outbounds in xray config")
-	}
-	return nodes, skipped, nil
 }
 
 func xrayNode(node domain.Node, stream xrayStreamSettings) (domain.Node, error) {

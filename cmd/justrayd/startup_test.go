@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bytes"
+	"compress/zlib"
 	"context"
 	"crypto/ecdh"
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/pem"
 	"fmt"
 	"net"
@@ -156,9 +159,9 @@ func TestStartup(t *testing.T) {
 	requireNoError(t, err)
 	blockedRequests := make(chan chan struct{}, 1)
 	requestStarted := make(chan struct{}, 1)
-	var peerPorts, targetPorts [2]int
-	var reservations [2]net.PacketConn
-	for index, protocol := range []string{"wireguard", "hysteria2"} {
+	var peerPorts, targetPorts [4]int
+	var reservations [4]net.PacketConn
+	for index, protocol := range []string{"wireguard", "hysteria2", "awg2", "awg3"} {
 		target := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 			time.Sleep(25 * time.Millisecond)
 			select {
@@ -192,18 +195,29 @@ func TestStartup(t *testing.T) {
 	local.RegisterTransport(dnsRegistry)
 	peerContext := sbox.Context(t.Context(), inboundRegistry, outboundRegistry,
 		endpointRegistry, dnsRegistry, boxservice.NewRegistry(), certificate.NewRegistry())
+	const awg2 = `"jc":4,"jmin":8,"jmax":80,"s1":28,"s2":121,"s3":25,"s4":12,"h1":"1888111000-1888111100","h2":"1888122000-1888122100","h3":"1888133000-1888133100","h4":"1888222333-1888222444","i1":"<b 0xf6>","i2":"<r 8>","i3":"<rc 8>","i4":"<rd 8>","i5":"<t>"`
+	const awg3 = `"jc":4,"jmin":10,"jmax":50,"s1":55,"s2":42,"s3":40,"s4":12,"h1":1,"h2":2,"h3":3,"h4":4,"header_protection_key":"pBNbQ3vIFMTZCbCkQtLObNUtsM9hAi+ZhlrgZbH0Xgc=","content_padding_addition":"10-100","rekey_after_time":"100-120","rekey_timeout":"3-7","reject_after_time":"150-180","keepalive_timeout":"5-15","max_handshake_attempts":"15-20","random_trailers":true,"disable_cookies":true`
 	peerOptions, err := json.UnmarshalExtendedContext[option.Options](peerContext, fmt.Appendf(nil, `{
 		"outbounds":[{"type":"direct","tag":"direct"}],
 		"route":{"rules":[
 			{"inbound":"wireguard","action":"route","outbound":"direct","override_address":"127.0.0.1","override_port":%d},
-			{"inbound":"hysteria2","action":"route","outbound":"direct","override_address":"127.0.0.1","override_port":%d}
+			{"inbound":"hysteria2","action":"route","outbound":"direct","override_address":"127.0.0.1","override_port":%d},
+			{"inbound":"awg2","action":"route","outbound":"direct","override_address":"127.0.0.1","override_port":%d},
+			{"inbound":"awg3","action":"route","outbound":"direct","override_address":"127.0.0.1","override_port":%d}
 		]},
 		"endpoints":[{"type":"wireguard","tag":"wireguard","private_key":%q,"listen_port":%d,"workers":1,
+			"address":["10.0.0.1/32"],"peers":[{"public_key":%q,"allowed_ips":["10.0.0.2/32"]}]},
+			{"type":"wireguard","tag":"awg2","private_key":%q,"listen_port":%d,"workers":1,%s,
+			"address":["10.0.0.1/32"],"peers":[{"public_key":%q,"allowed_ips":["10.0.0.2/32"]}]},
+			{"type":"wireguard","tag":"awg3","private_key":%q,"listen_port":%d,"workers":1,%s,
 			"address":["10.0.0.1/32"],"peers":[{"public_key":%q,"allowed_ips":["10.0.0.2/32"]}]}],
 		"inbounds":[{"type":"hysteria2","tag":"hysteria2","listen":"0.0.0.0","listen_port":%d,
 			"users":[{"password":"test-password"}],"tls":{"enabled":true,"certificate":%q,"key":%q}}]
-	}`, targetPorts[0], targetPorts[1], base64.StdEncoding.EncodeToString(serverKey.Bytes()), peerPorts[0],
-		base64.StdEncoding.EncodeToString(clientKey.PublicKey().Bytes()), peerPorts[1], certificatePEM,
+	}`, targetPorts[0], targetPorts[1], targetPorts[2], targetPorts[3], base64.StdEncoding.EncodeToString(serverKey.Bytes()), peerPorts[0],
+		base64.StdEncoding.EncodeToString(clientKey.PublicKey().Bytes()),
+		base64.StdEncoding.EncodeToString(serverKey.Bytes()), peerPorts[2], awg2, base64.StdEncoding.EncodeToString(clientKey.PublicKey().Bytes()),
+		base64.StdEncoding.EncodeToString(serverKey.Bytes()), peerPorts[3], awg3, base64.StdEncoding.EncodeToString(clientKey.PublicKey().Bytes()),
+		peerPorts[1], certificatePEM,
 		pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privateKey})))
 	requireNoError(t, err)
 	peer, err := sbox.New(sbox.Options{Options: peerOptions, Context: peerContext})
@@ -229,6 +243,10 @@ func TestStartup(t *testing.T) {
 		fmt.Sprintf(`{"type":"wireguard","tag":"runtime-wg","server":%q,"server_port":%d,"private_key":%q,"peer_public_key":%q,"local_address":["10.0.0.2/32"]}`,
 			peerAddress, peerPorts[0], base64.StdEncoding.EncodeToString(clientKey.Bytes()), base64.StdEncoding.EncodeToString(serverKey.PublicKey().Bytes())),
 		fmt.Sprintf(`{"type":"hysteria2","tag":"runtime-hy2","server":%q,"server_port":%d,"password":"test-password","up_mbps":100,"down_mbps":100,"tls":{"enabled":true,"server_name":"example.com"}}`, peerAddress, peerPorts[1]),
+		fmt.Sprintf(`{"type":"wireguard","tag":"runtime-awg2","server":%q,"server_port":%d,"private_key":%q,"peer_public_key":%q,"local_address":["10.0.0.2/32"],%s}`,
+			peerAddress, peerPorts[2], base64.StdEncoding.EncodeToString(clientKey.Bytes()), base64.StdEncoding.EncodeToString(serverKey.PublicKey().Bytes()), awg2),
+		fmt.Sprintf(`{"type":"wireguard","tag":"runtime-awg3","private_key":%q,"address":["10.0.0.2/32"],"peers":[{"address":%q,"port":%d,"public_key":%q,"persistent_keepalive_interval":"25-35"}],%s}`,
+			base64.StdEncoding.EncodeToString(clientKey.Bytes()), peerAddress, peerPorts[3], base64.StdEncoding.EncodeToString(serverKey.PublicKey().Bytes()), awg3),
 	}
 	peerNodes = append(peerNodes, strings.Replace(peerNodes[0], "runtime-wg", "duplicate-peer", 1))
 	feed := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
@@ -236,6 +254,43 @@ func TestStartup(t *testing.T) {
 	}))
 	defer feed.Close()
 	run("sub", "add", feed.URL)
+	for _, content := range []string{
+		fmt.Sprintf("proxies:\n  - {name: yaml-awg2, type: wireguard, server: %q, port: %d, private-key: %q, public-key: %q, ip: 10.0.0.2, amnezia-wg-option: {%s}}",
+			peerAddress, peerPorts[2], base64.StdEncoding.EncodeToString(clientKey.Bytes()), base64.StdEncoding.EncodeToString(serverKey.PublicKey().Bytes()), awg2),
+		fmt.Sprintf("proxies:\n  - {name: yaml-awg3, type: wireguard, server: %q, port: %d, private-key: %q, public-key: %q, ip: 10.0.0.2, persistent-keepalive: '25-35', amnezia-wg-option: {%s}}",
+			peerAddress, peerPorts[3], base64.StdEncoding.EncodeToString(clientKey.Bytes()), base64.StdEncoding.EncodeToString(serverKey.PublicKey().Bytes()), strings.ReplaceAll(awg3, "_", "-")),
+	} {
+		feed := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			_, _ = fmt.Fprint(writer, content)
+		}))
+		defer feed.Close()
+		run("sub", "add", feed.URL)
+	}
+	uriOptions := url.Values{"address": {"10.0.0.2/32"}, "publickey": {base64.StdEncoding.EncodeToString(serverKey.PublicKey().Bytes())}}
+	var awgFields map[string]any
+	requireNoError(t, json.Unmarshal([]byte("{"+awg2+"}"), &awgFields))
+	for name, value := range awgFields {
+		uriOptions.Set(name, fmt.Sprint(value))
+	}
+	run("sub", "add", (&url.URL{Scheme: "wireguard", User: url.User(base64.StdEncoding.EncodeToString(clientKey.Bytes())), Host: fmt.Sprintf("%s:%d", peerAddress, peerPorts[2]), RawQuery: uriOptions.Encode(), Fragment: "uri-awg2"}).String())
+	clientConfig := fmt.Sprintf(`{"client_priv_key":%q,"server_pub_key":%q,"client_ip":"10.0.0.2","persistent_keep_alive":"25-35","Jc":"4","Jmin":"10","Jmax":"50","S1":"55","S2":"42","S3":"40","S4":"12","H1":"1","H2":"2","H3":"3","H4":"4","HeaderProtectionKey":"pBNbQ3vIFMTZCbCkQtLObNUtsM9hAi+ZhlrgZbH0Xgc=","ContentPaddingAddition":"10-100","RekeyAfterTime":"100-120","RekeyTimeout":"3-7","RejectAfterTime":"150-180","KeepaliveTimeout":"5-15","MaxHandshakeAttempts":"15-20","RandomTrailers":"on","DisableCookies":"on"}`,
+		base64.StdEncoding.EncodeToString(clientKey.Bytes()), base64.StdEncoding.EncodeToString(serverKey.PublicKey().Bytes()))
+	for _, compressed := range []bool{false, true} {
+		content := fmt.Appendf(nil, `{"format_version":1,"description":"vpn-awg3-%t","hostName":%q,"defaultContainer":"amnezia-awg2","containers":[{"container":"amnezia-awg2","awg":{"port":"%d","last_config":%q}}]}`, compressed, peerAddress, peerPorts[3], clientConfig)
+		if compressed {
+			encoded := bytes.NewBuffer(binary.BigEndian.AppendUint32(nil, uint32(len(content))))
+			compressor := zlib.NewWriter(encoded)
+			_, err := compressor.Write(content)
+			requireNoError(t, err)
+			requireNoError(t, compressor.Close())
+			content = encoded.Bytes()
+		}
+		run("sub", "add", "vpn://"+base64.RawURLEncoding.EncodeToString(content))
+	}
+	clientConfig = fmt.Sprintf(`{"hostName":%q,"port":%d,"client_priv_key":%q,"server_pub_key":%q,"client_ip":"10.0.0.2"}`,
+		peerAddress, peerPorts[0], base64.StdEncoding.EncodeToString(clientKey.Bytes()), base64.StdEncoding.EncodeToString(serverKey.PublicKey().Bytes()))
+	wireguardProfile := fmt.Appendf(nil, `{"description":"vpn-wg","hostName":"ignored.example","port":22,"defaultContainer":"amnezia-wireguard","containers":[{"container":"amnezia-openvpn"},{"container":"amnezia-wireguard","wireguard":{"port":"1","last_config":%q}}]}`, clientConfig)
+	run("sub", "add", "vpn://"+base64.RawURLEncoding.EncodeToString(wireguardProfile))
 	snapshot, err := client.Snapshot(t.Context())
 	requireNoError(t, err)
 	peerSubscription := ""
@@ -280,6 +335,9 @@ func TestStartup(t *testing.T) {
 	probe(peerSubscription)
 	for _, node := range []struct{ name, protocol string }{
 		{"runtime-hy2", "hysteria2"}, {"runtime-wg", "wireguard"},
+		{"vpn-wg", "wireguard"},
+		{"runtime-awg2", "awg2"}, {"yaml-awg2", "awg2"}, {"uri-awg2", "awg2"},
+		{"runtime-awg3", "awg3"}, {"yaml-awg3", "awg3"}, {"vpn-awg3-false", "awg3"}, {"vpn-awg3-true", "awg3"},
 	} {
 		run("up", node.name, "--proxy")
 		traffic(node.protocol)
@@ -292,6 +350,18 @@ func TestStartup(t *testing.T) {
 		}
 		traffic(node.protocol)
 	}
+	uriOptions.Set("jmin", "81")
+	run("sub", "add", (&url.URL{Scheme: "wireguard", User: url.User(base64.StdEncoding.EncodeToString(clientKey.Bytes())), Host: fmt.Sprintf("%s:%d", peerAddress, peerPorts[2]), RawQuery: uriOptions.Encode(), Fragment: "invalid-awg"}).String())
+	failureContext, failureCancel := context.WithTimeout(t.Context(), 15*time.Second)
+	defer failureCancel()
+	if output, err := exec.CommandContext(failureContext, filepath.Join(bin, "justray"), "up", "invalid-awg", "--proxy").CombinedOutput(); err == nil || !strings.Contains(string(output), "jmin") {
+		t.Fatalf("invalid AWG junk range: %s, %v", output, err)
+	}
+	traffic("awg3")
+	run("stop")
+	start()
+	ready(true)
+	traffic("awg3")
 	for _, transition := range []struct{ probe, target, protocol string }{
 		{"runtime-wg", "runtime-hy2", "hysteria2"},
 		{"duplicate-peer", "runtime-wg", "wireguard"},

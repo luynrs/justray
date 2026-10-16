@@ -1,8 +1,11 @@
 package server
 
 import (
+	"bytes"
+	"compress/zlib"
 	"context"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -358,6 +361,28 @@ func TestWatchLifecycle(t *testing.T) {
 		screen("gga", tea.WindowSizeMsg{Width: 80, Height: 20})
 		screen("\r", tea.PasteMsg{Content: "socks://[2001:db8::1]:19090#IPv6"})
 		waitFor(t, "", "[2001:db8::1]:19090")
+		signature := "<b 0x" + strings.Repeat("ab", 1200) + ">"
+		clientConfig := fmt.Sprintf(`{"client_priv_key":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=","server_pub_key":"AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=","client_ip":"10.0.0.2, fd00::2","persistent_keep_alive":"0","I1":%q}`, signature)
+		profile := fmt.Appendf(nil, `{"hostName":"[2001:db8::1]","description":"Amnezia TUI","containers":[{"container":"amnezia-awg2","awg":{"port":"51820","last_config":%q}}]}`, clientConfig)
+		screen("gga")
+		screen("\r", tea.PasteMsg{Content: "vpn://" + base64.RawURLEncoding.EncodeToString(profile)})
+		waitFor(t, "", "Amnezia TUI")
+		state, err := (store.Disk{Dir: directory}).Load()
+		requireNoError(t, err)
+		var imported *domain.WireGuard
+		for _, subscription := range state.Subscriptions {
+			for _, node := range subscription.Nodes {
+				if node.Name == "Amnezia TUI" {
+					if node.Server != "2001:db8::1" || node.Port != 51820 {
+						t.Fatalf("TUI imported an invalid Amnezia endpoint: %+v", node)
+					}
+					imported = node.WireGuard
+				}
+			}
+		}
+		if imported == nil || len(imported.Address) != 2 || imported.Address[1] != "fd00::2/128" || imported.PersistentKeepaliveInterval == nil || *imported.PersistentKeepaliveInterval != "" || imported.I1 != signature {
+			t.Fatalf("TUI did not preserve the Amnezia configuration: %+v", imported)
+		}
 		addresses := []struct {
 			name, server string
 			port         int
@@ -482,7 +507,12 @@ func TestSubscriptionRefresh(t *testing.T) {
 		requireNoError(test, err)
 		return state
 	}
-	for name, content := range map[string]string{
+	invalidImports := map[string]string{
+		"JSON empty array":     `[]`,
+		"JSON empty object":    `{}`,
+		"sing-box empty":       `{"outbounds":[],"endpoints":[]}`,
+		"sing-box infra":       `{"outbounds":[{"type":"direct"},{"type":"block"},{"type":"dns"},{"type":"selector","outbounds":["direct"]},{"type":"urltest","outbounds":["direct"]}]}`,
+		"xray infra":           `[{"remarks":"empty","outbounds":[{"protocol":"freedom"},{"protocol":"blackhole"},{"protocol":"dns"},{"protocol":"loopback"}]}]`,
 		"clash malformed":      "proxies:\n  - {name: bad, type: trojan, server: example.com, port: [}\n",
 		"sing-box transport":   `{"outbounds":[{"type":"shadowsocks","server":"example.com","server_port":443,"method":"aes-128-gcm","password":"secret","transport":{"type":"ws"}}]}`,
 		"shadowtls detour":     `{"outbounds":[{"type":"shadowtls","tag":"stls","server":"example.com","server_port":443},{"type":"shadowsocks","server":"example.com","server_port":8388,"method":"aes-128-gcm","password":"secret","detour":"stls"}]}`,
@@ -500,9 +530,51 @@ func TestSubscriptionRefresh(t *testing.T) {
 		"hy2 negative down":    `{"outbounds":[{"type":"hysteria2","server":"example.com","server_port":443,"password":"secret","down_mbps":-1}]}`,
 		"hy2 clash up":         "proxies:\n  - {type: hysteria2, server: example.com, port: 443, password: secret, up: -1}",
 		"hy2 clash down":       "proxies:\n  - {type: hysteria2, server: example.com, port: 443, password: secret, down: -1}",
+		"hy1 invalid up":       "hysteria://secret@example.com:443?upmbps=secret",
+		"hy1 invalid down":     "hysteria://secret@example.com:443?downmbps=secret",
+		"hy1 negative up":      "hysteria://secret@example.com:443?upmbps=-1",
+		"clash invalid rate":   "proxies:\n  - {type: hysteria2, server: example.com, port: 443, password: secret, up: 'secret Mbps'}",
+		"shadowtls version":    "shadowtls://secret@example.com:443?version=secret",
+		"URI invalid port":     "trojan://secret@example.com:secret",
 		"hy2 up overflow":      fmt.Sprintf(`{"outbounds":[{"type":"hysteria2","server":"example.com","server_port":443,"password":"secret","up_mbps":%d}]}`, math.MaxInt/125000+1),
 		"hy2 down overflow":    fmt.Sprintf(`{"outbounds":[{"type":"hysteria2","server":"example.com","server_port":443,"password":"secret","down_mbps":%d}]}`, math.MaxInt/125000+1),
+		"awg negative junk":    `{"outbounds":[{"type":"wireguard","server":"example.com","server_port":51820,"private_key":"secret","peer_public_key":"peer","local_address":["10.0.0.2/32"],"jc":-1}]}`,
+		"awg junk overflow":    `{"outbounds":[{"type":"wireguard","server":"example.com","server_port":51820,"private_key":"secret","peer_public_key":"peer","local_address":["10.0.0.2/32"],"jc":1,"jmin":4294967295,"jmax":4294967295}]}`,
+		"awg junk allocation":  `{"outbounds":[{"type":"wireguard","server":"example.com","server_port":51820,"private_key":"secret","peer_public_key":"peer","local_address":["10.0.0.2/32"],"jc":65535,"jmin":65507,"jmax":65507}]}`,
+		"awg CPS allocation":   `{"outbounds":[{"type":"wireguard","server":"example.com","server_port":51820,"private_key":"secret","peer_public_key":"peer","local_address":["10.0.0.2/32"],"i1":"<r 65507><t>"}]}`,
+		"awg reversed header":  `{"outbounds":[{"type":"wireguard","server":"example.com","server_port":51820,"private_key":"secret","peer_public_key":"peer","local_address":["10.0.0.2/32"],"h1":"20-10"}]}`,
+		"awg IPC injection":    `{"outbounds":[{"type":"wireguard","server":"example.com","server_port":51820,"private_key":"secret","peer_public_key":"peer","local_address":["10.0.0.2/32"],"i1":"<b 0xff>\nreplace_peers=true"}]}`,
+		"awg clash keepalive":  "proxies:\n  - {type: wireguard, server: example.com, port: 51820, private-key: secret, public-key: peer, ip: 10.0.0.2, persistent-keepalive: '20-10'}",
+		"awg clash junk":       "proxies:\n  - {type: wireguard, server: example.com, port: 51820, private-key: secret, public-key: peer, ip: 10.0.0.2, amnezia-wg-option: {jc: 'null'}}",
+		"awg clash legacy":     "proxies:\n  - {type: wireguard, server: example.com, port: 51820, private-key: secret, public-key: peer, ip: 10.0.0.2, amnezia-wg-option: {j1: '<b 0xff>'}}",
+		"awg URI keepalive":    "wireguard://secret@example.com:51820?publickey=peer&address=10.0.0.2&keepalive=-1",
+		"awg URI injection":    "wireguard://secret@example.com:51820?publickey=peer&address=10.0.0.2&I1=%3Cb%200xff%3E%0Areplace_peers=true",
+		"awg URI aliases":      "wireguard://secret@example.com:51820?publickey=peer&address=10.0.0.2&h1=100&awg_h1=200",
+		"awg URI legacy":       "wireguard://secret@example.com:51820?publickey=peer&address=10.0.0.2&J1=%3Cb%200xff%3E",
+		"awg URI unknown":      "wireguard://secret@example.com:51820?publickey=peer&address=10.0.0.2&awg_unknown=1",
+		"vpn base64":           "vpn://!",
+		"vpn compressed":       "vpn://" + base64.RawURLEncoding.EncodeToString([]byte("0000invalid-zlib")),
+	}
+	const amneziaClient = `{"client_priv_key":"secret","server_pub_key":"peer","client_ip":"10.0.0.2"}`
+	container := fmt.Sprintf(`{"container":"amnezia-awg2","awg":{"port":"51820","last_config":%q}}`, amneziaClient)
+	for name, profile := range map[string]string{
+		"vpn malformed JSON":   `{"containers":[`,
+		"vpn future version":   `{"format_version":2}`,
+		"vpn admin export":     `{"defaultContainer":"amnezia-awg2","containers":[{"container":"amnezia-awg2","awg":{}}]}`,
+		"vpn wrong default":    `{"defaultContainer":"amnezia-openvpn","containers":[` + container + `]}`,
+		"vpn ambiguous":        `{"hostName":"example.com","containers":[` + container + `,` + container + `]}`,
+		"vpn missing keys":     `{"hostName":"example.com","containers":[{"container":"amnezia-awg2","awg":{"port":"51820","last_config":"{}"}}]}`,
+		"vpn ignores SSH port": fmt.Sprintf(`{"hostName":"example.com","port":22,"containers":[{"container":"amnezia-awg2","awg":{"last_config":%q}}]}`, amneziaClient),
+		"vpn expansion limit":  `{"description":"` + strings.Repeat("x", 1<<20) + `"}`,
 	} {
+		encoded := bytes.NewBuffer(binary.BigEndian.AppendUint32(nil, uint32(len(profile))))
+		compressor := zlib.NewWriter(encoded)
+		_, err := compressor.Write([]byte(profile))
+		requireNoError(t, err)
+		requireNoError(t, compressor.Close())
+		invalidImports[name] = "vpn://" + base64.RawURLEncoding.EncodeToString(encoded.Bytes())
+	}
+	for name, content := range invalidImports {
 		t.Run(name, func(t *testing.T) {
 			body.Store(content)
 			if err := client.RefreshSubscription(t.Context(), added.SubscriptionID); err == nil || strings.Contains(err.Error(), "secret") {
@@ -540,6 +612,121 @@ func TestSubscriptionRefresh(t *testing.T) {
 	}
 	if clean := refresh(t, first); clean.Subscriptions[0].Warning != "" {
 		t.Fatalf("clean refresh kept the old warning: %+v", clean.Subscriptions)
+	}
+	for _, fixture := range []struct {
+		name, content string
+		nodes         []domain.Node
+		skipped       int
+	}{
+		{
+			name: "sing-box selector between detours",
+			content: `[
+				{"type":"shadowsocks","tag":"ss","server":"ignored.example","server_port":8388,"method":"aes-128-gcm","password":"secret","detour":"stls"},
+				{"type":"selector","tag":"select","outbounds":["ss"]},
+				{"type":"urltest","tag":"auto","outbounds":["ss"]},
+				{"type":"shadowtls","tag":"stls","server":"cover.example","server_port":443,"password":"shadow","tls":{"enabled":true,"server_name":"sni.example"}}
+			]`,
+			nodes: []domain.Node{{Name: "ss", Protocol: domain.SS, Server: "cover.example", Port: 443, Auth: domain.Auth{Method: "aes-128-gcm", Password: "secret"}, ShadowTLS: &domain.ShadowTLS{Version: 3, Password: "shadow", SNI: "sni.example"}}},
+		},
+		{
+			name: "sing-box document boundaries",
+			content: `[{
+				"outbounds":[
+					{"type":"shadowsocks","tag":"first-ss","server":"ignored.example","server_port":8388,"method":"aes-128-gcm","password":"first-auth","detour":"stls"},
+					{"type":"shadowtls","tag":"stls","server":"first.example","server_port":443,"password":"first-shadow","tls":{"enabled":true,"server_name":"first-cover.example"}}
+				]
+			},{
+				"outbounds":[
+					{"type":"shadowtls","tag":"stls","server":"second.example","server_port":8443,"password":"second-shadow","tls":{"enabled":true,"server_name":"second-cover.example"}},
+					{"type":"shadowsocks","tag":"second-ss","server":"ignored.example","server_port":8388,"method":"aes-256-gcm","password":"second-auth","detour":"stls"}
+				]
+			}]`,
+			nodes: []domain.Node{
+				{Name: "first-ss", Protocol: domain.SS, Server: "first.example", Port: 443, Auth: domain.Auth{Method: "aes-128-gcm", Password: "first-auth"}, ShadowTLS: &domain.ShadowTLS{Version: 3, Password: "first-shadow", SNI: "first-cover.example"}},
+				{Name: "second-ss", Protocol: domain.SS, Server: "second.example", Port: 8443, Auth: domain.Auth{Method: "aes-256-gcm", Password: "second-auth"}, ShadowTLS: &domain.ShadowTLS{Version: 3, Password: "second-shadow", SNI: "second-cover.example"}},
+			},
+		},
+		{
+			name: "xray document boundaries and endpoints",
+			content: `[{
+				"remarks":"First",
+				"outbounds":[
+					{"protocol":"vless","tag":"proxy","settings":{"vnext":[
+						{"address":"first.example","port":443,"users":[{"id":"first"},{"id":"second"}]},
+						{"address":"next.example","port":8443,"users":[{"id":"third"}]}
+					]}},
+					{"protocol":"trojan","tag":"fallback","settings":{"servers":[
+						{"address":"fallback.example","port":443,"password":"first-password"},
+						{"address":"backup.example","port":8443,"password":"second-password"}
+					]}},
+					{"protocol":"freedom"}
+				]
+			},{
+				"remarks":"Second",
+				"outbounds":[{"protocol":"vless","tag":"unique","settings":{"vnext":[{"address":"last.example","port":443,"users":[{"id":"last"}]}]}}]
+			}]`,
+			nodes: []domain.Node{
+				{Name: "First", Protocol: domain.VLESS, Server: "first.example", Port: 443, Auth: domain.Auth{UUID: "first"}},
+				{Name: "First", Protocol: domain.VLESS, Server: "first.example", Port: 443, Auth: domain.Auth{UUID: "second"}},
+				{Name: "First", Protocol: domain.VLESS, Server: "next.example", Port: 8443, Auth: domain.Auth{UUID: "third"}},
+				{Name: "First (fallback)", Protocol: domain.Trojan, Server: "fallback.example", Port: 443, Auth: domain.Auth{Password: "first-password"}},
+				{Name: "First (fallback)", Protocol: domain.Trojan, Server: "backup.example", Port: 8443, Auth: domain.Auth{Password: "second-password"}},
+				{Name: "Second", Protocol: domain.VLESS, Server: "last.example", Port: 443, Auth: domain.Auth{UUID: "last"}},
+			},
+		},
+		{
+			name:    "xray flat outbounds",
+			content: `[{"protocol":"vless","tag":"first","settings":{"vnext":[{"address":"first.example","port":443,"users":[{"id":"first"}]}]}},{"protocol":"trojan","tag":"second","settings":{"servers":[{"address":"second.example","port":8443,"password":"second"}]}}]`,
+			nodes: []domain.Node{
+				{Name: "first", Protocol: domain.VLESS, Server: "first.example", Port: 443, Auth: domain.Auth{UUID: "first"}},
+				{Name: "second", Protocol: domain.Trojan, Server: "second.example", Port: 8443, Auth: domain.Auth{Password: "second"}},
+			},
+		},
+		{
+			name:    "xray single outbound",
+			content: `{"protocol":"trojan","tag":"single","settings":{"servers":[{"address":"single.example","port":443,"password":"single"}]}}`,
+			nodes:   []domain.Node{{Name: "single", Protocol: domain.Trojan, Server: "single.example", Port: 443, Auth: domain.Auth{Password: "single"}}},
+		},
+		{
+			name:    "sing-box single outbound",
+			content: `{"type":"trojan","tag":"single","server":"single.example","server_port":443,"password":"single","protocol":{"ignored":true}}`,
+			nodes:   []domain.Node{{Name: "single", Protocol: domain.Trojan, Server: "single.example", Port: 443, Auth: domain.Auth{Password: "single"}}},
+		},
+		{
+			name:    "sing-box endpoint document",
+			content: `{"endpoints":[{"type":"wireguard","tag":"endpoint","private_key":"private","address":["10.0.0.2/32"],"peers":[{"address":"endpoint.example","port":51820,"public_key":"public"}]}]}`,
+			nodes:   []domain.Node{{Name: "endpoint", Protocol: domain.WG, Server: "endpoint.example", Port: 51820, WireGuard: &domain.WireGuard{PrivateKey: "private", PeerPublicKey: "public", Address: []string{"10.0.0.2/32"}}}},
+		},
+		{
+			name:    "sing-box mixed rejections",
+			content: `[{"type":"trojan","tag":"valid","server":"example.com","server_port":443,"password":"secret"},{"type":"direct"},{"type":"future-proxy"},42,null,{}]`,
+			nodes:   []domain.Node{{Name: "valid", Protocol: domain.Trojan, Server: "example.com", Port: 443, Auth: domain.Auth{Password: "secret"}}},
+			skipped: 4,
+		},
+		{
+			name:    "xray mixed rejections",
+			content: `[{"protocol":"trojan","tag":"valid","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]}},{"protocol":"freedom"},{"protocol":"future-proxy"},42,null,{}]`,
+			nodes:   []domain.Node{{Name: "valid", Protocol: domain.Trojan, Server: "example.com", Port: 443, Auth: domain.Auth{Password: "secret"}}},
+			skipped: 4,
+		},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			after := refresh(t, fixture.content)
+			nodes := after.Subscriptions[0].Nodes
+			if len(nodes) != len(fixture.nodes) {
+				t.Fatalf("imported %d nodes, want %d: %+v", len(nodes), len(fixture.nodes), nodes)
+			}
+			for index, expected := range fixture.nodes {
+				node := nodes[index]
+				if node.Name != expected.Name || node.Protocol != expected.Protocol || node.Server != expected.Server || node.Port != expected.Port || node.Auth != expected.Auth || !reflect.DeepEqual(node.ShadowTLS, expected.ShadowTLS) || !reflect.DeepEqual(node.WireGuard, expected.WireGuard) {
+					t.Fatalf("node %d: got %+v, want %+v", index, node, expected)
+				}
+			}
+			warning := after.Subscriptions[0].Warning
+			if fixture.skipped == 0 && warning != "" || fixture.skipped != 0 && (!strings.Contains(warning, fmt.Sprintf("skipped nodes: %d (", fixture.skipped)) || !strings.Contains(warning, "unsupported: 1")) || strings.Contains(warning, "secret") {
+				t.Fatalf("unexpected warning: %q", warning)
+			}
+		})
 	}
 	for _, fixture := range []struct{ content, password, name string }{
 		{"aes-256-gcm:pa#ss@example.com:8388", "pa#ss", "example.com"},
@@ -594,6 +781,9 @@ func TestSubscriptionRefresh(t *testing.T) {
 		"sing-box unknown":        `{"outbounds":[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},{"type":"future-proxy","tag":"unknown"}]}`,
 		"sing-box hy2 zero":       `{"outbounds":[{"type":"hysteria2","server":"example.com","server_port":443,"password":"secret","up_mbps":0,"down_mbps":0},{"type":"future-proxy"}]}`,
 		"clash hy2 bandwidth":     "proxies:\n  - {type: hysteria2, server: example.com, port: 443, password: secret, up: '50 Mbps', down: 200}\n  - {type: future-proxy}",
+		"clash JSON":              `{"proxies":[{"type":"trojan","server":"example.com","port":443,"password":"secret"},{"type":"future-proxy"}]}`,
+		"clash flow YAML":         "{proxies: [{type: trojan, server: example.com, port: 443, password: secret}, {type: future-proxy}]}",
+		"base64 JSON":             base64.StdEncoding.EncodeToString([]byte(`{"outbounds":[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},{"type":"future-proxy"}]}`)),
 		"sing-box hy2 maximum":    fmt.Sprintf(`{"outbounds":[{"type":"hysteria2","server":"example.com","server_port":443,"password":"secret","up_mbps":%d,"down_mbps":%d},{"type":"future-proxy"}]}`, math.MaxInt/125000, math.MaxInt/125000),
 		"xray unknown":            `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]}},{"protocol":"future-proxy","tag":"unknown"}]}`,
 	} {

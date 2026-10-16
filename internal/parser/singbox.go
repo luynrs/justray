@@ -1,4 +1,4 @@
-package protocols
+package parser
 
 import (
 	"cmp"
@@ -7,15 +7,13 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/sagernet/sing-box/option"
+
 	"github.com/luynrs/justray/internal/domain"
 )
 
-type singboxDoc struct {
-	Outbounds []json.RawMessage `json:"outbounds"`
-	Endpoints []json.RawMessage `json:"endpoints"`
-}
-
 type singboxOutbound struct {
+	option.AmneziaWGOptions
 	Type           string        `json:"type"`
 	Tag            string        `json:"tag"`
 	Server         string        `json:"server"`
@@ -44,6 +42,8 @@ type singboxOutbound struct {
 	Reserved       []uint8       `json:"reserved"`
 	MTU            uint32        `json:"mtu"`
 
+	PersistentKeepaliveInterval *option.AWGRange `json:"persistent_keepalive_interval"`
+
 	Obfs  json.RawMessage `json:"obfs"`
 	Peers []struct {
 		Server       string  `json:"server"`
@@ -53,6 +53,8 @@ type singboxOutbound struct {
 		PublicKey    string  `json:"public_key"`
 		PreSharedKey string  `json:"pre_shared_key"`
 		Reserved     []uint8 `json:"reserved"`
+
+		PersistentKeepaliveInterval *option.AWGRange `json:"persistent_keepalive_interval"`
 	} `json:"peers"`
 	TLS       *singboxTLSConfig       `json:"tls"`
 	Transport *singboxTransportConfig `json:"transport"`
@@ -109,63 +111,6 @@ var singboxProtos = map[string]domain.Proto{
 	"shadowsocks": domain.SS, "hysteria": domain.HY1, "hysteria2": domain.HY2,
 	"tuic": domain.TUIC, "anytls": domain.AnyTLS, "wireguard": domain.WG,
 	"shadowtls": domain.Shadow, "socks": domain.SOCKS, "http": domain.HTTP,
-}
-
-func ParseSingBox(raw []byte) ([]domain.Node, map[string]int, error) {
-	if !hasOutboundField(raw, "type") {
-		return nil, nil, ErrNotFormat
-	}
-	var doc singboxDoc
-	var entries []json.RawMessage
-	if err := json.Unmarshal(raw, &doc); err == nil && (len(doc.Outbounds) > 0 || len(doc.Endpoints) > 0) {
-		entries = append(doc.Outbounds, doc.Endpoints...)
-	} else if err := json.Unmarshal(raw, &entries); err != nil || len(entries) == 0 {
-		return nil, nil, errors.New("sing-box: invalid outbound fields")
-	}
-	skipped := make(map[string]int)
-	var outbounds []singboxOutbound
-	for _, entry := range entries {
-		var outbound singboxOutbound
-		if json.Unmarshal(entry, &outbound) != nil || outbound.Type == "" {
-			skipped["sing-box: invalid outbound fields"]++
-			continue
-		}
-		outbounds = append(outbounds, outbound)
-	}
-	stlsByTag := make(map[string]singboxOutbound)
-	detoured := make(map[string]bool)
-	for _, ob := range outbounds {
-		if strings.EqualFold(ob.Type, "shadowtls") && ob.Tag != "" {
-			stlsByTag[ob.Tag] = ob
-		}
-		if strings.EqualFold(ob.Type, "shadowsocks") && ob.Detour != "" {
-			detoured[ob.Detour] = true
-		}
-	}
-	var nodes []domain.Node
-	for _, ob := range outbounds {
-		if strings.EqualFold(ob.Type, "shadowtls") && detoured[ob.Tag] {
-			continue
-		}
-		switch strings.ToLower(ob.Type) {
-		case "direct", "block", "dns", "selector", "urltest":
-			continue
-		}
-		node, err := singboxNode(ob, stlsByTag)
-		if errors.Is(err, errUnsupported) {
-			skipped["unsupported"]++
-			continue
-		}
-		if err != nil {
-			skipped[err.Error()]++
-			continue
-		}
-		nodes = append(nodes, node)
-	}
-	if len(nodes) == 0 && len(skipped) == 0 {
-		return nil, nil, errors.New("no supported outbounds in sing-box config")
-	}
-	return nodes, skipped, nil
 }
 
 func singboxNode(ob singboxOutbound, stlsByTag map[string]singboxOutbound) (domain.Node, error) {
@@ -242,16 +187,20 @@ func singboxNode(ob singboxOutbound, stlsByTag map[string]singboxOutbound) (doma
 		n.Auth = domain.Auth{Password: ob.Password}
 	case domain.WG:
 		peerPK, psk, res := ob.PeerPublicKey, ob.PreSharedKey, ob.Reserved
+		keepalive := ob.PersistentKeepaliveInterval
 		if len(ob.Peers) > 0 {
 			peerPK, psk = ob.Peers[0].PublicKey, ob.Peers[0].PreSharedKey
+			keepalive = cmp.Or(ob.Peers[0].PersistentKeepaliveInterval, keepalive)
 			if len(ob.Peers[0].Reserved) > 0 {
 				res = ob.Peers[0].Reserved
 			}
 		}
-		addrs := fixCIDRs(append(append([]string(nil), ob.LocalAddress...), ob.Address...))
+		addrs := normalizeCIDRs(append(append([]string(nil), ob.LocalAddress...), ob.Address...))
 		if ob.PrivateKey != "" && len(addrs) > 0 {
 			n.WireGuard = &domain.WireGuard{
-				PrivateKey: ob.PrivateKey, PeerPublicKey: peerPK, PreSharedKey: psk,
+				AmneziaWGOptions:            ob.AmneziaWGOptions,
+				PersistentKeepaliveInterval: keepalive,
+				PrivateKey:                  ob.PrivateKey, PeerPublicKey: peerPK, PreSharedKey: psk,
 				Address: addrs, Reserved: res, MTU: ob.MTU,
 			}
 		}

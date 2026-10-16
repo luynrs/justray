@@ -1,12 +1,14 @@
-package protocols
+package parser
 
 import (
 	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
+	"github.com/sagernet/sing-box/option"
 	"gopkg.in/yaml.v3"
 
 	"github.com/luynrs/justray/internal/domain"
@@ -55,6 +57,9 @@ type clashProxy struct {
 	MTU          uint32   `yaml:"mtu"`
 	Reserved     reserved `yaml:"reserved"`
 
+	AmneziaWG                   map[string]any   `yaml:"amnezia-wg-option"`
+	PersistentKeepaliveInterval *option.AWGRange `yaml:"persistent-keepalive"`
+
 	Plugin        string              `yaml:"plugin"`
 	PluginOpts    *clashShadowTLSOpts `yaml:"plugin-opts"`
 	ShadowTLSOpts *clashShadowTLSOpts `yaml:"shadow-tls-opts"`
@@ -92,45 +97,15 @@ func (settings *xhttpYAML) UnmarshalYAML(node *yaml.Node) error {
 }
 
 // Clash/Mihomo "proxies:" list
-func ParseClash(raw []byte) ([]domain.Node, map[string]int, error) {
-	var doc struct {
-		Proxies []yaml.Node `yaml:"proxies"`
-	}
-	if err := yaml.Unmarshal(raw, &doc); err != nil {
-		for line := range strings.Lines(string(raw)) {
-			if strings.HasPrefix(line, "proxies:") {
-				return nil, nil, errors.New("clash: invalid YAML")
-			}
-		}
-		return nil, nil, ErrNotFormat
-	}
-	if doc.Proxies == nil {
-		return nil, nil, ErrNotFormat
-	}
-
-	var nodes []domain.Node
-	skipped := make(map[string]int)
-	for _, raw := range doc.Proxies {
-		var p clashProxy
-		if err := raw.Decode(&p); err != nil || p.Type == "" {
-			skipped["clash: invalid proxy fields"]++
+func (result *parseResult) readClash(entries []yaml.Node) {
+	for _, entry := range entries {
+		var proxy clashProxy
+		if entry.Decode(&proxy) != nil || proxy.Type == "" {
+			result.add(domain.Node{}, errors.New("clash: invalid proxy fields"))
 			continue
 		}
-		node, err := clashNode(p)
-		if errors.Is(err, errUnsupported) {
-			skipped["unsupported"]++
-			continue
-		}
-		if err != nil {
-			skipped[err.Error()]++
-			continue
-		}
-		nodes = append(nodes, node)
+		result.add(clashNode(proxy))
 	}
-	if len(nodes) == 0 && len(skipped) == 0 {
-		return nil, nil, errors.New("clash: no supported proxies")
-	}
-	return nodes, skipped, nil
 }
 
 func clashNode(p clashProxy) (domain.Node, error) {
@@ -267,20 +242,26 @@ func clashNode(p clashProxy) (domain.Node, error) {
 		}
 
 	case "wireguard", "wg":
-		addr := addresses(cmp.Or(p.IP, p.Address), p.IPv6)
+		amnezia, err := parseAmneziaWG(p.AmneziaWG)
+		if err != nil {
+			return domain.Node{}, err
+		}
+		addr := parseAddresses(cmp.Or(p.IP, p.Address), p.IPv6)
 		if len(addr) == 0 {
 			for _, a := range p.Addresses {
-				addr = append(addr, addresses(a, "")...)
+				addr = append(addr, parseAddresses(a, "")...)
 			}
 		}
 		n.Protocol = domain.WG
 		n.WireGuard = &domain.WireGuard{
-			PrivateKey:    p.PrivateKey,
-			PeerPublicKey: p.PublicKey,
-			PreSharedKey:  p.PreSharedKey,
-			Address:       addr,
-			Reserved:      p.Reserved,
-			MTU:           p.MTU,
+			AmneziaWGOptions:            amnezia,
+			PersistentKeepaliveInterval: p.PersistentKeepaliveInterval,
+			PrivateKey:                  p.PrivateKey,
+			PeerPublicKey:               p.PublicKey,
+			PreSharedKey:                p.PreSharedKey,
+			Address:                     addr,
+			Reserved:                    p.Reserved,
+			MTU:                         p.MTU,
 		}
 
 	default:
@@ -291,9 +272,13 @@ func clashNode(p clashProxy) (domain.Node, error) {
 
 type mbps int
 
-func (m *mbps) UnmarshalYAML(n *yaml.Node) error {
-	value, _, _ := strings.Cut(strings.TrimSpace(n.Value), " ")
-	*m = mbps(atoi(value))
+func (bandwidth *mbps) UnmarshalYAML(node *yaml.Node) error {
+	value, _, _ := strings.Cut(strings.TrimSpace(node.Value), " ")
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return errors.New("invalid bandwidth")
+	}
+	*bandwidth = mbps(parsed)
 	return nil
 }
 
@@ -316,7 +301,7 @@ func (r *reserved) UnmarshalYAML(n *yaml.Node) error {
 		}
 		return nil
 	}
-	b, err := Unbase64(n.Value)
+	b, err := decodeBase64(n.Value)
 	if err != nil {
 		return err
 	}

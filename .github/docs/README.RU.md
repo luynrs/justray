@@ -22,7 +22,7 @@
 
 ### Возможности
 
-- **Поддерживаемые протоколы:** VMess, VLESS, Trojan, WireGuard, Shadowsocks, Hysteria 1/2, TUIC, AnyTLS, SOCKS5 и другие
+- **Поддерживаемые протоколы:** VMess, VLESS, Trojan, WireGuard/AmneziaWG, Shadowsocks, Hysteria 1/2, TUIC, AnyTLS, SOCKS5 и другие
 - **Гибкость:** импорт подписок из ссылок, Clash/Mihomo YAML, sing-box или Xray JSON с автоматическим обновлением и широким выбором настроек
 - **Автономность:** демон и встроенное ядро sing-box работают независимо от TUI, сохраняя подключение после закрытия интерфейса
 - **Легковесность:** около 50 МБ RAM на Linux/macOS и 100 МБ на Windows

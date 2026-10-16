@@ -1,4 +1,4 @@
-package protocols
+package parser
 
 import (
 	"cmp"
@@ -33,14 +33,14 @@ type vmessLink struct {
 }
 
 // vmess://<base64 json>
-func ParseVMess(uri string) (domain.Node, error) {
+func parseVMess(uri string) (domain.Node, error) {
 	_, payload, _ := strings.Cut(uri, "://")
 	payload, frag, _ := strings.Cut(payload, "#")
 	if u, err := url.PathUnescape(frag); err == nil {
 		frag = u
 	}
 
-	data, err := Unbase64(payload)
+	data, err := decodeBase64(payload)
 	if err != nil {
 		return domain.Node{}, errors.New("invalid vmess base64")
 	}

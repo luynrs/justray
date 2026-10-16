@@ -179,10 +179,15 @@ func wireguard(n domain.Node, tag string) (*option.Endpoint, error) {
 		}
 		address = append(address, p)
 	}
+	keepalive := option.AWGRange("25")
+	if w.PersistentKeepaliveInterval != nil {
+		keepalive = *w.PersistentKeepaliveInterval
+	}
 	return &option.Endpoint{Type: C.TypeWireGuard, Tag: tag, Options: &option.WireGuardEndpointOptions{
-		Address:    address,
-		PrivateKey: w.PrivateKey,
-		MTU:        w.MTU,
+		AmneziaWGOptions: w.AmneziaWGOptions,
+		Address:          address,
+		PrivateKey:       w.PrivateKey,
+		MTU:              w.MTU,
 		Peers: []option.WireGuardPeer{{
 			Address:                     n.Server,
 			Port:                        uint16(n.Port),
@@ -190,7 +195,7 @@ func wireguard(n domain.Node, tag string) (*option.Endpoint, error) {
 			PreSharedKey:                w.PreSharedKey,
 			AllowedIPs:                  []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0")},
 			Reserved:                    w.Reserved,
-			PersistentKeepaliveInterval: "25",
+			PersistentKeepaliveInterval: keepalive,
 		}},
 	}}, nil
 }

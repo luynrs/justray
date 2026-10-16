@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/sagernet/sing-box/option"
 )
 
 type Traffic struct {
@@ -105,12 +107,15 @@ type ShadowTLS struct {
 }
 
 type WireGuard struct {
+	option.AmneziaWGOptions
 	PrivateKey    string   `json:"private_key,omitempty"`
 	PeerPublicKey string   `json:"peer_public_key,omitempty"`
 	PreSharedKey  string   `json:"pre_shared_key,omitempty"`
 	Address       []string `json:"address,omitempty"`
 	Reserved      []uint8  `json:"reserved,omitempty"`
 	MTU           uint32   `json:"mtu,omitempty"`
+
+	PersistentKeepaliveInterval *option.AWGRange `json:"persistent_keepalive_interval,omitempty"`
 }
 
 type Transport struct {
