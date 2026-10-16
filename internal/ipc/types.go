@@ -1,6 +1,7 @@
 package ipc
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -41,10 +42,46 @@ type Error struct {
 	Message string
 }
 
+func ErrorType(err error) string {
+	var joined interface{ Unwrap() []error }
+	if errors.As(err, &joined) {
+		kind := "failure"
+		for index, cause := range joined.Unwrap() {
+			causeType := ErrorType(cause)
+			if index > 0 && kind != causeType {
+				return "failure"
+			}
+			kind = causeType
+		}
+		return kind
+	}
+	switch {
+	case errors.Is(err, ErrElevate):
+		return "elevation"
+	case errors.Is(err, ErrVersion):
+		return "mismatch"
+	case errors.Is(err, context.Canceled):
+		return "canceled"
+	case errors.Is(err, context.DeadlineExceeded):
+		return "timeout"
+	}
+	return "failure"
+}
+
 func (failure *Error) Error() string { return failure.Message }
 
 func (failure *Error) Is(target error) bool {
-	return target == ErrElevate && failure.Type == "elevation" || target == ErrVersion && failure.Type == "version_mismatch"
+	switch target {
+	case ErrElevate:
+		return failure.Type == "elevation"
+	case ErrVersion:
+		return failure.Type == "mismatch"
+	case context.Canceled:
+		return failure.Type == "canceled"
+	case context.DeadlineExceeded:
+		return failure.Type == "timeout"
+	}
+	return false
 }
 
 type Subscription struct {

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -57,6 +58,9 @@ func (a *app) probe(cmd *cobra.Command, args []string) error {
 	stop := spin(spinnerText)
 	probeErr := a.client.Probe(cmd.Context(), subID, nodeID)
 	stop()
+	if errors.Is(probeErr, context.Canceled) {
+		return probeErr
+	}
 
 	snap, err := a.client.Snapshot(cmd.Context())
 	if err != nil {

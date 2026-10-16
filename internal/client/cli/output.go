@@ -94,7 +94,9 @@ func modeWord(tun bool) string {
 }
 
 func (application *app) fail(err error) {
-	_, _ = lipgloss.Fprintln(os.Stderr, style.Red.Bold(true).Render(style.Cross()), application.clean(err.Error()))
+	if message := style.ErrorText(err); message != "" {
+		_, _ = lipgloss.Fprintln(os.Stderr, style.Red.Bold(true).Render(style.Cross()), application.clean(message))
+	}
 }
 
 func (a *app) clean(s string) string { return style.Sanitize(s, a.emoji) }

@@ -9,7 +9,22 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/luynrs/justray/internal/domain"
+	"github.com/luynrs/justray/internal/ipc"
 )
+
+func ErrorText(err error) string {
+	if err == nil {
+		return ""
+	}
+	switch ipc.ErrorType(err) {
+	case "canceled":
+		return ""
+	case "timeout":
+		return "operation timed out; try again"
+	default:
+		return err.Error()
+	}
+}
 
 func Clip(s string, width int) string {
 	if width <= 0 {

@@ -27,13 +27,18 @@ type pushed struct {
 
 func action(connection bool, start, fn func() error) tea.Cmd {
 	return func() tea.Msg {
-		if start != nil {
-			if err := start(); err != nil {
-				return completed{connection: connection, err: err}
-			}
-		}
-		return completed{connection: connection, err: fn()}
+		return completed{connection: connection, err: request(start, fn)}
 	}
+}
+
+func request(start, fn func() error) error {
+	if err := fn(); start == nil || !errors.Is(err, ipc.ErrNoDaemon) && !errors.Is(err, ipc.ErrVersion) {
+		return err
+	}
+	if err := start(); err != nil {
+		return err
+	}
+	return fn()
 }
 
 type tick struct{}

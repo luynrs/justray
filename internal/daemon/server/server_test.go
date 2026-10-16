@@ -75,10 +75,11 @@ func requireNoError(test *testing.T, err error) {
 
 func TestWatchLifecycle(t *testing.T) {
 	directory := t.TempDir()
+	requireNoError(t, ipc.EnsureDir(directory))
 	listener, err := net.Listen("unix", filepath.Join(directory, "daemon.sock"))
 	requireNoError(t, err)
 	logger := log.New(io.Discard, "", 0)
-	app, err := core.New(t.Context(), store.Disk{Dir: directory}, connection.New(t.Context(), directory, nil, logger), subscription.New(t.Context(), logger))
+	app, err := core.New(t.Context(), store.Disk{Dir: directory}, connection.New(t.Context(), directory, engine.New, logger), subscription.New(t.Context(), logger))
 	requireNoError(t, err)
 	server := New(t.Context(), logger, app)
 	serveDone := make(chan error, 1)
@@ -162,7 +163,11 @@ func TestWatchLifecycle(t *testing.T) {
 	}
 	t.Run("compact navigation", func(t *testing.T) {
 		frames := make(chan string, 1)
-		program := tea.NewProgram(tui.New(client, nil), tea.WithInput(nil), tea.WithOutput(io.Discard),
+		var starts atomic.Int32
+		program := tea.NewProgram(tui.New(client, func(ctx context.Context) error {
+			starts.Add(1)
+			return client.Ping(ctx)
+		}), tea.WithInput(nil), tea.WithOutput(io.Discard),
 			tea.WithWindowSize(80, 10), tea.WithoutSignalHandler(),
 			tea.WithFilter(func(m tea.Model, msg tea.Msg) tea.Msg {
 				if _, ok := msg.(chan string); ok {
@@ -199,6 +204,9 @@ func TestWatchLifecycle(t *testing.T) {
 			program.Send(frames)
 			select {
 			case frame := <-frames:
+				if strings.Contains(frame, "context canceled") {
+					t.Fatalf("TUI displayed a canceled operation as an error:\n%s", frame)
+				}
 				return frame
 			case <-time.After(3 * time.Second):
 				t.Fatal("TUI did not render")
@@ -366,7 +374,7 @@ func TestWatchLifecycle(t *testing.T) {
 		profile := fmt.Appendf(nil, `{"hostName":"[2001:db8::1]","description":"Amnezia TUI","containers":[{"container":"amnezia-awg2","awg":{"port":"51820","last_config":%q}}]}`, clientConfig)
 		screen("gga")
 		screen("\r", tea.PasteMsg{Content: "vpn://" + base64.RawURLEncoding.EncodeToString(profile)})
-		waitFor(t, "", "Amnezia TUI")
+		check(t, waitFor(t, "", "Amnezia TUI"), "amneziawg")
 		state, err := (store.Disk{Dir: directory}).Load()
 		requireNoError(t, err)
 		var imported *domain.WireGuard
@@ -421,6 +429,47 @@ func TestWatchLifecycle(t *testing.T) {
 					}
 				}
 			})
+		}
+		probeStarted := make(chan struct{}, 1)
+		proxy := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+			probeStarted <- struct{}{}
+			<-request.Context().Done()
+		}))
+		t.Cleanup(proxy.Close)
+		_, err = client.AddSubscription(t.Context(), proxy.URL+"#Cancelable%20probe")
+		requireNoError(t, err)
+		current, err := client.Snapshot(t.Context())
+		requireNoError(t, err)
+		settings := current.Settings
+		settings.ProbeURL = "http://198.51.100.7/"
+		requireNoError(t, client.SetSettings(t.Context(), current.Settings, settings))
+		waitFor(t, "gg", "Cancelable probe")
+		screen("/Cancelable probe\rGt")
+		select {
+		case <-probeStarted:
+		case <-time.After(3 * time.Second):
+			state, _ := client.Snapshot(t.Context())
+			t.Fatalf("TUI probe did not reach the proxy: %+v\n%s", state.Nodes, screen(""))
+		}
+		screen("m\x1b")
+		timeoutSource := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+			<-request.Context().Done()
+		}))
+		t.Cleanup(timeoutSource.Close)
+		screen("gga")
+		screen("\r", tea.PasteMsg{Content: timeoutSource.URL})
+		for deadline := time.Now().Add(10 * time.Second); ; {
+			frame := screen("")
+			if strings.Contains(frame, "operation timed out") {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("subscription timeout was not explained:\n%s", frame)
+			}
+			time.Sleep(time.Millisecond)
+		}
+		if calls := starts.Load(); calls != 1 {
+			t.Fatalf("launcher called %d times while the daemon was available", calls)
 		}
 	})
 

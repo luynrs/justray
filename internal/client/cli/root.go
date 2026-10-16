@@ -147,7 +147,7 @@ func Execute() int {
 		if command == stopCmd && err == ipc.ErrNoDaemon {
 			return 2
 		}
-		if errors.Is(err, context.Canceled) && command != stopCmd {
+		if ipc.ErrorType(err) == "canceled" && command != stopCmd {
 			return 0
 		}
 		a.fail(err)

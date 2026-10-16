@@ -91,7 +91,7 @@ func (c *Core) nodes(subscriptions []store.Subscription) []ipc.Node {
 			item := ipc.Node{
 				NodeID:         node.ID,
 				Name:           node.Name,
-				Protocol:       string(node.Protocol),
+				Protocol:       node.ProtocolName(),
 				Server:         node.Server,
 				Port:           node.Port,
 				SubscriptionID: subscription.ID,

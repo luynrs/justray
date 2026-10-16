@@ -147,13 +147,7 @@ func reply(conn net.Conn, result any, err error) error {
 	}
 	if err != nil {
 		resp.Success = false
-		resp.Error = &ipc.Error{Type: "failure", Message: err.Error()}
-		switch {
-		case errors.Is(err, ipc.ErrElevate):
-			resp.Error.Type = "elevation"
-		case errors.Is(err, ipc.ErrVersion):
-			resp.Error.Type = "version_mismatch"
-		}
+		resp.Error = &ipc.Error{Type: ipc.ErrorType(err), Message: err.Error()}
 	}
 	if err := conn.SetWriteDeadline(time.Now().Add(ipc.IdleTimeout)); err != nil {
 		return err

@@ -9,6 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/luynrs/justray/internal/client/tui/settings"
+	"github.com/luynrs/justray/internal/client/tui/style"
 	"github.com/luynrs/justray/internal/client/tui/tree"
 	"github.com/luynrs/justray/internal/ipc"
 )
@@ -40,25 +41,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.connection {
 			m.busy = false
 		}
-		if msg.err != nil {
-			m.err, m.errAt = msg.err.Error(), time.Now()
+		if message := style.ErrorText(msg.err); message != "" {
+			m.err, m.errAt = message, time.Now()
 		}
 		return m, nil
 
 	case settingsSaved:
 		m.saving = false
-		if msg.err != nil {
-			m.err, m.errAt = msg.err.Error(), time.Now()
-		} else {
+		if msg.err == nil {
 			m.dialog = nil
+		} else if message := style.ErrorText(msg.err); message != "" {
+			m.err, m.errAt = message, time.Now()
 		}
 		return m, m.syncTTY()
 
 	case started:
 		if m.startup != nil {
 			m.startup = nil
-			if msg.err != nil && m.watch.Err() == nil {
-				m.err, m.errAt = "Could not start daemon: "+msg.err.Error(), time.Now()
+			if message := style.ErrorText(msg.err); message != "" && m.watch.Err() == nil {
+				m.err, m.errAt = "Could not start daemon: "+message, time.Now()
 			}
 		}
 		return m, nil
@@ -66,8 +67,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case pushed:
 		if !msg.live {
 			m.live = false
-			if msg.err != nil && m.startup == nil && !m.busy {
-				m.err, m.errAt = msg.err.Error(), time.Now()
+			if message := style.ErrorText(msg.err); message != "" && m.startup == nil && !m.busy {
+				m.err, m.errAt = message, time.Now()
 			}
 			return m, next(m.watch, m.updates)
 		}
@@ -309,7 +310,7 @@ func (m Model) closeSettings() (Model, tea.Cmd) {
 	next, previous, err := m.dialog.Result()
 	switch {
 	case err != nil:
-		m.err, m.errAt = err.Error(), time.Now()
+		m.err, m.errAt = style.ErrorText(err), time.Now()
 		return m, nil
 	case next.Equal(previous):
 		m.dialog = nil
@@ -318,11 +319,8 @@ func (m Model) closeSettings() (Model, tea.Cmd) {
 	m.saving = true
 	m.err = ""
 	return m, tea.Batch(m.syncTTY(), func() tea.Msg {
-		if m.start != nil {
-			if err := m.start(); err != nil {
-				return settingsSaved{err: err}
-			}
-		}
-		return settingsSaved{err: m.client.SetSettings(m.watch, previous, next)}
+		return settingsSaved{err: request(m.start, func() error {
+			return m.client.SetSettings(m.watch, previous, next)
+		})}
 	})
 }

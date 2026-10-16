@@ -61,6 +61,13 @@ type NodeRef struct {
 	NodeID         string
 }
 
+func (node Node) ProtocolName() string {
+	if node.Protocol == WG && node.WireGuard != nil && node.WireGuard.IsSet() {
+		return "amneziawg"
+	}
+	return string(node.Protocol)
+}
+
 func (node Node) ConfigKey() string {
 	node.ID, node.Name = "", ""
 	if node.Transport.Network == "" {

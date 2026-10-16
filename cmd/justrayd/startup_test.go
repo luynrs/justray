@@ -339,7 +339,13 @@ func TestStartup(t *testing.T) {
 		{"runtime-awg2", "awg2"}, {"yaml-awg2", "awg2"}, {"uri-awg2", "awg2"},
 		{"runtime-awg3", "awg3"}, {"yaml-awg3", "awg3"}, {"vpn-awg3-false", "awg3"}, {"vpn-awg3-true", "awg3"},
 	} {
-		run("up", node.name, "--proxy")
+		protocol := node.protocol
+		if strings.HasPrefix(protocol, "awg") {
+			protocol = "amneziawg"
+		}
+		if output := run("up", node.name, "--proxy"); !strings.Contains(output, protocol) {
+			t.Fatalf("connection protocol %s missing: %s", protocol, output)
+		}
 		traffic(node.protocol)
 		probes := []string{node.name, peerSubscription}
 		if node.protocol == "wireguard" {
@@ -368,12 +374,15 @@ func TestStartup(t *testing.T) {
 	} {
 		release := make(chan struct{})
 		blockedRequests <- release
-		probeResult := make(chan string, 1)
+		probeResult := make(chan error, 1)
 		probeContext, probeCancel := context.WithTimeout(t.Context(), 10*time.Second)
 		defer probeCancel()
 		go func() {
 			output, err := exec.CommandContext(probeContext, filepath.Join(bin, "justray"), "probe", transition.probe).CombinedOutput()
-			probeResult <- fmt.Sprintf("%s: %v", output, err)
+			if len(output) != 0 {
+				err = fmt.Errorf("unexpected probe output: %s (%v)", output, err)
+			}
+			probeResult <- err
 		}()
 		select {
 		case <-requestStarted:
@@ -382,8 +391,8 @@ func TestStartup(t *testing.T) {
 		}
 		run("up", transition.target, "--proxy")
 		close(release)
-		if output := <-probeResult; !strings.Contains(output, "canceled") {
-			t.Fatalf("probe result after switching nodes: %s", output)
+		if err := <-probeResult; err != nil {
+			t.Fatalf("probe after switching nodes: %v", err)
 		}
 		traffic(transition.protocol)
 	}
