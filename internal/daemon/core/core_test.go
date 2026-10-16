@@ -21,6 +21,7 @@ type fakeEngine struct {
 	stopped  bool
 	spec     engine.Spec
 	applies  int
+	probe    func(context.Context, []domain.Node, domain.Settings, func(int, engine.Result)) error
 }
 
 func (fake *fakeEngine) Apply(_ context.Context, spec engine.Spec) error {
@@ -30,6 +31,13 @@ func (fake *fakeEngine) Apply(_ context.Context, spec engine.Spec) error {
 }
 func (fake *fakeEngine) Stop() error   { fake.stopped = true; return fake.closeErr }
 func (fake *fakeEngine) Running() bool { return !fake.stopped }
+
+func (fake *fakeEngine) Probe(ctx context.Context, nodes []domain.Node, settings domain.Settings, onResult func(int, engine.Result)) error {
+	if fake.probe == nil {
+		return errors.New("unexpected probe")
+	}
+	return fake.probe(ctx, nodes, settings, onResult)
+}
 
 func testCore(t *testing.T, instance engine.Engine, state store.State) *Core {
 	t.Helper()
@@ -41,7 +49,7 @@ func testCore(t *testing.T, instance engine.Engine, state store.State) *Core {
 		t.Fatal(err)
 	}
 	logger := log.New(io.Discard, "", 0)
-	app, err := New(t.Context(), disk, connection.New(t.Context(), "", func(context.Context, string) engine.Engine { return instance }, nil, logger), subscription.New(t.Context(), logger))
+	app, err := New(t.Context(), disk, connection.New(t.Context(), "", func(context.Context, string) engine.Engine { return instance }, logger), subscription.New(t.Context(), logger))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,17 +135,16 @@ func TestDisconnectError(t *testing.T) {
 }
 
 func TestProbeResults(t *testing.T) {
-	app := testCore(t, &fakeEngine{}, store.State{Subscriptions: []store.Subscription{
-		{ID: "default", Nodes: []domain.Node{{ID: "first"}}},
-		{ID: "sub", URL: "https://example.com/sub", Nodes: []domain.Node{{ID: "second"}}},
-	}})
-	probe := func(_ context.Context, nodes []domain.Node, _ domain.Settings, _ string, onResult func(int, engine.Result)) error {
+	probe := func(_ context.Context, nodes []domain.Node, _ domain.Settings, onResult func(int, engine.Result)) error {
 		for i := range nodes {
 			onResult(i, engine.Result{Alive: true, Duration: 10})
 		}
 		return nil
 	}
-	app.conn = connection.New(t.Context(), t.TempDir(), nil, probe, log.New(io.Discard, "", 0))
+	app := testCore(t, &fakeEngine{probe: probe}, store.State{Subscriptions: []store.Subscription{
+		{ID: "default", Nodes: []domain.Node{{ID: "first"}}},
+		{ID: "sub", URL: "https://example.com/sub", Nodes: []domain.Node{{ID: "second"}}},
+	}})
 	if err := app.Probe(t.Context(), "default", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +240,7 @@ func TestNewMalformed(t *testing.T) {
 		t.Fatal(err)
 	}
 	logger := log.New(io.Discard, "", 0)
-	conn := connection.New(context.Background(), "", nil, nil, logger)
+	conn := connection.New(context.Background(), "", nil, logger)
 	subs := subscription.New(context.Background(), logger)
 	if _, err := New(t.Context(), store.Disk{Dir: dir}, conn, subs); err == nil {
 		t.Fatal("want error on malformed JSON configuration")

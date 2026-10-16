@@ -9,6 +9,7 @@ import (
 
 type Engine interface {
 	Apply(context.Context, Spec) error
+	Probe(context.Context, []domain.Node, domain.Settings, func(int, Result)) error
 	Stop() error
 	Running() bool
 }

@@ -49,6 +49,10 @@ func (c *Core) Probe(ctx context.Context, sub, id string) error {
 			return err
 		}
 	}
+	if c.changing != nil {
+		c.stMu.Unlock()
+		return errChanging
+	}
 	call := c.probing
 	if call == nil {
 		refs, nodes, err := probeTargets(c.state.Subscriptions, sub, id)

@@ -59,6 +59,10 @@ func (instance *switchEngine) Apply(_ context.Context, spec engine.Spec) error {
 func (instance *switchEngine) Stop() error   { instance.running = false; return nil }
 func (instance *switchEngine) Running() bool { return instance.running }
 
+func (*switchEngine) Probe(context.Context, []domain.Node, domain.Settings, func(int, engine.Result)) error {
+	return errors.New("unexpected probe")
+}
+
 func requireNoError(test *testing.T, err error) {
 	test.Helper()
 	if err != nil {
@@ -71,7 +75,7 @@ func TestWatchLifecycle(t *testing.T) {
 	listener, err := net.Listen("unix", filepath.Join(directory, "daemon.sock"))
 	requireNoError(t, err)
 	logger := log.New(io.Discard, "", 0)
-	app, err := core.New(t.Context(), store.Disk{Dir: directory}, connection.New(t.Context(), directory, nil, nil, logger), subscription.New(t.Context(), logger))
+	app, err := core.New(t.Context(), store.Disk{Dir: directory}, connection.New(t.Context(), directory, nil, logger), subscription.New(t.Context(), logger))
 	requireNoError(t, err)
 	server := New(t.Context(), logger, app)
 	serveDone := make(chan error, 1)
@@ -448,7 +452,7 @@ func TestSubscriptionRefresh(t *testing.T) {
 	directory := t.TempDir()
 	disk := store.Disk{Dir: directory}
 	logger := log.New(io.Discard, "", 0)
-	app, err := core.New(t.Context(), disk, connection.New(t.Context(), directory, nil, nil, logger), subscription.New(t.Context(), logger))
+	app, err := core.New(t.Context(), disk, connection.New(t.Context(), directory, nil, logger), subscription.New(t.Context(), logger))
 	requireNoError(t, err)
 	listener, err := net.Listen("unix", filepath.Join(directory, "daemon.sock"))
 	requireNoError(t, err)
@@ -671,7 +675,7 @@ func TestSwitch(t *testing.T) {
 	start := func(failB, failTun error) (*core.Core, func()) {
 		app, err := core.New(t.Context(), disk, connection.New(t.Context(), directory, func(context.Context, string) engine.Engine {
 			return &switchEngine{failB: failB, failTun: failTun}
-		}, nil, logger), subscription.New(t.Context(), logger))
+		}, logger), subscription.New(t.Context(), logger))
 		requireNoError(t, err)
 		if err := app.Restore(); err != nil {
 			if !errors.Is(err, ipc.ErrElevate) {

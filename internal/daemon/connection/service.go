@@ -17,7 +17,6 @@ import (
 type Service struct {
 	ctx       context.Context
 	newEngine func(context.Context, string) engine.Engine
-	probe     func(context.Context, []domain.Node, domain.Settings, string, func(int, engine.Result)) error
 	log       *log.Logger
 	dir       string
 
@@ -26,11 +25,10 @@ type Service struct {
 	restart chan struct{}
 }
 
-func New(ctx context.Context, dir string, newEngine func(context.Context, string) engine.Engine, probe func(context.Context, []domain.Node, domain.Settings, string, func(int, engine.Result)) error, logger *log.Logger) *Service {
+func New(ctx context.Context, dir string, newEngine func(context.Context, string) engine.Engine, logger *log.Logger) *Service {
 	return &Service{
 		ctx:       ctx,
 		newEngine: newEngine,
-		probe:     probe,
 		log:       logger,
 		dir:       dir,
 		restart:   make(chan struct{}, 1),
@@ -82,7 +80,14 @@ func (s *Service) SetError(err error) {
 }
 
 func (s *Service) Probe(ctx context.Context, nodes []domain.Node, settings domain.Settings, onResult func(int, engine.Result)) error {
-	return s.probe(ctx, nodes, settings, ipc.EngineLog(s.dir), onResult)
+	instance := s.eng
+	if instance == nil {
+		instance = s.newEngine(s.ctx, ipc.EngineLog(s.dir))
+	}
+	if instance == nil {
+		return errors.New("initialize engine: engine is nil")
+	}
+	return instance.Probe(ctx, nodes, settings, onResult)
 }
 
 func (s *Service) RestartRequested() <-chan struct{} { return s.restart }

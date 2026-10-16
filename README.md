@@ -96,7 +96,7 @@ Package manager and script installations also provide `jray` as a short alias fo
 - `jray stop`: stop the daemon
 - `jray probe [sub | id | name]`: probe node latencies
 - `jray status [--json]`: show connection status
-- `jray logs [daemon | engine | tui] [-f]`: view logs
+- `jray logs [daemon | engine] [-f]`: view logs
 
 #### Subscriptions & Nodes
 

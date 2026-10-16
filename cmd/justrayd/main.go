@@ -75,7 +75,7 @@ func main() {
 			logger.Printf("clear engine log failed (%v)", err)
 		}
 
-		conn := connection.New(ctx, dir, engine.New, engine.Probe, logger)
+		conn := connection.New(ctx, dir, engine.New, logger)
 		subs := subscription.New(ctx, logger)
 		app, err := core.New(ctx, store.Disk{Dir: dir}, conn, subs)
 		if err != nil {

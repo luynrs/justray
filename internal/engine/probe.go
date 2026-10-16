@@ -20,61 +20,87 @@ import (
 	"github.com/luynrs/justray/internal/domain"
 )
 
-func Probe(ctx context.Context, nodes []domain.Node, settings domain.Settings, logPath string, onResult func(int, Result)) error {
+func (engine *box) Probe(ctx context.Context, nodes []domain.Node, settings domain.Settings, onResult func(int, Result)) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if len(nodes) == 0 {
 		return nil
 	}
-	runtimeCtx, cancel := context.WithCancel(withRegistry(ctx))
-	defer cancel()
-	startup := time.AfterFunc(4*time.Second, cancel)
 	settings, err := settings.Normalize()
-	var instance *sbox.Box
-	if err == nil {
-		instance, err = sbox.New(sbox.Options{Options: *probeConfig(settings, logPath), Context: runtimeCtx})
-	}
-	if instance != nil {
-		defer func() { _ = instance.Close() }()
-	}
-	if err == nil {
-		err = instance.Start()
-	}
-	if !startup.Stop() && err == nil {
-		err = context.DeadlineExceeded
-	}
-	if err == nil {
-		err = runtimeCtx.Err()
-	}
 	if err != nil {
 		return err
 	}
-	servers := make(map[string][]int)
+	var current adapter.Outbound
+	activeKey := ""
+	if engine.inst != nil && engine.node.Protocol == domain.WG {
+		managed, _ := engine.inst.Outbound().Outbound("proxy")
+		current = managed.(*proxyOutbound).current.Load()
+		activeKey = engine.node.ConfigKey()
+	}
+	groups := make(map[string][]int)
 	for i, node := range nodes {
+		key := strconv.Itoa(i)
+		if node.Protocol == domain.WG {
+			key = node.ConfigKey()
+		}
+		groups[key] = append(groups[key], i)
+	}
+	runtimeCtx, cancel := context.WithCancel(withRegistry(ctx))
+	defer cancel()
+	var instance *sbox.Box
+	if len(groups) != 1 || groups[activeKey] == nil {
+		startup := time.AfterFunc(4*time.Second, cancel)
+		instance, err = sbox.New(sbox.Options{Options: *probeConfig(settings, engine.logPath), Context: runtimeCtx})
+		if instance != nil {
+			defer func() { _ = instance.Close() }()
+		}
+		if err == nil {
+			err = instance.Start()
+		}
+		if !startup.Stop() && err == nil {
+			err = context.DeadlineExceeded
+		}
+		if err == nil {
+			err = runtimeCtx.Err()
+		}
+		if err != nil {
+			return err
+		}
+	}
+	servers := make(map[string][][]int)
+	for _, indices := range groups {
+		node := nodes[indices[0]]
 		server := net.JoinHostPort(strings.ToLower(node.Server), strconv.Itoa(node.Port))
-		servers[server] = append(servers[server], i)
+		servers[server] = append(servers[server], indices)
 	}
 	slots := make(chan struct{}, 8)
 	var workers sync.WaitGroup
-	for _, indices := range servers {
-		jobs := make(chan int, len(indices))
-		for _, index := range indices {
-			jobs <- index
+	for _, targets := range servers {
+		jobs := make(chan []int, len(targets))
+		for _, target := range targets {
+			jobs <- target
 		}
 		close(jobs)
-		for range min(2, len(indices)) {
+		for range min(2, len(targets)) {
 			workers.Go(func() {
-				for index := range jobs {
+				for target := range jobs {
 					select {
 					case slots <- struct{}{}:
 					case <-runtimeCtx.Done():
 						return
 					}
-					result, err := probe(runtimeCtx, nodes[index], instance, "p"+strconv.Itoa(index), settings.ProbeURL)
+					node := nodes[target[0]]
+					var dialer adapter.Outbound
+					if node.Protocol == domain.WG && node.ConfigKey() == activeKey {
+						dialer = current
+					}
+					result, err := probe(runtimeCtx, node, instance, "p"+strconv.Itoa(target[0]), settings.ProbeURL, dialer)
 					<-slots
 					if err == nil {
-						onResult(index, result)
+						for _, index := range target {
+							onResult(index, result)
+						}
 					}
 				}
 			})
@@ -84,28 +110,33 @@ func Probe(ctx context.Context, nodes []domain.Node, settings domain.Settings, l
 	return runtimeCtx.Err()
 }
 
-func probe(ctx context.Context, node domain.Node, instance *sbox.Box, tag, url string) (Result, error) {
+func probe(ctx context.Context, node domain.Node, instance *sbox.Box, tag, url string, dialer adapter.Outbound) (Result, error) {
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
 	requestCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
-	requestCtx = adapter.WithContext(requestCtx, &adapter.InboundContext{Outbound: tag})
-	runtime, err := newNodeRuntime(requestCtx, instance.Router(), instance.LogFactory().NewLogger("probe/"+tag), tag, node)
-	if err == nil {
-		defer func() { _ = runtime.scope.Close() }()
+	if dialer != nil {
+		tag = dialer.Tag()
 	}
-	for _, stage := range adapter.ListStartStages[1:] {
+	requestCtx = adapter.WithContext(requestCtx, &adapter.InboundContext{Outbound: tag})
+	var err error
+	if dialer == nil {
+		var runtime *nodeRuntime
+		runtime, err = newNodeRuntime(requestCtx, instance.Router(), instance.LogFactory().NewLogger("probe/"+tag), tag, node)
 		if err == nil {
-			err = requestCtx.Err()
-		}
-		if err == nil {
-			err = runtime.start(stage)
+			defer func() { _ = runtime.scope.Close() }()
+			for _, stage := range adapter.ListStartStages[1:] {
+				if err = runtime.start(stage); err != nil {
+					break
+				}
+			}
+			dialer = runtime
 		}
 	}
 	var milliseconds int
 	if err == nil {
-		milliseconds, err = delay(requestCtx, runtime, url)
+		milliseconds, err = delay(requestCtx, dialer, url)
 	}
 	if ctx.Err() != nil {
 		return Result{}, ctx.Err()

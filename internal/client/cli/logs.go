@@ -15,10 +15,10 @@ import (
 )
 
 var logsCmd = &cobra.Command{
-	Use:       "logs [daemon | engine | tui]",
+	Use:       "logs [daemon | engine]",
 	Short:     "View logs",
 	Args:      cobra.MaximumNArgs(1),
-	ValidArgs: []string{"daemon", "engine", "tui"},
+	ValidArgs: []string{"daemon", "engine"},
 }
 
 func init() {
@@ -40,10 +40,8 @@ func logs(cmd *cobra.Command, args []string) error {
 		logPath = ipc.DaemonLog(dir)
 	case "engine":
 		logPath = ipc.EngineLog(dir)
-	case "tui":
-		logPath = ipc.TUILog(dir)
 	default:
-		return fmt.Errorf("unknown log target %q; pick from daemon, engine, tui", target)
+		return fmt.Errorf("unknown log target %q; pick from daemon, engine", target)
 	}
 
 	follow, _ := cmd.Flags().GetBool("follow")

@@ -72,6 +72,10 @@ func (app *Core) startChange(ctx context.Context, wait bool, action func(context
 	call := &changeCall{done: make(chan struct{}), before: app.conn.Status(), state: app.current()}
 	app.stMu.Lock()
 	app.changing = call
+	probe := app.probing
+	if probe != nil {
+		probe.cancel()
+	}
 	app.stMu.Unlock()
 	app.opMu.Unlock()
 	timer := time.AfterFunc(50*time.Millisecond, func() {
@@ -82,6 +86,12 @@ func (app *Core) startChange(ctx context.Context, wait bool, action func(context
 		}
 	})
 	go func() {
+		if probe != nil {
+			select {
+			case <-probe.done:
+			case <-ctx.Done():
+			}
+		}
 		app.opMu.Lock()
 		if call.err = app.ctx.Err(); call.err == nil {
 			call.err = ctx.Err()

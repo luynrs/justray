@@ -23,7 +23,7 @@ func TestRestoreFallback(t *testing.T) {
 	}
 	var logs bytes.Buffer
 	fake := &fakeEngine{tunErr: permission}
-	service := New(t.Context(), t.TempDir(), func(context.Context, string) engine.Engine { return fake }, nil, log.New(&logs, "", 0))
+	service := New(t.Context(), t.TempDir(), func(context.Context, string) engine.Engine { return fake }, log.New(&logs, "", 0))
 	settings, _ := (domain.Settings{}).Normalize()
 	reference := domain.NodeRef{NodeID: "node"}
 	if err := service.Restore(domain.Node{ID: "node"}, reference, settings, true); !errors.Is(err, ipc.ErrElevate) {

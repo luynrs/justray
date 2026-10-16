@@ -163,7 +163,7 @@ func TestProbeEngine(t *testing.T) {
 	}
 	results := make(map[string]Result)
 	var mutex sync.Mutex
-	if err := Probe(t.Context(), nodes, settings, "", func(index int, result Result) {
+	if err := New(t.Context(), "").Probe(t.Context(), nodes, settings, func(index int, result Result) {
 		mutex.Lock()
 		defer mutex.Unlock()
 		results[nodes[index].ID] = result

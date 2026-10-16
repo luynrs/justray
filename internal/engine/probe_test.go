@@ -16,7 +16,7 @@ func TestProbeCanceled(t *testing.T) {
 	settings, _ := (domain.Settings{}).Normalize()
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	err := Probe(ctx, []domain.Node{{ID: "node"}}, settings, "", func(int, Result) {
+	err := New(t.Context(), "").Probe(ctx, []domain.Node{{ID: "node"}}, settings, func(int, Result) {
 		t.Error("canceled probe published a result")
 	})
 	if !errors.Is(err, context.Canceled) {
@@ -27,7 +27,7 @@ func TestProbeCanceled(t *testing.T) {
 func TestProbeStartError(t *testing.T) {
 	settings, _ := (domain.Settings{}).Normalize()
 	settings.LogLevel = "invalid"
-	err := Probe(t.Context(), []domain.Node{{ID: "node", Protocol: domain.HTTP, Server: "127.0.0.1", Port: 80}}, settings, "", func(int, Result) {
+	err := New(t.Context(), "").Probe(t.Context(), []domain.Node{{ID: "node", Protocol: domain.HTTP, Server: "127.0.0.1", Port: 80}}, settings, func(int, Result) {
 		t.Error("failed initialization published a result")
 	})
 	if err == nil {
@@ -46,7 +46,7 @@ func TestProbeCancel(t *testing.T) {
 	settings, _ := (domain.Settings{}).Normalize()
 	settings.ProbeURL = "http://example.test/"
 	var result Result
-	err := Probe(ctx, []domain.Node{{ID: "node", Protocol: domain.HTTP, Server: "127.0.0.1", Port: server.Listener.Addr().(*net.TCPAddr).Port}}, settings, "", func(_ int, next Result) {
+	err := New(t.Context(), "").Probe(ctx, []domain.Node{{ID: "node", Protocol: domain.HTTP, Server: "127.0.0.1", Port: server.Listener.Addr().(*net.TCPAddr).Port}}, settings, func(_ int, next Result) {
 		result = next
 	})
 	if !errors.Is(err, context.Canceled) || result != (Result{}) {
@@ -63,7 +63,7 @@ func TestProbeFailure(t *testing.T) {
 	settings, _ := (domain.Settings{}).Normalize()
 	settings.ProbeURL = "http://example.test/"
 	var result Result
-	err := Probe(t.Context(), []domain.Node{{ID: "node", Protocol: domain.HTTP, Server: "127.0.0.1", Port: server.Listener.Addr().(*net.TCPAddr).Port}}, settings, "", func(_ int, next Result) {
+	err := New(t.Context(), "").Probe(t.Context(), []domain.Node{{ID: "node", Protocol: domain.HTTP, Server: "127.0.0.1", Port: server.Listener.Addr().(*net.TCPAddr).Port}}, settings, func(_ int, next Result) {
 		result = next
 	})
 	if err != nil || result.Alive || result.Duration != 0 || result.Failure != "failed" || result.Error == "" {

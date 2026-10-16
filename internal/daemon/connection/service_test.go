@@ -41,6 +41,10 @@ func (fake *fakeEngine) Stop() error {
 }
 func (fake *fakeEngine) Running() bool { return !fake.stopped && fake.startErr == nil }
 
+func (*fakeEngine) Probe(context.Context, []domain.Node, domain.Settings, func(int, engine.Result)) error {
+	return errors.New("unexpected probe")
+}
+
 func testService(t *testing.T, instance engine.Engine) *Service {
 	t.Helper()
 	return &Service{
