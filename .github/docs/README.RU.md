@@ -96,7 +96,7 @@ nix run github:luynrs/justray
 - `jray stop`: остановить демон
 - `jray probe [sub | id | name]`: измерить пинг
 - `jray status [--json]`: показать состояние подключения
-- `jray logs [daemon | engine | tui] [-f]`: просмотреть логи
+- `jray logs [daemon | engine] [-f]`: просмотреть логи
 
 #### Подписки и узлы
 

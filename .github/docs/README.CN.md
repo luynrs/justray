@@ -96,7 +96,7 @@ nix run github:luynrs/justray
 - `jray stop`：停止后台服务
 - `jray probe [sub | id | name]`：测量节点延迟
 - `jray status [--json]`：查看连接状态
-- `jray logs [daemon | engine | tui] [-f]`：查看日志
+- `jray logs [daemon | engine] [-f]`：查看日志
 
 #### 订阅与节点
 

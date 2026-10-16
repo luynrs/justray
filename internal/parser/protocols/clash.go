@@ -218,6 +218,7 @@ func clashNode(p clashProxy) (domain.Node, error) {
 	case "hysteria2", "hy2":
 		n.Protocol = domain.HY2
 		n.Auth = domain.Auth{Password: p.Password}
+		n.UpMbps, n.DownMbps = int(p.Up), int(p.Down)
 		n.TLS = tls
 		n.Obfs = p.Obfs
 		n.ObfsPassword = cmp.Or(p.ObfsPassword, p.ObfsParam)

@@ -498,6 +498,8 @@ func TestSubscriptionRefresh(t *testing.T) {
 		"xhttp path query":     `{"outbounds":[{"type":"vless","server":"example.com","server_port":443,"uuid":"uuid","transport":{"type":"xhttp","path":"/edge/?token=value"}}]}`,
 		"hy2 negative up":      `{"outbounds":[{"type":"hysteria2","server":"example.com","server_port":443,"password":"secret","up_mbps":-1}]}`,
 		"hy2 negative down":    `{"outbounds":[{"type":"hysteria2","server":"example.com","server_port":443,"password":"secret","down_mbps":-1}]}`,
+		"hy2 clash up":         "proxies:\n  - {type: hysteria2, server: example.com, port: 443, password: secret, up: -1}",
+		"hy2 clash down":       "proxies:\n  - {type: hysteria2, server: example.com, port: 443, password: secret, down: -1}",
 		"hy2 up overflow":      fmt.Sprintf(`{"outbounds":[{"type":"hysteria2","server":"example.com","server_port":443,"password":"secret","up_mbps":%d}]}`, math.MaxInt/125000+1),
 		"hy2 down overflow":    fmt.Sprintf(`{"outbounds":[{"type":"hysteria2","server":"example.com","server_port":443,"password":"secret","down_mbps":%d}]}`, math.MaxInt/125000+1),
 	} {
@@ -539,6 +541,21 @@ func TestSubscriptionRefresh(t *testing.T) {
 	if clean := refresh(t, first); clean.Subscriptions[0].Warning != "" {
 		t.Fatalf("clean refresh kept the old warning: %+v", clean.Subscriptions)
 	}
+	for _, fixture := range []struct{ content, password, name string }{
+		{"aes-256-gcm:pa#ss@example.com:8388", "pa#ss", "example.com"},
+		{"aes-256-gcm:pa?ss@example.com:8388", "pa?ss", "example.com"},
+		{"aes-256-gcm:pa@ss#word?more%2F@example.com:8388", "pa@ss#word?more%2F", "example.com"},
+		{"aes-256-gcm:pa@ss#word?more%2F@example.com:8388#user@work", "pa@ss#word?more%2F", "user@work"},
+		{"aes-256-gcm:pass@example.com:8388?unused=user@work#embedded", "pass", "embedded"},
+		{"aes-256-gcm:p@example.com:8388#remark@new.example:443", "p", "remark@new.example:443"},
+	} {
+		t.Run("legacy shadowsocks/"+fixture.password+"/"+fixture.name, func(t *testing.T) {
+			after := refresh(t, "ss://"+base64.StdEncoding.EncodeToString([]byte(fixture.content)))
+			if nodes := after.Subscriptions[0].Nodes; len(nodes) != 1 || nodes[0].Protocol != domain.SS || nodes[0].Server != "example.com" || nodes[0].Port != 8388 || nodes[0].Auth.Password != fixture.password || nodes[0].Name != fixture.name {
+				t.Fatalf("legacy shadowsocks credentials or metadata changed: %+v", nodes)
+			}
+		})
+	}
 	for query, hostname := range map[string]string{
 		"":                                    "proxy.example",
 		"host=cover.example":                  "cover.example",
@@ -576,6 +593,7 @@ func TestSubscriptionRefresh(t *testing.T) {
 		"xray no protocol":        `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]}},{}]}`,
 		"sing-box unknown":        `{"outbounds":[{"type":"trojan","server":"example.com","server_port":443,"password":"secret"},{"type":"future-proxy","tag":"unknown"}]}`,
 		"sing-box hy2 zero":       `{"outbounds":[{"type":"hysteria2","server":"example.com","server_port":443,"password":"secret","up_mbps":0,"down_mbps":0},{"type":"future-proxy"}]}`,
+		"clash hy2 bandwidth":     "proxies:\n  - {type: hysteria2, server: example.com, port: 443, password: secret, up: '50 Mbps', down: 200}\n  - {type: future-proxy}",
 		"sing-box hy2 maximum":    fmt.Sprintf(`{"outbounds":[{"type":"hysteria2","server":"example.com","server_port":443,"password":"secret","up_mbps":%d,"down_mbps":%d},{"type":"future-proxy"}]}`, math.MaxInt/125000, math.MaxInt/125000),
 		"xray unknown":            `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]}},{"protocol":"future-proxy","tag":"unknown"}]}`,
 	} {
@@ -592,6 +610,9 @@ func TestSubscriptionRefresh(t *testing.T) {
 				if node := after.Subscriptions[0].Nodes[0]; node.Protocol != domain.HY2 || node.UpMbps != expected || node.DownMbps != expected {
 					t.Fatalf("HY2 refresh changed bandwidth: %+v", node)
 				}
+			}
+			if node := after.Subscriptions[0].Nodes[0]; name == "clash hy2 bandwidth" && (node.Protocol != domain.HY2 || node.UpMbps != 50 || node.DownMbps != 200) {
+				t.Fatalf("Clash HY2 refresh changed bandwidth: %+v", node)
 			}
 			if strings.HasPrefix(name, "sing-box") {
 				body.Store(`{"outbounds":[{"type":"future-proxy"}]}`)

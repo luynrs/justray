@@ -19,6 +19,7 @@ var logsCmd = &cobra.Command{
 	Short:     "View logs",
 	Args:      cobra.MaximumNArgs(1),
 	ValidArgs: []string{"daemon", "engine"},
+	GroupID:   cmdGroup,
 }
 
 func init() {

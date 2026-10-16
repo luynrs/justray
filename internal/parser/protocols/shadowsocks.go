@@ -18,12 +18,27 @@ func ParseShadowsocks(uri string) (domain.Node, error) {
 	legacy := !strings.Contains(rest, "@")
 	if legacy {
 		if decoded, err := Unbase64(rest); err == nil {
-			var innerRemark, innerQuery string
-			rest, innerRemark, _ = strings.Cut(string(decoded), "#")
-			rest, innerQuery, _ = strings.Cut(rest, "?")
-			remark = cmp.Or(remark, innerRemark)
-			if !hasQuery {
-				query = innerQuery
+			rest = string(decoded)
+			hostStart := -1
+			for index, character := range rest {
+				if character == '@' {
+					hostStart = index + 1
+				}
+				if hostStart < 0 || character != '#' && character != '?' {
+					continue
+				}
+				if _, _, err := hostPort(strings.TrimSuffix(rest[hostStart:index], "/")); err != nil {
+					hostStart = -1
+					continue
+				}
+				metadata, innerRemark, _ := strings.Cut(rest[index:], "#")
+				_, innerQuery, _ := strings.Cut(metadata, "?")
+				rest = rest[:index]
+				remark = cmp.Or(remark, innerRemark)
+				if !hasQuery {
+					query = innerQuery
+				}
+				break
 			}
 		}
 	}
