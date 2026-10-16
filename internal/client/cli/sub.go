@@ -109,55 +109,55 @@ func (a *app) subRefresh(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	if len(args) == 0 {
-		if len(snapshot.Subscriptions) == 0 {
-			out(style.Gray.Render("No subscriptions yet. Add one: " + cmd.Parent().CommandPath() + " add <url>"))
-			return nil
-		}
-		stop := spin("Refreshing subscriptions")
-		err = a.client.RefreshSubscriptions(cmd.Context())
-		stop()
-		if snap, snapErr := a.client.Snapshot(cmd.Context()); snapErr == nil {
-			for _, sub := range snap.Subscriptions {
-				if sub.Warning != "" {
-					out(style.Yellow.Render("Warning: " + a.clean(sub.Name) + ": " + a.clean(sub.Warning)))
-				}
-			}
-		}
+	if len(args) == 0 && len(snapshot.Subscriptions) == 0 {
+		out(style.Gray.Render("No subscriptions yet. Add one: " + cmd.Parent().CommandPath() + " add <url>"))
+		return nil
+	}
+	subscriptionID, name := "", "subscriptions"
+	if len(args) > 0 {
+		sub, err := match(args[0], "subscription", snapshot.Subscriptions, func(sub ipc.Subscription) (string, string) { return sub.SubscriptionID, sub.Name })
 		if err != nil {
 			return err
 		}
-		done("Refreshed all subscriptions")
-		return nil
+		if !sub.Refreshable {
+			return fmt.Errorf("subscription %q cannot be refreshed", sub.Name)
+		}
+		subscriptionID, name = sub.SubscriptionID, a.clean(sub.Name)
 	}
-
-	sub, err := match(args[0], "subscription", snapshot.Subscriptions, func(sub ipc.Subscription) (string, string) { return sub.SubscriptionID, sub.Name })
-	if err != nil {
-		return err
-	}
-	if !sub.Refreshable {
-		return fmt.Errorf("subscription %q cannot be refreshed", sub.Name)
-	}
-	name := a.clean(sub.Name)
 	stop := spin("Refreshing " + name)
-	err = a.client.RefreshSubscription(cmd.Context(), sub.SubscriptionID)
-	stop()
-	if err != nil {
-		return err
+	if subscriptionID == "" {
+		err = a.client.RefreshSubscriptions(cmd.Context())
+	} else {
+		err = a.client.RefreshSubscription(cmd.Context(), subscriptionID)
 	}
-	done("Refreshed " + name)
-	if snap, err := a.client.Snapshot(cmd.Context()); err == nil {
-		for _, s := range snap.Subscriptions {
-			if s.SubscriptionID == sub.SubscriptionID {
-				fields([2]string{"ID", s.SubscriptionID}, [2]string{"Nodes", strconv.Itoa(s.NodeCount)}, [2]string{"Traffic", style.Usage(domain.Traffic(s.Traffic))})
-				if s.Warning != "" {
-					out(style.Yellow.Render("Warning: " + a.clean(s.Warning)))
+	stop()
+	if subscriptionID != "" {
+		if err != nil {
+			return err
+		}
+		done("Refreshed " + name)
+	}
+	if refreshed, snapshotErr := a.client.Snapshot(cmd.Context()); snapshotErr == nil {
+		for _, sub := range refreshed.Subscriptions {
+			if subscriptionID != "" && sub.SubscriptionID != subscriptionID {
+				continue
+			}
+			if subscriptionID != "" {
+				fields([2]string{"ID", sub.SubscriptionID}, [2]string{"Nodes", strconv.Itoa(sub.NodeCount)}, [2]string{"Traffic", style.Usage(domain.Traffic(sub.Traffic))})
+			}
+			if sub.Warning != "" {
+				message := a.clean(sub.Warning)
+				if subscriptionID == "" {
+					message = a.clean(sub.Name) + ": " + message
 				}
-				break
+				out(style.Yellow.Render("Warning: " + message))
 			}
 		}
 	}
-	return nil
+	if err == nil && subscriptionID == "" {
+		done("Refreshed all subscriptions")
+	}
+	return err
 }
 
 var subListCmd = &cobra.Command{

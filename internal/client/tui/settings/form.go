@@ -173,7 +173,7 @@ func (s *Model) valueLines(f field, selected bool, bar string) (lines, choices [
 	}
 
 	if len(f.enum) > 0 && selected {
-		cur := f.value(s.cur)
+		cur := f.value(&s.cur)
 		for _, opt := range f.enum {
 			line := bar + style.Gray.Render(style.Dot(false)+" "+opt)
 			if opt == cur {
@@ -185,7 +185,7 @@ func (s *Model) valueLines(f field, selected bool, bar string) (lines, choices [
 		return lines, choices
 	}
 
-	v := f.value(s.cur)
+	v := f.value(&s.cur)
 	if v == "" {
 		v = cmp.Or(f.hint, "auto")
 	}

@@ -19,7 +19,7 @@ type field struct {
 	name  string
 	bare  bool   // the row is its own value, like a routing rule
 	hint  string // the editor placeholder, and the value shown while unset
-	get   func(domain.Settings) string
+	get   func(*domain.Settings) string
 	set   func(*domain.Settings, string) error
 	enum  []string
 	list  *list
@@ -43,13 +43,13 @@ var tabs = []tab{
 		{
 			name: "Autostart",
 			enum: domain.Toggle,
-			get:  func(s domain.Settings) string { return cmp.Or(s.Autostart, "unknown") },
+			get:  func(settings *domain.Settings) string { return cmp.Or(settings.Autostart, "unknown") },
 			set:  func(s *domain.Settings, in string) error { s.Autostart = in; return nil },
 		},
 		{
 			name: "Auto-refresh",
 			hint: "never",
-			get:  func(s domain.Settings) string { return hours(s.RefreshEvery) },
+			get:  func(settings *domain.Settings) string { return hours(settings.RefreshEvery) },
 			set: func(s *domain.Settings, in string) error {
 				v, err := parseHours(in)
 				if err != nil {
@@ -59,28 +59,13 @@ var tabs = []tab{
 				return nil
 			},
 		},
-		{
-			name: "Emoji",
-			enum: domain.Toggle,
-			get:  func(s domain.Settings) string { return s.Emoji },
-			set:  func(s *domain.Settings, in string) error { s.Emoji = in; return nil },
-		},
-		{
-			name: "Force TTY",
-			enum: domain.Toggle,
-			get:  func(s domain.Settings) string { return s.ForceTTY },
-			set:  func(s *domain.Settings, in string) error { s.ForceTTY = in; return nil },
-		},
-		{
-			name: "Log level",
-			enum: domain.LogLevels,
-			get:  func(s domain.Settings) string { return s.LogLevel },
-			set:  func(s *domain.Settings, in string) error { s.LogLevel = in; return nil },
-		},
+		choice("Emoji", domain.Toggle, func(settings *domain.Settings) *string { return &settings.Emoji }),
+		choice("Force TTY", domain.Toggle, func(settings *domain.Settings) *string { return &settings.ForceTTY }),
+		choice("Log level", domain.LogLevels, func(settings *domain.Settings) *string { return &settings.LogLevel }),
 		{
 			name: "Probe URL",
 			hint: domain.DefaultProbeURL,
-			get:  func(s domain.Settings) string { return s.ProbeURL },
+			get:  func(settings *domain.Settings) string { return settings.ProbeURL },
 			set:  setStr(func(s *domain.Settings) *string { return &s.ProbeURL }, domain.DefaultProbeURL),
 		},
 	}},
@@ -88,76 +73,48 @@ var tabs = []tab{
 		{
 			name: "Proxy port",
 			hint: strconv.Itoa(domain.DefaultPort),
-			get:  func(s domain.Settings) string { return strconv.Itoa(s.Port) },
+			get:  func(settings *domain.Settings) string { return strconv.Itoa(settings.Port) },
 			set:  setInt(func(s *domain.Settings) *int { return &s.Port }, domain.DefaultPort),
 		},
-		{
-			name: "Allow LAN",
-			enum: domain.Toggle,
-			get:  func(s domain.Settings) string { return s.AllowLAN },
-			set:  func(s *domain.Settings, in string) error { s.AllowLAN = in; return nil },
-		},
-		{
-			name: "IP version",
-			enum: domain.IPVersions,
-			get:  func(s domain.Settings) string { return s.IPVersion },
-			set:  func(s *domain.Settings, in string) error { s.IPVersion = in; return nil },
-		},
-		{
-			name: "Stack",
-			enum: domain.TunStacks,
-			get:  func(s domain.Settings) string { return s.TunStack },
-			set:  func(s *domain.Settings, in string) error { s.TunStack = in; return nil },
-		},
+		choice("Allow LAN", domain.Toggle, func(settings *domain.Settings) *string { return &settings.AllowLAN }),
+		choice("IP version", domain.IPVersions, func(settings *domain.Settings) *string { return &settings.IPVersion }),
+		choice("Stack", domain.TunStacks, func(settings *domain.Settings) *string { return &settings.TunStack }),
 		{
 			name: "MTU",
 			hint: strconv.Itoa(domain.DefaultTunMTU),
-			get:  func(s domain.Settings) string { return strconv.Itoa(s.TunMTU) },
+			get:  func(settings *domain.Settings) string { return strconv.Itoa(settings.TunMTU) },
 			set:  setInt(func(s *domain.Settings) *int { return &s.TunMTU }, domain.DefaultTunMTU),
 		},
-		{
-			name: "DNS hijack",
-			enum: domain.Toggle,
-			get:  func(s domain.Settings) string { return s.DNSHijack },
-			set:  func(s *domain.Settings, in string) error { s.DNSHijack = in; return nil },
-		},
+		choice("DNS hijack", domain.Toggle, func(settings *domain.Settings) *string { return &settings.DNSHijack }),
 		{
 			name: "DNS server",
 			hint: domain.DefaultDNS,
-			get:  func(s domain.Settings) string { return s.DNS },
+			get:  func(settings *domain.Settings) string { return settings.DNS },
 			set:  setStr(func(s *domain.Settings) *string { return &s.DNS }, domain.DefaultDNS),
 		},
 	}},
 	{name: "Routing", fields: []field{
-		{
-			name: "Mode",
-			enum: domain.Modes,
-			get:  func(s domain.Settings) string { return s.Mode },
-			set:  func(s *domain.Settings, in string) error { s.Mode = in; return nil },
-		},
-		{
-			name: "Direct LAN",
-			enum: domain.Toggle,
-			get:  func(s domain.Settings) string { return s.BypassLocal },
-			set:  func(s *domain.Settings, in string) error { s.BypassLocal = in; return nil },
-		},
-		{
-			name: "Strict route",
-			enum: domain.Toggle,
-			get:  func(s domain.Settings) string { return s.TunStrict },
-			set:  func(s *domain.Settings, in string) error { s.TunStrict = in; return nil },
-		},
-		{
-			name: "Block QUIC",
-			enum: domain.Toggle,
-			get:  func(s domain.Settings) string { return s.BlockQUIC },
-			set:  func(s *domain.Settings, in string) error { s.BlockQUIC = in; return nil },
-		},
+		choice("Mode", domain.Modes, func(settings *domain.Settings) *string { return &settings.Mode }),
+		choice("Direct LAN", domain.Toggle, func(settings *domain.Settings) *string { return &settings.BypassLocal }),
+		choice("Strict route", domain.Toggle, func(settings *domain.Settings) *string { return &settings.TunStrict }),
+		choice("Block QUIC", domain.Toggle, func(settings *domain.Settings) *string { return &settings.BlockQUIC }),
 	}, lists: []list{
 		{"Direct", func(v *domain.Settings) *[]string { return &v.Direct }},
 		{"Proxy", func(v *domain.Settings) *[]string { return &v.Proxy }},
 		{"Block", func(v *domain.Settings) *[]string { return &v.Block }},
 	}},
+}
+
+func choice(name string, values []string, at func(*domain.Settings) *string) field {
+	return field{
+		name: name,
+		enum: values,
+		get:  func(settings *domain.Settings) string { return *at(settings) },
+		set: func(settings *domain.Settings, value string) error {
+			*at(settings) = value
+			return nil
+		},
+	}
 }
 
 func setStr(at func(*domain.Settings) *string, def string) func(*domain.Settings, string) error {
@@ -353,7 +310,7 @@ func (s *Model) activate() tea.Cmd {
 
 	s.err = ""
 	s.input.Placeholder = f.hint
-	s.input.SetValue(f.value(s.cur))
+	s.input.SetValue(f.value(&s.cur))
 	s.input.CursorEnd()
 	return s.input.Focus()
 }
@@ -392,7 +349,7 @@ func (s *Model) step(delta int) {
 	if !ok || len(f.enum) == 0 {
 		return
 	}
-	i := (slices.Index(f.enum, f.value(s.cur)) + delta + len(f.enum)) % len(f.enum)
+	i := (slices.Index(f.enum, f.value(&s.cur)) + delta + len(f.enum)) % len(f.enum)
 	s.assign(f, f.enum[i])
 }
 
@@ -433,14 +390,14 @@ func (f field) editable() bool { return f.set != nil || f.list != nil }
 
 func (f field) removable() bool { return f.list != nil && f.index >= 0 }
 
-func (f field) value(s domain.Settings) string {
+func (f field) value(settings *domain.Settings) string {
 	if f.list != nil {
 		if f.index >= 0 {
-			return (*f.list.at(&s))[f.index]
+			return (*f.list.at(settings))[f.index]
 		}
 		return ""
 	}
-	return f.get(s)
+	return f.get(settings)
 }
 
 func (f field) apply(s *domain.Settings, in string) error {
