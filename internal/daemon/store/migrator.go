@@ -3,6 +3,7 @@ package store
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 
@@ -22,7 +23,7 @@ func (d Disk) Migrate() error {
 	for index := range files {
 		file := &files[index]
 		data, err := os.ReadFile(file.path)
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			continue
 		}
 		if err != nil {

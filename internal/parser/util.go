@@ -3,6 +3,7 @@ package parser
 import (
 	"cmp"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net"
@@ -147,12 +148,8 @@ func isCertFingerprint(s string) bool {
 	if len(clean) != 64 && len(clean) != 40 {
 		return false
 	}
-	for _, r := range clean {
-		if (r < '0' || r > '9') && (r < 'a' || r > 'f') && (r < 'A' || r > 'F') {
-			return false
-		}
-	}
-	return true
+	_, err := hex.DecodeString(clean)
+	return err == nil
 }
 
 type stringOrSlice []string
@@ -188,20 +185,15 @@ func (f *flexInt) UnmarshalJSON(b []byte) error {
 
 type flexString string
 
-func (f *flexString) UnmarshalJSON(b []byte) error {
-	var s string
-	if err := json.Unmarshal(b, &s); err == nil {
-		*f = flexString(s)
+func (value *flexString) UnmarshalJSON(data []byte) error {
+	var text stringOrSlice
+	if err := json.Unmarshal(data, &text); err == nil {
+		*value = flexString(strings.Join(text, ","))
 		return nil
 	}
-	var bVal bool
-	if err := json.Unmarshal(b, &bVal); err == nil {
-		*f = flexString(strconv.FormatBool(bVal))
-		return nil
-	}
-	var arr []string
-	if err := json.Unmarshal(b, &arr); err == nil {
-		*f = flexString(strings.Join(arr, ","))
+	var boolean bool
+	if err := json.Unmarshal(data, &boolean); err == nil {
+		*value = flexString(strconv.FormatBool(boolean))
 		return nil
 	}
 	return errors.New("expected a string, boolean or string array")

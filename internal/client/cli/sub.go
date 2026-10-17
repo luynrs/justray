@@ -167,6 +167,7 @@ func (a *app) subList(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	a.syncStyle(snapshot.Settings)
 	subs := snapshot.Subscriptions
 	if jsonOut, _ := cmd.Flags().GetBool("json"); jsonOut {
 		type nodeOut struct {

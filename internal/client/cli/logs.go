@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -49,7 +50,7 @@ func logs(cmd *cobra.Command, args []string) error {
 	if !follow {
 		f, err := os.Open(logPath)
 		if err != nil {
-			if os.IsNotExist(err) {
+			if errors.Is(err, os.ErrNotExist) {
 				return nil
 			}
 			return err
@@ -77,7 +78,7 @@ func followLog(ctx context.Context, path string, out io.Writer) error {
 
 	for ctx.Err() == nil {
 		if err := followFile(ctx, w, path, out); err != nil {
-			if !os.IsNotExist(err) {
+			if !errors.Is(err, os.ErrNotExist) {
 				return err
 			}
 			select {

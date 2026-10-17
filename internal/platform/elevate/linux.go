@@ -63,5 +63,5 @@ func hasNetAdmin(path string) bool {
 	if binary.LittleEndian.Uint32(buf[0:4])&0x1 == 0 {
 		return false
 	}
-	return binary.LittleEndian.Uint32(buf[4:8])&(1<<12) != 0 // CAP_NET_ADMIN
+	return binary.LittleEndian.Uint32(buf[4:8])&(1<<unix.CAP_NET_ADMIN) != 0 // CAP_NET_ADMIN
 }

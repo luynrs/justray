@@ -284,31 +284,21 @@ func (bandwidth *mbps) UnmarshalYAML(node *yaml.Node) error {
 
 type reserved []uint8
 
-func (r *reserved) UnmarshalYAML(n *yaml.Node) error {
-	if n.Kind == yaml.SequenceNode {
-		var list []int
-		if err := n.Decode(&list); err != nil {
-			return err
-		}
-		if len(list) != 3 {
-			return fmt.Errorf("reserved: want 3 bytes, got %d", len(list))
-		}
-		for _, v := range list {
-			if v < 0 || v > 255 {
-				return fmt.Errorf("reserved: byte %d out of range", v)
-			}
-			*r = append(*r, uint8(v))
-		}
-		return nil
+func (value *reserved) UnmarshalYAML(node *yaml.Node) error {
+	var data []uint8
+	var err error
+	if node.Kind == yaml.SequenceNode {
+		err = node.Decode(&data)
+	} else {
+		data, err = decodeBase64(node.Value)
 	}
-	b, err := decodeBase64(n.Value)
 	if err != nil {
 		return err
 	}
-	if len(b) != 3 {
-		return fmt.Errorf("reserved: want 3 bytes, got %d", len(b))
+	if len(data) != 3 {
+		return fmt.Errorf("reserved: want 3 bytes, got %d", len(data))
 	}
-	*r = b
+	*value = data
 	return nil
 }
 

@@ -10,6 +10,11 @@ import (
 	"github.com/luynrs/justray/internal/domain"
 )
 
+const (
+	Timeout = 30 * time.Second
+	Retry   = 50 * time.Millisecond
+)
+
 type Request struct {
 	Version   string
 	Method    string

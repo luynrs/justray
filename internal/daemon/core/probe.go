@@ -9,6 +9,7 @@ import (
 	"github.com/luynrs/justray/internal/daemon/store"
 	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/engine"
+	"github.com/luynrs/justray/internal/ipc"
 )
 
 type probeCall struct {
@@ -60,7 +61,7 @@ func (c *Core) Probe(ctx context.Context, sub, id string) error {
 			c.stMu.Unlock()
 			return err
 		}
-		jobCtx, cancel := context.WithTimeout(c.ctx, 30*time.Second)
+		jobCtx, cancel := context.WithTimeout(c.ctx, ipc.Timeout)
 		call = &probeCall{
 			ctx: jobCtx, cancel: cancel, done: make(chan struct{}),
 			target: target, pending: make(map[domain.NodeRef]bool, len(refs)),

@@ -55,12 +55,11 @@ func proxy(n domain.Node, tag string, transportOptions *option.V2RayTransportOpt
 
 	switch n.Protocol {
 	case domain.VLESS:
-		encoding := cmp.Or(n.PacketEncoding, "xudp")
 		return &option.Outbound{Type: C.TypeVLESS, Tag: tag, Options: &option.VLESSOutboundOptions{
 			ServerOptions:               server(n),
 			UUID:                        n.Auth.UUID,
 			Flow:                        n.Auth.Flow,
-			PacketEncoding:              &encoding,
+			PacketEncoding:              new(cmp.Or(n.PacketEncoding, "xudp")),
 			OutboundTLSOptionsContainer: option.OutboundTLSOptionsContainer{TLS: tls},
 			Transport:                   transportOptions,
 		}}, nil

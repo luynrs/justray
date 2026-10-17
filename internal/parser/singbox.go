@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 
 	"github.com/sagernet/sing-box/option"
@@ -185,7 +186,7 @@ func singboxNode(ob singboxOutbound, stlsByTag map[string]singboxOutbound) (doma
 				res = ob.Peers[0].Reserved
 			}
 		}
-		addrs := normalizeCIDRs(append(append([]string(nil), ob.LocalAddress...), ob.Address...))
+		addrs := normalizeCIDRs(slices.Concat(ob.LocalAddress, ob.Address))
 		if ob.PrivateKey != "" && len(addrs) > 0 {
 			n.WireGuard = &domain.WireGuard{
 				AmneziaWGOptions:            ob.AmneziaWGOptions,

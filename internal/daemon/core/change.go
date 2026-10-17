@@ -34,7 +34,7 @@ func (app *Core) change(ctx context.Context, wait bool, action func(context.Cont
 }
 
 func (app *Core) requestContext(ctx context.Context) (context.Context, context.CancelFunc) {
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, ipc.Timeout)
 	stop := context.AfterFunc(app.ctx, cancel)
 	if app.ctx.Err() != nil {
 		cancel()

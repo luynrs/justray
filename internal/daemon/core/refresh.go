@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"slices"
 	"sync"
-	"time"
 
 	"github.com/luynrs/justray/internal/daemon/store"
 	"github.com/luynrs/justray/internal/domain"
+	"github.com/luynrs/justray/internal/ipc"
 )
 
 type refreshCall struct {
@@ -110,7 +110,7 @@ func (c *Core) refresh(ctx context.Context, sub store.Subscription) error {
 				return fmt.Errorf("subscription %q not found", sub.ID)
 			}
 			sub = c.state.Subscriptions[index]
-			jobCtx, cancel := context.WithTimeout(c.ctx, 30*time.Second)
+			jobCtx, cancel := context.WithTimeout(c.ctx, ipc.Timeout)
 			call = &refreshCall{ctx: jobCtx, cancel: cancel, done: make(chan struct{})}
 			c.refreshes[sub.ID] = call
 			c.publishLocked()

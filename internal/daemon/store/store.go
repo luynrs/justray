@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"time"
@@ -52,7 +53,7 @@ func (d Disk) Load() (State, error) {
 		if err := json.Unmarshal(cfgData, &state.Settings); err != nil {
 			return state, err
 		}
-	} else if !os.IsNotExist(cfgErr) {
+	} else if !errors.Is(cfgErr, os.ErrNotExist) {
 		return state, cfgErr
 	}
 
@@ -63,7 +64,7 @@ func (d Disk) Load() (State, error) {
 		if state.Subscriptions == nil {
 			state.Subscriptions = []Subscription{}
 		}
-	} else if !os.IsNotExist(stateErr) {
+	} else if !errors.Is(stateErr, os.ErrNotExist) {
 		return state, stateErr
 	}
 

@@ -65,7 +65,7 @@ func Listen(socket string) (net.Listener, func(), error) {
 		select {
 		case <-ctx.Done():
 			return nil, nil, ctx.Err()
-		case <-time.After(50 * time.Millisecond):
+		case <-time.After(ipc.Retry):
 		}
 		if !elevate.Needed(syscall.EPERM) {
 			unlock, err = lock.File(socket + ".lock")

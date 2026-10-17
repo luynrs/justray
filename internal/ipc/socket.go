@@ -1,6 +1,7 @@
 package ipc
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -31,7 +32,7 @@ func Config(dir string) string    { return filepath.Join(dir, "config.json") }
 func State(dir string) string     { return filepath.Join(dir, "state.json") }
 
 func ClearLog(path string) error {
-	if err := os.Truncate(path, 0); err != nil && !os.IsNotExist(err) {
+	if err := os.Truncate(path, 0); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	return nil

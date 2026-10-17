@@ -63,7 +63,7 @@ func New(c *ipc.Client, start func(context.Context) error) Model {
 	editor.Prompt = ""
 	editor.ShowLineNumbers = false
 	editor.Placeholder = "Paste a subscription or node link..."
-	editor.CharLimit = 2 << 20
+	editor.CharLimit = 4 << 20
 	editor.KeyMap.InsertNewline.SetEnabled(false)
 	editor.SetStyles(style.Editor)
 	filter := textinput.New()

@@ -27,7 +27,7 @@ func (s *Server) handle(conn net.Conn) {
 	_ = conn.SetDeadline(time.Now().Add(ipc.IdleTimeout))
 
 	var req ipc.Request
-	if err := json.NewDecoder(io.LimitReader(conn, 1<<20)).Decode(&req); err != nil { // max req size
+	if err := json.NewDecoder(io.LimitReader(conn, 32<<20)).Decode(&req); err != nil { // max req size
 		if !errors.Is(err, io.EOF) {
 			_ = reply(conn, nil, fmt.Errorf("bad request: %w", err))
 		}
@@ -67,7 +67,7 @@ func (s *Server) handle(conn net.Conn) {
 		s.watch(ctx, conn)
 		return
 	}
-	ctx, finish := context.WithTimeout(ctx, 30*time.Second)
+	ctx, finish := context.WithTimeout(ctx, ipc.Timeout)
 	defer finish()
 	_ = conn.SetDeadline(time.Time{})
 	result, err := s.dispatch(ctx, req)

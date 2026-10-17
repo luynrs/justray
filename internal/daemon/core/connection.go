@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/luynrs/justray/internal/daemon/store"
 	"github.com/luynrs/justray/internal/domain"
@@ -72,7 +71,7 @@ func (c *Core) RequestRestart(err error) {
 	}
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
-	ctx, cancel := context.WithTimeout(c.ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(c.ctx, ipc.Timeout)
 	defer cancel()
 	for c.changing != nil {
 		done := c.changing.done

@@ -71,7 +71,7 @@ func (engine *box) Probe(ctx context.Context, nodes []domain.Node, settings doma
 	servers := make(map[string][][]int)
 	for _, indices := range groups {
 		node := nodes[indices[0]]
-		server := net.JoinHostPort(strings.ToLower(node.Server), strconv.Itoa(node.Port))
+		server := domain.ServerAddress(strings.ToLower(node.Server), node.Port)
 		servers[server] = append(servers[server], indices)
 	}
 	slots := make(chan struct{}, 8)

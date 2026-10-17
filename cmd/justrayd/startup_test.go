@@ -58,7 +58,7 @@ func TestStartup(t *testing.T) {
 	requireNoError(t, err)
 	t.Cleanup(func() { _ = os.RemoveAll(home) })
 	bin := filepath.Join(home, "bin")
-	build := exec.Command("go", "build", "-ldflags=-s -w", "-o", bin+string(os.PathSeparator), "./cmd/justray", "./cmd/justrayd")
+	build := exec.Command("go", "build", "-tags=with_quic,with_utls,with_gvisor,with_grpc,with_xhttp,with_awg,badlinkname", "-ldflags=-s -w", "-o", bin+string(os.PathSeparator), "./cmd/justray", "./cmd/justrayd")
 	build.Dir = "../.."
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build: %s, %v", output, err)

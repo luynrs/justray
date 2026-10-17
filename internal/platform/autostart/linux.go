@@ -41,7 +41,7 @@ func enabled(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	if _, err := os.Lstat(path); err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return false, nil
 		}
 		return false, err
@@ -109,7 +109,7 @@ func disable(ctx context.Context) error {
 	if _, err := run(ctx, exec.CommandContext(ctx, "systemctl", "--user", "disable", "justrayd.service")); err != nil {
 		return err
 	}
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	_, err = run(ctx, exec.CommandContext(ctx, "systemctl", "--user", "daemon-reload"))

@@ -188,7 +188,9 @@ func (m Model) modalView(background string) string {
 	canvas := lipgloss.NewCanvas(m.w, m.h).Compose(lipgloss.NewLayer(background))
 	for row := range canvas.Height() {
 		for column := range canvas.Width() {
-			canvas.CellAt(column, row).Style.Attrs |= uv.AttrFaint
+			cellStyle := &canvas.CellAt(column, row).Style
+			cellStyle.Attrs |= uv.AttrFaint
+			cellStyle.Bg = lipgloss.Darken(cellStyle.Bg, 0.75)
 		}
 	}
 	lipgloss.NewLayer(strings.Join(frame, "\n")).Draw(canvas, layout.bounds)

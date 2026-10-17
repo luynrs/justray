@@ -369,11 +369,15 @@ func TestWatchLifecycle(t *testing.T) {
 		screen("gga", tea.WindowSizeMsg{Width: 80, Height: 20})
 		screen("\r", tea.PasteMsg{Content: "socks://[2001:db8::1]:19090#IPv6"})
 		waitFor(t, "", "[2001:db8::1]:19090")
-		signature := "<b 0x" + strings.Repeat("ab", 1200) + ">"
+		signature := "<b 0x" + strings.Repeat("ab", 2048) + ">"
 		clientConfig := fmt.Sprintf(`{"client_priv_key":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=","server_pub_key":"AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=","client_ip":"10.0.0.2, fd00::2","persistent_keep_alive":"0","I1":%q}`, signature)
 		profile := fmt.Appendf(nil, `{"hostName":"[2001:db8::1]","description":"Amnezia TUI","containers":[{"container":"amnezia-awg2","awg":{"port":"51820","last_config":%q}}]}`, clientConfig)
+		profile = append(profile[:len(profile)-1], bytes.Repeat([]byte(" "), (1<<20)-len(profile))...)
+		profile = append(profile, '}')
+		encoded := base64.RawURLEncoding.EncodeToString(profile)
+		encoded = strings.Repeat(" ", (2<<20)-len(encoded)) + encoded
 		screen("gga")
-		screen("\r", tea.PasteMsg{Content: "vpn://" + base64.RawURLEncoding.EncodeToString(profile)})
+		screen("\r", tea.PasteMsg{Content: "vpn://" + encoded})
 		check(t, waitFor(t, "", "Amnezia TUI"), "amneziawg")
 		state, err := (store.Disk{Dir: directory}).Load()
 		requireNoError(t, err)
@@ -563,6 +567,10 @@ func TestSubscriptionRefresh(t *testing.T) {
 		"sing-box infra":       `{"outbounds":[{"type":"direct"},{"type":"block"},{"type":"dns"},{"type":"selector","outbounds":["direct"]},{"type":"urltest","outbounds":["direct"]}]}`,
 		"xray infra":           `[{"remarks":"empty","outbounds":[{"protocol":"freedom"},{"protocol":"blackhole"},{"protocol":"dns"},{"protocol":"loopback"}]}]`,
 		"clash malformed":      "proxies:\n  - {name: bad, type: trojan, server: example.com, port: [}\n",
+		"reserved negative":    "proxies:\n  - {type: wireguard, server: example.com, port: 51820, private-key: secret, public-key: public, ip: 10.0.0.2, reserved: [-1, 0, 255]}",
+		"reserved overflow":    "proxies:\n  - {type: wireguard, server: example.com, port: 51820, private-key: secret, public-key: public, ip: 10.0.0.2, reserved: [0, 256, 255]}",
+		"reserved short":       "proxies:\n  - {type: wireguard, server: example.com, port: 51820, private-key: secret, public-key: public, ip: 10.0.0.2, reserved: [0, 255]}",
+		"reserved long":        "proxies:\n  - {type: wireguard, server: example.com, port: 51820, private-key: secret, public-key: public, ip: 10.0.0.2, reserved: [0, 1, 2, 255]}",
 		"sing-box transport":   `{"outbounds":[{"type":"shadowsocks","server":"example.com","server_port":443,"method":"aes-128-gcm","password":"secret","transport":{"type":"ws"}}]}`,
 		"shadowtls detour":     `{"outbounds":[{"type":"shadowtls","tag":"stls","server":"example.com","server_port":443},{"type":"shadowsocks","server":"example.com","server_port":8388,"method":"aes-128-gcm","password":"secret","detour":"stls"}]}`,
 		"xray incompatible":    `{"outbounds":[{"protocol":"vless","settings":{"vnext":[{"address":"example.com","port":443,"users":[{"id":"uuid"}]}],"servers":[{"address":"ignored.example","port":443,"password":"secret"}]}}]}`,
@@ -745,6 +753,16 @@ func TestSubscriptionRefresh(t *testing.T) {
 			name:    "sing-box endpoint document",
 			content: `{"endpoints":[{"type":"wireguard","tag":"endpoint","private_key":"private","address":["10.0.0.2/32"],"peers":[{"address":"endpoint.example","port":51820,"public_key":"public"}]}]}`,
 			nodes:   []domain.Node{{Name: "endpoint", Protocol: domain.WG, Server: "endpoint.example", Port: 51820, WireGuard: &domain.WireGuard{PrivateKey: "private", PeerPublicKey: "public", Address: []string{"10.0.0.2/32"}}}},
+		},
+		{
+			name: "clash reserved representations",
+			content: "proxies:\n" +
+				"  - {name: list, type: wireguard, server: example.com, port: 51820, private-key: private, public-key: public, ip: 10.0.0.2, reserved: [0, 128, 255]}\n" +
+				"  - {name: base64, type: wireguard, server: example.com, port: 51820, private-key: private, public-key: public, ip: 10.0.0.2, reserved: AID/}\n",
+			nodes: []domain.Node{
+				{Name: "list", Protocol: domain.WG, Server: "example.com", Port: 51820, WireGuard: &domain.WireGuard{PrivateKey: "private", PeerPublicKey: "public", Address: []string{"10.0.0.2/32"}, Reserved: []uint8{0, 128, 255}}},
+				{Name: "base64", Protocol: domain.WG, Server: "example.com", Port: 51820, WireGuard: &domain.WireGuard{PrivateKey: "private", PeerPublicKey: "public", Address: []string{"10.0.0.2/32"}, Reserved: []uint8{0, 128, 255}}},
+			},
 		},
 		{
 			name:    "sing-box mixed rejections",
@@ -930,6 +948,18 @@ func TestSubscriptionRefresh(t *testing.T) {
 	if err != nil || len(snapshot.Nodes) != 2 || snapshot.Nodes[0].Name != "second" || snapshot.Nodes[1].Name != "second" {
 		t.Fatalf("refresh all missed a subscription: %+v, %v", snapshot.Nodes, err)
 	}
+	t.Run("large escaped URL", func(t *testing.T) {
+		rawURL := source.URL + "/feed#"
+		rawURL += strings.Repeat("<", (4<<20)-len(rawURL))
+		imported, err := client.AddSubscription(t.Context(), rawURL)
+		requireNoError(t, err)
+		state, err := disk.Load()
+		requireNoError(t, err)
+		last := state.Subscriptions[len(state.Subscriptions)-1]
+		if last.ID != imported.SubscriptionID || last.URL != rawURL || len(last.Nodes) != 1 || last.Nodes[0].Name != "second" {
+			t.Fatalf("large escaped URL import: matching ID=%v, matching URL=%v, nodes=%d, name=%q", last.ID == imported.SubscriptionID, last.URL == rawURL, len(last.Nodes), last.Name)
+		}
+	})
 }
 
 func TestSwitch(t *testing.T) {

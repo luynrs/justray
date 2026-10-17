@@ -66,7 +66,7 @@ func waitStopped(ctx context.Context, socket string, timeout time.Duration) erro
 			unlock()
 			return nil
 		}
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
 		if !errors.Is(err, lock.ErrLocked) {
@@ -78,7 +78,7 @@ func waitStopped(ctx context.Context, socket string, timeout time.Duration) erro
 				return errors.New("daemon stop timed out")
 			}
 			return ctx.Err()
-		case <-time.After(50 * time.Millisecond):
+		case <-time.After(ipc.Retry):
 		}
 	}
 }

@@ -75,7 +75,7 @@ func receive[T any](decoder *json.Decoder) (T, error) {
 
 func call[T any](ctx context.Context, c *Client, method string, args Arguments) (T, error) {
 	var out T
-	timeout := 30 * time.Second
+	timeout := Timeout
 	if method == "Ping" || method == "Snapshot" {
 		timeout = 500 * time.Millisecond
 	}
@@ -97,15 +97,14 @@ func call[T any](ctx context.Context, c *Client, method string, args Arguments) 
 }
 
 func (c *Client) Ping(ctx context.Context) error {
-	_, err := call[any](ctx, c, "Ping", Arguments{})
-	return err
+	return c.command(ctx, "Ping", Arguments{})
 }
 func (c *Client) Snapshot(ctx context.Context) (Snapshot, error) {
 	return call[Snapshot](ctx, c, "Snapshot", Arguments{})
 }
 
 func (c *Client) AwaitConnection(ctx context.Context, ref domain.NodeRef, want *bool) (Snapshot, error) {
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, Timeout)
 	defer cancel()
 	pending := false
 	for {
@@ -129,7 +128,7 @@ func (c *Client) AwaitConnection(ctx context.Context, ref domain.NodeRef, want *
 				return Snapshot{}, errors.New("timed out waiting for elevation")
 			}
 			return Snapshot{}, ctx.Err()
-		case <-time.After(50 * time.Millisecond):
+		case <-time.After(Retry):
 		}
 	}
 }
@@ -174,7 +173,7 @@ func (c *Client) SetCollapsed(ctx context.Context, id string, collapsed *bool) e
 func (c *Client) Shutdown(ctx context.Context) error { return c.command(ctx, "Shutdown", Arguments{}) }
 
 func (c *Client) command(ctx context.Context, method string, args Arguments) error {
-	_, err := call[struct{}](ctx, c, method, args)
+	_, err := call[any](ctx, c, method, args)
 	return err
 }
 
@@ -188,16 +187,13 @@ func (c *Client) Watch(ctx context.Context, onUpdate func(Snapshot)) error {
 	defer stop()
 
 	if err := json.NewEncoder(conn).Encode(Request{Version: version.Version, Method: "Watch"}); err != nil {
-		return fmt.Errorf("watch: %w", err)
+		return cmp.Or(ctx.Err(), fmt.Errorf("watch: %w", err))
 	}
 	dec := json.NewDecoder(conn)
 	for {
 		snapshot, err := receive[Snapshot](dec)
 		if err != nil {
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			return fmt.Errorf("watch: %w", err)
+			return cmp.Or(ctx.Err(), fmt.Errorf("watch: %w", err))
 		}
 		onUpdate(snapshot)
 	}

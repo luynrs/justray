@@ -7,7 +7,6 @@ import (
 
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
-	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/json/badoption"
 
 	"github.com/luynrs/justray/internal/domain"
@@ -25,7 +24,7 @@ func build(n domain.Node, s domain.Settings, logPath string, tun bool) *option.O
 		Inbounds: []option.Inbound{
 			{Type: C.TypeMixed, Tag: "mixed-in", Options: &option.HTTPMixedInboundOptions{
 				ListenOptions: option.ListenOptions{
-					Listen:     common.Ptr(badoption.Addr(listenAddr(s))),
+					Listen:     new(badoption.Addr(listenAddr(s))),
 					ListenPort: uint16(s.Port),
 				},
 			}},

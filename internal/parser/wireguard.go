@@ -25,10 +25,7 @@ func parseWireGuard(uri string) (domain.Node, error) {
 		return domain.Node{}, fmt.Errorf("wireguard: %w", err)
 	}
 	q := u.Query()
-	privateKey := ""
-	if u.User != nil {
-		privateKey = u.User.Username()
-	}
+	privateKey := u.User.Username()
 	if privateKey == "" {
 		privateKey = queryAny(u, q, "privatekey", "private_key", "private-key", "privkey")
 	}

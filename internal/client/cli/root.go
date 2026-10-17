@@ -108,8 +108,7 @@ func Execute() int {
 			return err
 		}
 		if snapshot, err := a.client.Snapshot(cmd.Context()); err == nil {
-			a.emoji = snapshot.Settings.Emoji == "on"
-			style.TTY = style.DetectTTY(snapshot.Settings.ForceTTY)
+			a.syncStyle(snapshot.Settings)
 		}
 		return nil
 	}
@@ -144,7 +143,7 @@ func Execute() int {
 
 	command, err := rootCmd.ExecuteContextC(ctx)
 	if err != nil {
-		if command == stopCmd && err == ipc.ErrNoDaemon {
+		if command == stopCmd && errors.Is(err, ipc.ErrNoDaemon) {
 			return 2
 		}
 		if ipc.ErrorType(err) == "canceled" && command != stopCmd {
@@ -178,7 +177,7 @@ func (a *app) connectDaemon(ctx context.Context, startMissing bool) error {
 		a.client = ipc.New(ipc.Socket(dir))
 	}
 	if !startMissing {
-		if _, err := os.Stat(dir); os.IsNotExist(err) {
+		if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
 			return ctx.Err()
 		}
 	}
@@ -203,7 +202,7 @@ func (a *app) connectDaemon(ctx context.Context, startMissing bool) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(50 * time.Millisecond):
+		case <-time.After(ipc.Retry):
 		}
 	}
 	pingErr := a.client.Ping(ctx)
@@ -332,7 +331,7 @@ func wait(ctx context.Context, c *ipc.Client) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(50 * time.Millisecond):
+		case <-time.After(ipc.Retry):
 		}
 	}
 }

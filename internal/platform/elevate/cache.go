@@ -3,6 +3,7 @@
 package elevate
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -20,7 +21,7 @@ func cachedCopy(source, dir string) (string, error) {
 			return target, nil
 		}
 	}
-	if err := os.Remove(target); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(target); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return "", err
 	}
 	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {

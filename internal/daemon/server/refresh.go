@@ -3,6 +3,8 @@ package server
 import (
 	"context"
 	"time"
+
+	"github.com/luynrs/justray/internal/ipc"
 )
 
 func (s *Server) AutoRefresh() {
@@ -41,7 +43,7 @@ func (s *Server) AutoRefresh() {
 			ids = append(ids, id)
 		}
 		if len(ids) > 0 {
-			ctx, cancel := context.WithTimeout(s.ctx, 30*time.Second)
+			ctx, cancel := context.WithTimeout(s.ctx, ipc.Timeout)
 			err := s.core.RefreshSubscriptions(ctx, ids...)
 			cancel()
 			if err != nil {

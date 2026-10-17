@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -53,7 +52,7 @@ func (a *app) nodeDetails(st ipc.Status, nodes []ipc.Node) {
 	n := lookup(st.NodeRef, nodes)
 	pairs := [][2]string{{"Node", a.nodeName(st.NodeName, st.NodeRef.NodeID)}}
 	if !st.Tun && st.Port > 0 {
-		pairs = append(pairs, [2]string{"Proxy", fmt.Sprintf("127.0.0.1:%d", st.Port)})
+		pairs = append(pairs, [2]string{"Proxy", domain.ServerAddress("127.0.0.1", st.Port)})
 	}
 	fields(append(pairs, a.nodeFields(n)...)...)
 }
@@ -100,6 +99,11 @@ func (application *app) fail(err error) {
 }
 
 func (a *app) clean(s string) string { return style.Sanitize(s, a.emoji) }
+
+func (application *app) syncStyle(settings domain.Settings) {
+	application.emoji = settings.Emoji == "on"
+	style.TTY = style.DetectTTY(settings.ForceTTY)
+}
 
 func spin(text string) func() {
 	if fi, err := os.Stdout.Stat(); err != nil || fi.Mode()&os.ModeCharDevice == 0 {
