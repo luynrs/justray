@@ -172,7 +172,7 @@ func New(s domain.Settings, top int) *Model {
 }
 
 func (s *Model) Result() (domain.Settings, domain.Settings, error) {
-	if s.abandon || !s.Dirty() {
+	if s.abandon || s.cur.Equal(s.orig) {
 		return s.orig, s.orig, nil
 	}
 	next, err := s.cur.Normalize()
@@ -219,10 +219,6 @@ func (s *Model) key(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 
 	switch msg.String() {
 	case "esc":
-		if s.err != "" {
-			s.abandon = true
-			return true, nil
-		}
 		if _, _, err := s.Result(); err != nil {
 			s.err = err.Error()
 			return false, nil
@@ -243,9 +239,13 @@ func (s *Model) key(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 		s.switchTab(-1)
 
 	case "enter":
+		if len(s.at().enum) > 0 {
+			s.step(1)
+			return false, nil
+		}
 		return false, s.activate()
 	case "space":
-		if current := s.at(); len(current.enum) > 0 || len(current.multi) > 0 {
+		if s.Selecting() {
 			return false, s.activate()
 		}
 
@@ -366,12 +366,17 @@ func (s *Model) editKey(msg tea.KeyPressMsg) tea.Cmd {
 
 // step cycles an enum choice
 func (s *Model) step(delta int) {
-	f := s.at()
-	count := max(len(f.enum), len(f.multi))
-	if count > 0 {
-		s.option = min(max(s.option+delta, 0), count-1)
-		s.clamp()
+	current := s.at()
+	switch {
+	case len(current.enum) > 0:
+		s.option = (slices.Index(current.enum, current.value(&s.cur)) + delta + len(current.enum)) % len(current.enum)
+		s.assign(current, current.enum[s.option])
+	case len(current.multi) > 0:
+		s.option = min(max(s.option+delta, 0), len(current.multi)-1)
+	default:
+		return
 	}
+	s.clamp()
 }
 
 func (s *Model) focus(cursor int) {
@@ -472,10 +477,6 @@ func conflict(s *domain.Settings, target *[]string, rule string) error {
 }
 
 func (s *Model) at() field { return s.rows()[s.cursor] }
-
-func (s *Model) Dirty() bool {
-	return !s.cur.Equal(s.orig)
-}
 
 // move skips list headings
 func (s *Model) move(delta int) {

@@ -160,10 +160,8 @@ func (m Model) footerHint() string {
 		return style.KeyHints(m.w, [2]string{"esc", "cancel"})
 	case m.editing():
 		return style.KeyHints(m.w, [2]string{style.Enter(), "apply"}, [2]string{"esc", "cancel"})
-	case m.dialog != nil && m.dialog.Err() != "":
-		return style.KeyHints(m.w, [2]string{"esc", "cancel"}, [2]string{"?", "shortcuts"})
-	case m.dialog != nil && m.dialog.Dirty():
-		return style.KeyHints(m.w, [2]string{"esc", "save"}, [2]string{"?", "shortcuts"})
+	case m.dialog != nil:
+		return style.KeyHints(m.w, [2]string{"esc", "save"}, [2]string{"q", "quit"}, [2]string{"?", "shortcuts"})
 	}
 	return m.helpHint()
 }
