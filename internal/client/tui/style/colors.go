@@ -6,6 +6,8 @@ import (
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/lipgloss/v2"
+
+	"github.com/luynrs/justray/internal/version"
 )
 
 var (
@@ -21,8 +23,8 @@ var (
 	Bold = lipgloss.NewStyle().Bold(true)
 
 	Input = textinput.Styles{
-		Focused: textinput.StyleState{Placeholder: Gray, Suggestion: Gray},
-		Blurred: textinput.StyleState{Text: Gray, Placeholder: Gray, Suggestion: Gray},
+		Focused: textinput.StyleState{Prompt: Gray, Placeholder: Gray, Suggestion: Gray},
+		Blurred: textinput.StyleState{Prompt: Gray, Text: Gray, Placeholder: Gray, Suggestion: Gray},
 		Cursor:  textinput.CursorStyle{Color: Cyan.GetForeground(), Blink: true},
 	}
 	Editor = textarea.Styles{
@@ -31,6 +33,21 @@ var (
 		Cursor:  textarea.CursorStyle{Color: Cyan.GetForeground(), Blink: true},
 	}
 )
+
+func Title() string {
+	return Blue.Bold(true).Render("JustRay") + " " + Gray.Render(version.String())
+}
+
+func ResizeInput(input *textinput.Model, width int) {
+	width = max(width, 1)
+	if input.Width() == width {
+		return
+	}
+	position := input.Position()
+	input.SetWidth(width)
+	input.CursorEnd()
+	input.SetCursor(position)
+}
 
 func KeyHint(key, description string) string {
 	return Bold.Render(key) + Gray.Render(" "+description)

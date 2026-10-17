@@ -1,7 +1,6 @@
 package tree
 
 import (
-	"cmp"
 	"fmt"
 	"slices"
 
@@ -72,7 +71,7 @@ func (d Data) dot(n ipc.Node) string {
 	case d.connected() && d.Status.NodeRef == n.Ref():
 		return style.Green.Render(style.Dot(true))
 	case n.Probing:
-		return style.Yellow.Render(cmp.Or(d.Spinner, style.Dot(false)))
+		return style.Yellow.Render(d.Spinner)
 	case !n.Probed:
 		return style.Gray.Render(style.Dot(false))
 	case n.Alive:

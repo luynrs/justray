@@ -5,6 +5,7 @@ import (
 	"math"
 	"strings"
 	"time"
+	"unicode"
 
 	"charm.land/lipgloss/v2"
 
@@ -59,7 +60,7 @@ func Sanitize(s string, emoji bool) string {
 		if r == '\n' || r == '\t' {
 			return ' '
 		}
-		if r < 0x20 || r == 0x7f {
+		if unicode.IsControl(r) {
 			return -1
 		}
 		if !emoji || TTY {

@@ -1,12 +1,17 @@
 package tui
 
 import (
+	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/colorprofile"
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/luynrs/justray/internal/client/tui/settings"
 	"github.com/luynrs/justray/internal/client/tui/style"
@@ -16,10 +21,45 @@ import (
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.ColorProfileMsg:
+		clear(m.dimmedColors)
+		if msg.Profile < colorprofile.ANSI256 {
+			return m, nil
+		}
+		var query []byte
+		for index := range 16 {
+			query = fmt.Appendf(query, "\x1b]4;%d;?\x1b\\", index)
+		}
+		return m, tea.Batch(tea.Raw(string(query)), tea.RequestForegroundColor)
+
+	case tea.ForegroundColorMsg:
+		m.dimmedColors[nil] = lipgloss.Darken(msg.Color, 0.35)
+		return m, nil
+
+	case uv.UnknownOscEvent:
+		var index uint
+		var value string
+		if _, err := fmt.Sscanf(strings.TrimRight(string(msg), "\a\x1b\\"), "\x1b]4;%d;%s", &index, &value); err == nil && index < 16 {
+			if parsed := ansi.XParseColor(value); parsed != nil {
+				m.dimmedColors[ansi.BasicColor(index)] = lipgloss.Darken(parsed, 0.35)
+			}
+		}
+		return m, nil
+
 	case tea.WindowSizeMsg:
+		rows := m.rows()
+		followSelection := m.selectionVisible(rows)
 		m.w, m.h = msg.Width, msg.Height
+		style.ResizeInput(&m.filter, m.w-lipgloss.Width(m.filter.Prompt)-segW(modeProxy)-segW(modeTun)-3)
+		if m.dialog != nil {
+			m.dialog.Resize(m.w, m.height())
+		}
 		m.resizeModal()
-		m.clamp()
+		if followSelection {
+			m.cursor, m.scroll = tree.Reveal(rows, m.cursor, m.scroll, m.height())
+		} else {
+			m.cursor, m.scroll = tree.Clamp(rows, m.cursor, m.scroll, m.height())
+		}
 		return m, nil
 
 	case tick:
@@ -73,7 +113,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, next(m.watch, m.updates)
 		}
 		initial := m.snapshot.Settings.Port == 0
-		selected, selectedOK := m.at()
+		rows := m.rows()
+		selected, selectedOK := tree.At(rows, m.cursor)
+		followSelection := m.selectionVisible(rows)
 		if !initial {
 			for _, sub := range msg.snapshot.Subscriptions {
 				if sub.Warning != "" && !slices.ContainsFunc(m.snapshot.Subscriptions, func(previous ipc.Subscription) bool {
@@ -90,7 +132,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		spinnerCommand := m.syncTTY()
 		m.live = true
 		spinnerCommand = tea.Batch(spinnerCommand, m.startSpinner())
-		rows := m.rows()
+		rows = m.rows()
 		switch {
 		case initial && m.snapshot.Status.Connected:
 			for i, idx := range tree.Selectable(rows) {
@@ -111,7 +153,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-		if initial {
+		if initial || followSelection {
 			m.cursor, m.scroll = tree.Reveal(rows, m.cursor, m.scroll, m.height())
 		} else {
 			m.cursor, m.scroll = tree.Clamp(rows, m.cursor, m.scroll, m.height())
@@ -224,6 +266,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.dialog = settings.New(m.snapshot.Settings, topLines)
+		m.dialog.Resize(m.w, m.height())
 		spinnerCommand := m.syncTTY()
 		return m, spinnerCommand
 	case "/":

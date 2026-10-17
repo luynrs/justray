@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"image/color"
 	"slices"
 	"time"
 
@@ -41,6 +42,7 @@ type Model struct {
 	filter       textinput.Model
 	help         viewport.Model
 	activeModal  modalKind
+	dimmedColors map[color.Color]color.Color
 
 	live    bool
 	updates chan pushed
@@ -67,7 +69,7 @@ func New(c *ipc.Client, start func(context.Context) error) Model {
 	editor.KeyMap.InsertNewline.SetEnabled(false)
 	editor.SetStyles(style.Editor)
 	filter := textinput.New()
-	filter.Prompt = ""
+	filter.Prompt = "~ Search: "
 	filter.CharLimit = 128
 	filter.SetStyles(style.Input)
 	m := Model{
@@ -78,6 +80,7 @@ func New(c *ipc.Client, start func(context.Context) error) Model {
 		filter:        filter,
 		help:          viewport.New(),
 		updates:       make(chan pushed),
+		dimmedColors:  make(map[color.Color]color.Color),
 		watch:         watch,
 		stop:          stop,
 	}
@@ -155,6 +158,11 @@ func (m Model) data() tree.Data {
 func (m Model) rows() []tree.Row { return m.data().Rows() }
 
 func (m Model) at() (tree.Row, bool) { return tree.At(m.rows(), m.cursor) }
+
+func (model Model) selectionVisible(rows []tree.Row) bool {
+	selected, ok := tree.At(rows, model.cursor)
+	return ok && slices.Contains(rows[model.scroll:min(model.scroll+model.height(), len(rows))], selected)
+}
 
 func (m Model) connected() bool { return m.live && m.snapshot.Status.Connected }
 

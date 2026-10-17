@@ -11,7 +11,6 @@ import (
 
 	"github.com/luynrs/justray/internal/client/tui/style"
 	"github.com/luynrs/justray/internal/client/tui/tree"
-	"github.com/luynrs/justray/internal/version"
 )
 
 const (
@@ -50,7 +49,7 @@ func (m Model) content() string {
 		var body string
 		var rows []tree.Row
 		if m.dialog != nil {
-			body = m.dialog.View(m.w, m.height())
+			body = m.dialog.View()
 		} else {
 			rows = m.rows()
 			body = m.tree(rows)
@@ -64,18 +63,17 @@ func (m Model) content() string {
 }
 
 func (m Model) titleLeft() string {
-	left := style.Blue.Bold(true).Render("JustRay") + " " + style.Gray.Render(version.String())
-	if m.dialog != nil {
-		left += "  " + m.dialog.TabBar(max(m.w-lipgloss.Width(left)-2, 10))
-	} else if m.filter.Focused() || m.filter.Value() != "" {
-		left += " " + style.Gray.Render("~ Search:") + " " + m.filter.View()
+	if m.dialog == nil && (m.filter.Focused() || m.filter.Value() != "") {
+		return m.filter.View()
 	}
-	return left
+	return style.Title()
 }
 
 func (m Model) titleLine() string {
 	var right string
-	if m.dialog == nil {
+	if m.dialog != nil {
+		right = m.dialog.TabBar()
+	} else {
 		right = style.Segment(modeProxy, !m.snapshot.Status.Tun) + style.Segment(modeTun, m.snapshot.Status.Tun)
 	}
 	return m.clip(style.Flush(m.titleLeft(), right, m.w))

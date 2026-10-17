@@ -70,6 +70,7 @@ var tabs = []tab{
 		},
 	}},
 	{name: "Connection", fields: []field{
+		choice("IP version", domain.IPVersions, func(settings *domain.Settings) *string { return &settings.IPVersion }),
 		{
 			name: "Proxy port",
 			hint: strconv.Itoa(domain.DefaultPort),
@@ -77,7 +78,6 @@ var tabs = []tab{
 			set:  setInt(func(s *domain.Settings) *int { return &s.Port }, domain.DefaultPort),
 		},
 		choice("Allow LAN", domain.Toggle, func(settings *domain.Settings) *string { return &settings.AllowLAN }),
-		choice("IP version", domain.IPVersions, func(settings *domain.Settings) *string { return &settings.IPVersion }),
 		choice("Stack", domain.TunStacks, func(settings *domain.Settings) *string { return &settings.TunStack }),
 		{
 			name: "MTU",
@@ -140,26 +140,24 @@ func setInt(at func(*domain.Settings) *int, def int) func(*domain.Settings, stri
 }
 
 type Model struct {
-	top         int
-	hits        map[int]hit
-	tab         int
-	cursor      int
-	scroll      int
-	height      int
-	navigation  navigation.Keys
-	abandon     bool
-	input       textinput.Model
-	cur         domain.Settings
-	orig        domain.Settings
-	err         string
-	compactTabs bool
+	top        int
+	tab        int
+	cursor     int
+	scroll     int
+	width      int
+	height     int
+	navigation navigation.Keys
+	abandon    bool
+	input      textinput.Model
+	cur        domain.Settings
+	orig       domain.Settings
+	err        string
 }
 
 func New(s domain.Settings, top int) *Model {
 	input := textinput.New()
 	input.Prompt = ""
 	input.SetStyles(style.Input)
-	input.CharLimit = 2048
 	m := &Model{top: top, height: 1, cur: s.Clone(), orig: s, input: input}
 	m.move(0)
 	return m
@@ -235,8 +233,8 @@ func (s *Model) key(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 		return false, s.activate()
 
 	case "d":
-		if f, ok := s.at(); ok && f.removable() {
-			_ = f.apply(&s.cur, "")
+		if f := s.at(); f.removable() {
+			s.assign(f, "")
 			s.move(0)
 		}
 	}
@@ -248,6 +246,9 @@ func (s *Model) mouse(msg tea.MouseMsg) tea.Cmd {
 		return nil
 	}
 	mouse := msg.Mouse()
+	if mouse.X < 0 || mouse.X >= s.width {
+		return nil
+	}
 	y := mouse.Y - s.top
 
 	switch msg.(type) {
@@ -261,27 +262,27 @@ func (s *Model) mouse(msg tea.MouseMsg) tea.Cmd {
 			}
 			return nil
 		}
-		if y < 0 {
+		if y < 0 || y >= s.height {
 			return nil
 		}
-		h, ok := s.hits[y]
-		if !ok {
-			return nil
-		}
-		if h.choice != "" {
-			if f, ok := s.at(); ok {
-				s.assign(f, h.choice)
+		rows := s.rows()
+		layout, _ := s.layout(rows)
+		position := s.scroll + y
+		for index, bounds := range layout {
+			if position < bounds.start || position >= bounds.end || !rows[index].editable() {
+				continue
 			}
-			return nil
-		}
-		if rows := s.rows(); h.row < len(rows) && !rows[h.row].editable() {
-			return nil
-		}
-		if h.row == s.cursor {
+			if index != s.cursor {
+				s.cursor = index
+				s.move(0)
+				return nil
+			}
+			if len(rows[index].enum) > 0 && position > bounds.start {
+				s.assign(rows[index], rows[index].enum[position-bounds.start-1])
+				return nil
+			}
 			return s.activate()
 		}
-		s.cursor = h.row
-		s.move(0)
 
 	case tea.MouseWheelMsg:
 		if y < 0 || y >= s.height {
@@ -298,11 +299,9 @@ func (s *Model) mouse(msg tea.MouseMsg) tea.Cmd {
 }
 
 func (s *Model) activate() tea.Cmd {
+	defer s.clamp()
 	s.move(0)
-	f, ok := s.at()
-	if !ok || !f.editable() {
-		return nil
-	}
+	f := s.at()
 	if len(f.enum) > 0 {
 		s.step(1)
 		return nil
@@ -323,12 +322,7 @@ func (s *Model) editKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 
 	case "enter":
-		f, ok := s.at()
-		if !ok {
-			s.input.Blur()
-			return nil
-		}
-		if err := f.apply(&s.cur, s.input.Value()); err != nil {
+		if err := s.at().apply(&s.cur, s.input.Value()); err != nil {
 			s.err = err.Error()
 			return nil
 		}
@@ -345,8 +339,8 @@ func (s *Model) editKey(msg tea.KeyPressMsg) tea.Cmd {
 
 // step cycles an enum choice
 func (s *Model) step(delta int) {
-	f, ok := s.at()
-	if !ok || len(f.enum) == 0 {
+	f := s.at()
+	if len(f.enum) == 0 {
 		return
 	}
 	i := (slices.Index(f.enum, f.value(&s.cur)) + delta + len(f.enum)) % len(f.enum)
@@ -355,9 +349,6 @@ func (s *Model) step(delta int) {
 
 func (s *Model) assign(f field, v string) {
 	s.err = ""
-	if !f.editable() {
-		return
-	}
 	if err := f.apply(&s.cur, v); err != nil {
 		s.err = err.Error()
 	}
@@ -436,13 +427,7 @@ func conflict(s *domain.Settings, target *[]string, rule string) error {
 	return nil
 }
 
-func (s *Model) at() (field, bool) {
-	rows := s.rows()
-	if s.cursor < 0 || s.cursor >= len(rows) {
-		return field{}, false
-	}
-	return rows[s.cursor], true
-}
+func (s *Model) at() field { return s.rows()[s.cursor] }
 
 func (s *Model) Dirty() bool {
 	return !s.cur.Equal(s.orig)

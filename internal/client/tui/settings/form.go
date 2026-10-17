@@ -2,35 +2,22 @@ package settings
 
 import (
 	"cmp"
-	"fmt"
 	"strings"
 
 	"charm.land/lipgloss/v2"
 
 	"github.com/luynrs/justray/internal/client/tui/style"
-	"github.com/luynrs/justray/internal/version"
 )
-
-type hit struct {
-	row    int
-	choice string
-}
 
 type fieldLayout struct {
 	start int
 	end   int
 }
 
-func (s *Model) View(width, height int) string {
-	w := max(width-2, 20)
-	s.input.SetWidth(max(w-6, 12))
-	s.height = max(height, 1)
-
+func (s Model) View() string {
 	rows := s.rows()
 	layout, total := s.layout(rows)
-	s.scroll = min(max(s.scroll, 0), max(total-s.height, 0))
 	lines := make([]string, min(s.height, total-s.scroll))
-	hits := map[int]hit{}
 	for i, bounds := range layout {
 		if bounds.end <= s.scroll {
 			continue
@@ -38,27 +25,36 @@ func (s *Model) View(width, height int) string {
 		if bounds.start >= s.scroll+s.height {
 			break
 		}
-		block, choices := s.fieldBlock(rows[i], i)
 		offset := bounds.start
 		if i > 0 && !rows[i].bare {
 			offset--
 		}
-		for j, line := range block {
+		for j, line := range s.fieldBlock(rows[i], i) {
 			position := offset + j - s.scroll
 			if position < 0 || position >= len(lines) {
 				continue
 			}
-			lines[position] = style.Clip(line, width)
-			if line != "" {
-				hits[position] = hit{row: i, choice: choices[j]}
-			}
+			lines[position] = style.Clip(line, s.width)
 		}
 	}
-	s.hits = hits
 	return strings.Join(lines, "\n")
 }
 
-func (s *Model) layout(rows []field) ([]fieldLayout, int) {
+func (s *Model) Resize(width, height int) {
+	s.width, s.height = width, max(height, 1)
+	style.ResizeInput(&s.input, width-8)
+	s.clamp()
+}
+
+func (s *Model) clamp() {
+	layout, total := s.layout(s.rows())
+	s.scroll = min(max(s.scroll, 0), max(total-s.height, 0))
+	if s.input.Focused() {
+		s.scroll = min(max(s.scroll, layout[s.cursor].end-s.height), layout[s.cursor].end-1)
+	}
+}
+
+func (s Model) layout(rows []field) ([]fieldLayout, int) {
 	layout := make([]fieldLayout, len(rows))
 	position := 0
 	for i, row := range rows {
@@ -91,21 +87,28 @@ func (s *Model) scrollBy(delta int) {
 	s.scroll = min(max(s.scroll+delta, 0), max(total-s.height, 0))
 }
 
-func (s *Model) TabBar(width int) string {
+func (s Model) compactTabs() bool {
+	width := 0
+	for _, tab := range tabs {
+		width += lipgloss.Width(style.Segment(" "+tab.name+" ", false))
+	}
+	return width > s.width-lipgloss.Width(style.Title())-2
+}
+
+func (s Model) TabBar() string {
+	if s.compactTabs() {
+		return style.Segment(" "+tabs[s.tab].name+" ", true)
+	}
 	var b strings.Builder
 	for i, t := range tabs {
 		b.WriteString(style.Segment(" "+t.name+" ", i == s.tab))
 	}
-	s.compactTabs = lipgloss.Width(b.String()) > width
-	if !s.compactTabs {
-		return b.String()
-	}
-	return style.Segment(" "+tabs[s.tab].name+" ", true) + style.Gray.Render(fmt.Sprintf(" %d/%d", s.tab+1, len(tabs)))
+	return b.String()
 }
 
-func (s *Model) tabAt(x int) (int, bool) {
-	pos := lipgloss.Width(style.Blue.Bold(true).Render("JustRay")+" "+style.Gray.Render(version.String())) + 2
-	if s.compactTabs {
+func (s Model) tabAt(x int) (int, bool) {
+	pos := max(s.width-lipgloss.Width(s.TabBar()), lipgloss.Width(style.Title())+2)
+	if s.compactTabs() {
 		width := lipgloss.Width(style.Segment(" "+tabs[s.tab].name+" ", true))
 		return s.tab, x >= pos && x < pos+width
 	}
@@ -120,7 +123,7 @@ func (s *Model) tabAt(x int) (int, bool) {
 }
 
 // fieldBlock renders one row, blank line above non-list rows
-func (s *Model) fieldBlock(f field, i int) (lines, choices []string) {
+func (s Model) fieldBlock(f field, i int) (lines []string) {
 	selected := i == s.cursor
 
 	bar := "  "
@@ -134,7 +137,7 @@ func (s *Model) fieldBlock(f field, i int) (lines, choices []string) {
 		if f.hint != "" {
 			line += " " + style.Gray.Render(f.hint)
 		}
-		lines, choices = []string{line}, []string{""}
+		lines = []string{line}
 	case f.bare:
 		var prefix, body string
 		if f.removable() {
@@ -151,25 +154,21 @@ func (s *Model) fieldBlock(f field, i int) (lines, choices []string) {
 			body = style.Gray.Render(body)
 		}
 		text := style.Gray.Render(prefix) + body
-		lines, choices = []string{bar + text}, []string{""}
+		lines = []string{bar + text}
 	default:
 		lines = []string{bar + f.name}
-		choices = []string{""}
-		value, picks := s.valueLines(f, selected, bar)
-		lines = append(lines, value...)
-		choices = append(choices, picks...)
+		lines = append(lines, s.valueLines(f, selected, bar)...)
 	}
 
 	if i > 0 && !f.bare {
 		lines = append([]string{""}, lines...)
-		choices = append([]string{""}, choices...)
 	}
-	return lines, choices
+	return lines
 }
 
-func (s *Model) valueLines(f field, selected bool, bar string) (lines, choices []string) {
+func (s Model) valueLines(f field, selected bool, bar string) (lines []string) {
 	if selected && s.input.Focused() {
-		return []string{bar + s.input.View()}, []string{""}
+		return []string{bar + s.input.View()}
 	}
 
 	if len(f.enum) > 0 && selected {
@@ -180,14 +179,13 @@ func (s *Model) valueLines(f field, selected bool, bar string) (lines, choices [
 				line = bar + style.Cyan.Render(style.Dot(true)+" "+opt)
 			}
 			lines = append(lines, line)
-			choices = append(choices, opt)
 		}
-		return lines, choices
+		return lines
 	}
 
 	v := f.value(&s.cur)
 	if v == "" {
 		v = cmp.Or(f.hint, "auto")
 	}
-	return []string{bar + style.Gray.Render(v)}, []string{""}
+	return []string{bar + style.Gray.Render(v)}
 }

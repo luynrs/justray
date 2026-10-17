@@ -4,7 +4,6 @@ import (
 	"image"
 	"strings"
 
-	"charm.land/bubbles/v2/cursor"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
@@ -59,23 +58,19 @@ func (m *Model) resizeModal() {
 	}
 }
 
-func (m *Model) closeModal() tea.Cmd {
+func (m *Model) closeModal() {
 	m.navigation.Reset()
 	m.activeModal = modalNone
 	m.deleteTarget = tree.Row{}
 	m.editor.Blur()
-	if m.editing() {
-		return cursor.Blink
-	}
-	return nil
 }
 
 func (m Model) updateModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		if msg.String() == "esc" || (msg.String() == "?" && m.activeModal == modalHelp) {
-			cmd := m.closeModal()
-			return m, cmd
+			m.closeModal()
+			return m, nil
 		}
 		if m.activeModal == modalHelp {
 			if key := msg.String(); len(key) == 1 && key[0] >= '0' && key[0] <= '9' {
@@ -190,7 +185,13 @@ func (m Model) modalView(background string) string {
 		for column := range canvas.Width() {
 			cellStyle := &canvas.CellAt(column, row).Style
 			cellStyle.Attrs |= uv.AttrFaint
-			cellStyle.Bg = lipgloss.Darken(cellStyle.Bg, 0.75)
+			if foreground := m.dimmedColors[cellStyle.Fg]; foreground != nil {
+				cellStyle.Fg = foreground
+				cellStyle.Attrs &^= uv.AttrFaint
+			}
+			if cellStyle.Bg != nil {
+				cellStyle.Bg = m.dimmedColors[cellStyle.Bg]
+			}
 		}
 	}
 	lipgloss.NewLayer(strings.Join(frame, "\n")).Draw(canvas, layout.bounds)
