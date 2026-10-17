@@ -19,7 +19,7 @@ type Subscription struct {
 	URL       string         `json:"url"`
 	Nodes     []domain.Node  `json:"nodes"`
 	UpdatedAt time.Time      `json:"updated_at"`
-	Traffic   domain.Traffic `json:"traffic,omitempty"`
+	Traffic   domain.Traffic `json:"traffic,omitzero"`
 	Warning   string         `json:"warning,omitempty"`
 }
 

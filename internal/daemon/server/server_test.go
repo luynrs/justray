@@ -104,6 +104,9 @@ func TestWatchLifecycle(t *testing.T) {
 	if err := readSnapshot(); err != nil || snapshot.Settings.Port != domain.DefaultPort {
 		t.Fatalf("initial snapshot: %+v, %v", snapshot, err)
 	}
+	if snapshot.Settings.Details != (domain.Details{Address: "on", Transport: "off", Protocol: "on"}) {
+		t.Fatalf("default node details: %+v", snapshot.Settings.Details)
+	}
 	for _, ver := range []string{"", version.Version + "-other"} {
 		conn, err := net.Dial("unix", listener.Addr().String())
 		requireNoError(t, err)
@@ -129,7 +132,7 @@ func TestWatchLifecycle(t *testing.T) {
 	if err != nil || added.SubscriptionID == "" || added.NodeCount != 1 {
 		t.Fatalf("added subscription: %+v, %v", added, err)
 	}
-	if err := readSnapshot(); err != nil || len(snapshot.Nodes) != 1 || snapshot.Nodes[0].SubscriptionID != added.SubscriptionID {
+	if err := readSnapshot(); err != nil || len(snapshot.Nodes) != 1 || snapshot.Nodes[0].SubscriptionID != added.SubscriptionID || snapshot.Nodes[0].Transport != "xhttp" {
 		t.Fatalf("subscription snapshot: %+v, %v", snapshot, err)
 	}
 	for _, count := range []int{1, 0} {
@@ -150,7 +153,29 @@ func TestWatchLifecycle(t *testing.T) {
 	}
 	settings := snapshot.Settings
 	settings.DNS = "1.1.1.1"
+	settings.Details = domain.Details{Address: "off", Transport: "on", Protocol: "off"}
 	requireNoError(t, client.SetSettings(t.Context(), snapshot.Settings, settings))
+	if err := readSnapshot(); err != nil || !snapshot.Settings.Equal(settings) {
+		t.Fatalf("saved settings snapshot: %+v, %v", snapshot.Settings, err)
+	}
+	for _, invalid := range []domain.Details{
+		{Address: "invalid", Transport: "on", Protocol: "off"},
+		{Address: "off", Transport: "invalid", Protocol: "off"},
+		{Address: "off", Transport: "on", Protocol: "invalid"},
+	} {
+		settings.Details = invalid
+		if err := client.SetSettings(t.Context(), snapshot.Settings, settings); err == nil {
+			t.Fatalf("invalid node details accepted: %+v", invalid)
+		}
+	}
+	current, err := client.Snapshot(t.Context())
+	if err != nil || !current.Settings.Equal(snapshot.Settings) {
+		t.Fatalf("rejected settings changed state: %+v, %v", current.Settings, err)
+	}
+	saved, err := (store.Disk{Dir: directory}).Load()
+	if err != nil || saved.Settings.Details != snapshot.Settings.Details || saved.Settings.DNS != snapshot.Settings.DNS {
+		t.Fatalf("persisted settings: %+v, %v", saved.Settings, err)
+	}
 	config, err := os.ReadFile(ipc.Config(directory))
 	if err != nil || strings.Contains(string(config), `"autostart"`) {
 		t.Fatalf("autostart stored in config: %s, %v", config, err)

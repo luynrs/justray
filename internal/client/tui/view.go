@@ -147,33 +147,29 @@ func (m Model) footer(rows []tree.Row) string {
 		status += "   " + style.Yellow.Render(style.Sanitize(warnLine, true))
 	}
 
-	hint := m.helpHint()
-	switch {
-	case m.activeModal != modalNone:
-		hint = ansi.Truncate(style.KeyHint("esc", "cancel"), m.w, "")
-	case m.editing():
-		hint = ansi.Truncate(style.KeyHint(style.Enter(), "apply")+style.Gray.Render(" "+style.Sep()+" ")+style.KeyHint("esc", "cancel"), m.w, "")
-	case m.dialog != nil && m.dialog.Dirty():
-		action := "apply"
-		if m.dialog.Err() != "" {
-			action = "cancel"
-		}
-		prefix := style.KeyHint("esc", action) + style.Gray.Render(" "+style.Sep()+" ")
-		if lipgloss.Width(prefix)+lipgloss.Width(hint) <= m.w {
-			hint = prefix + hint
-		}
-	}
+	hint := m.footerHint()
 	hintWidth := lipgloss.Width(hint)
 	width := max(m.w-hintWidth-2, 0)
 	status = ansi.Truncate(status, width, strings.Repeat(".", min(3, width)))
 	return style.Pad(status, max(m.w-hintWidth, 0)) + hint
 }
 
-func (m Model) helpHint() string {
-	if m.w >= len("? shortcuts")+4 {
-		return style.KeyHint("?", "shortcuts")
+func (m Model) footerHint() string {
+	switch {
+	case m.activeModal != modalNone:
+		return style.KeyHints(m.w, [2]string{"esc", "cancel"})
+	case m.editing():
+		return style.KeyHints(m.w, [2]string{style.Enter(), "apply"}, [2]string{"esc", "cancel"})
+	case m.dialog != nil && m.dialog.Err() != "":
+		return style.KeyHints(m.w, [2]string{"esc", "cancel"}, [2]string{"?", "shortcuts"})
+	case m.dialog != nil && m.dialog.Dirty():
+		return style.KeyHints(m.w, [2]string{"esc", "save"}, [2]string{"?", "shortcuts"})
 	}
-	return style.Bold.Render("?")
+	return m.helpHint()
+}
+
+func (m Model) helpHint() string {
+	return style.KeyHints(max(m.w-4, 1), [2]string{"?", "shortcuts"})
 }
 
 func (m Model) clip(s string) string { return style.Clip(s, m.w) }

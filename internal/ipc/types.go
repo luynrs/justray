@@ -104,6 +104,7 @@ type Node struct {
 	NodeID         string
 	Name           string
 	Protocol       string
+	Transport      string
 	Server         string
 	Port           int
 	SubscriptionID string

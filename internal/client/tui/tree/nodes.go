@@ -3,6 +3,7 @@ package tree
 import (
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/luynrs/justray/internal/client/tui/style"
 	"github.com/luynrs/justray/internal/domain"
@@ -23,7 +24,7 @@ func (d Data) Render(r Row, selected bool, width int) string {
 	case Header:
 		return bar + subHeader(r.Sub, slices.Contains(d.Collapsed, r.Sub.SubscriptionID), selected, d.Emoji)
 	}
-	return bar + style.Flush(d.node(r.Node, selected), info(r.Node), width-2)
+	return bar + style.Flush(d.node(r.Node, selected), d.info(r.Node), width-2)
 }
 
 func subHeader(s ipc.Subscription, collapsed, selected, emoji bool) string {
@@ -62,8 +63,18 @@ func (d Data) node(n ipc.Node, selected bool) string {
 	return line
 }
 
-func info(n ipc.Node) string {
-	return style.Gray.Render(fmt.Sprintf("%s %s %s", domain.ServerAddress(style.Sanitize(n.Server, true), n.Port), style.Sep(), n.Protocol))
+func (d Data) info(node ipc.Node) string {
+	var parts []string
+	if d.Details.Address == "on" && node.Server != "" {
+		parts = append(parts, domain.ServerAddress(style.Sanitize(node.Server, true), node.Port))
+	}
+	if d.Details.Transport == "on" && node.Transport != "" {
+		parts = append(parts, style.Sanitize(node.Transport, true))
+	}
+	if d.Details.Protocol == "on" && node.Protocol != "" {
+		parts = append(parts, style.Sanitize(node.Protocol, true))
+	}
+	return style.Gray.Render(strings.Join(parts, " "+style.Sep()+" "))
 }
 
 func (d Data) dot(n ipc.Node) string {

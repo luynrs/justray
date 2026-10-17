@@ -15,7 +15,7 @@ type Traffic struct {
 	UploadBytes   int64     `json:"upload_bytes,omitempty"`
 	DownloadBytes int64     `json:"download_bytes,omitempty"`
 	TotalBytes    int64     `json:"total_bytes,omitempty"`
-	ExpiresAt     time.Time `json:"expires_at,omitempty"`
+	ExpiresAt     time.Time `json:"expires_at,omitzero"`
 }
 
 type Proto string
@@ -41,8 +41,8 @@ type Node struct {
 	Protocol       Proto      `json:"protocol"`
 	Server         string     `json:"server"`
 	Port           int        `json:"port"`
-	Auth           Auth       `json:"auth,omitempty"`
-	Transport      Transport  `json:"transport,omitempty"`
+	Auth           Auth       `json:"auth,omitzero"`
+	Transport      Transport  `json:"transport,omitzero"`
 	TLS            *TLS       `json:"tls,omitempty"`
 	Reality        *Reality   `json:"reality,omitempty"`
 	Obfs           string     `json:"obfs,omitempty"`            // hysteria2

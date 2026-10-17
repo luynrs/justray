@@ -40,12 +40,19 @@ type Settings struct {
 }
 
 type General struct {
-	Autostart    string `json:"autostart,omitempty"` // on/off, kept by the OS
-	RefreshEvery int    `json:"refresh_hours"`       // 0 = never
-	Emoji        string `json:"emoji"`
-	ForceTTY     string `json:"force_tty"` // on/off
-	LogLevel     string `json:"log_level"`
-	ProbeURL     string `json:"probe_url"`
+	Autostart    string  `json:"autostart,omitempty"` // on/off, kept by the OS
+	RefreshEvery int     `json:"refresh_hours"`       // 0 = never
+	Emoji        string  `json:"emoji"`
+	ForceTTY     string  `json:"force_tty"` // on/off
+	LogLevel     string  `json:"log_level"`
+	ProbeURL     string  `json:"probe_url"`
+	Details      Details `json:"details"`
+}
+
+type Details struct {
+	Address   string `json:"address"`
+	Transport string `json:"transport"`
+	Protocol  string `json:"protocol"`
 }
 
 type Connection struct {
@@ -99,6 +106,9 @@ func (s Settings) Normalize() (Settings, error) {
 		one("block quic", &s.BlockQUIC, "off", Toggle),
 		one("force tty", &s.ForceTTY, "off", Toggle),
 		one("emoji", &s.Emoji, "off", Toggle),
+		one("node address", &s.Details.Address, "on", Toggle),
+		one("node transport", &s.Details.Transport, "off", Toggle),
+		one("node protocol", &s.Details.Protocol, "on", Toggle),
 		text("dns", &s.DNS, DefaultDNS, "an IP address or an https:// URL", isDNS),
 		text("probe url", &s.ProbeURL, DefaultProbeURL, "a url", isURL),
 		canon(&s.Direct),

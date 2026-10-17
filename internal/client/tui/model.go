@@ -152,6 +152,7 @@ func (m Model) data() tree.Data {
 		Live:      m.live,
 		Emoji:     m.emoji(),
 		Spinner:   m.spin.View(),
+		Details:   m.snapshot.Settings.Details,
 	}
 }
 

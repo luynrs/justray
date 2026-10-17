@@ -49,7 +49,10 @@ func (s *Model) Resize(width, height int) {
 func (s *Model) clamp() {
 	layout, total := s.layout(s.rows())
 	s.scroll = min(max(s.scroll, 0), max(total-s.height, 0))
-	if s.input.Focused() {
+	if s.Selecting() {
+		position := layout[s.cursor].start + 1 + s.option
+		s.scroll = min(max(s.scroll, position-s.height+1), position)
+	} else if s.input.Focused() {
 		s.scroll = min(max(s.scroll, layout[s.cursor].end-s.height), layout[s.cursor].end-1)
 	}
 }
@@ -65,7 +68,7 @@ func (s Model) layout(rows []field) ([]fieldLayout, int) {
 		position++
 		if row.editable() && !row.bare {
 			if i == s.cursor && !s.input.Focused() {
-				position += max(len(row.enum), 1)
+				position += max(len(row.enum), len(row.multi), 1)
 			} else {
 				position++
 			}
@@ -170,15 +173,25 @@ func (s Model) valueLines(f field, selected bool, bar string) (lines []string) {
 	if selected && s.input.Focused() {
 		return []string{bar + s.input.View()}
 	}
-
-	if len(f.enum) > 0 && selected {
-		cur := f.value(&s.cur)
-		for _, opt := range f.enum {
-			line := bar + style.Gray.Render(style.Dot(false)+" "+opt)
-			if opt == cur {
-				line = bar + style.Cyan.Render(style.Dot(true)+" "+opt)
+	if selected && s.Selecting() {
+		for index := range max(len(f.enum), len(f.multi)) {
+			var name string
+			var checked bool
+			if len(f.multi) > 0 {
+				name = f.multi[index].name
+				checked = f.multi[index].value(&s.cur) == "on"
+			} else {
+				name = f.enum[index]
+				checked = name == f.value(&s.cur)
 			}
-			lines = append(lines, line)
+			markerStyle := style.Gray
+			if checked {
+				markerStyle = style.Cyan
+			}
+			if index == s.option {
+				name = style.Cyan.Render(name)
+			}
+			lines = append(lines, bar+markerStyle.Render(style.Dot(checked))+" "+name)
 		}
 		return lines
 	}

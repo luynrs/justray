@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/ipc"
 )
 
@@ -37,6 +38,7 @@ type Data struct {
 	Live      bool
 	Emoji     bool
 	Spinner   string
+	Details   domain.Details
 }
 
 func (d Data) connected() bool { return d.Live && d.Status.Connected }

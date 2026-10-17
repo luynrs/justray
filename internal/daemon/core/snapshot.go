@@ -92,6 +92,7 @@ func (c *Core) nodes(subscriptions []store.Subscription) []ipc.Node {
 				NodeID:         node.ID,
 				Name:           node.Name,
 				Protocol:       node.ProtocolName(),
+				Transport:      node.Transport.Network,
 				Server:         node.Server,
 				Port:           node.Port,
 				SubscriptionID: subscription.ID,

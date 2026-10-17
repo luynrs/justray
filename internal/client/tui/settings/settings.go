@@ -22,6 +22,7 @@ type field struct {
 	get   func(*domain.Settings) string
 	set   func(*domain.Settings, string) error
 	enum  []string
+	multi []field
 	list  *list
 	index int
 }
@@ -62,6 +63,11 @@ var tabs = []tab{
 		choice("Emoji", domain.Toggle, func(settings *domain.Settings) *string { return &settings.Emoji }),
 		choice("Force TTY", domain.Toggle, func(settings *domain.Settings) *string { return &settings.ForceTTY }),
 		choice("Log level", domain.LogLevels, func(settings *domain.Settings) *string { return &settings.LogLevel }),
+		{name: "Node details", multi: []field{
+			choice("address", domain.Toggle, func(settings *domain.Settings) *string { return &settings.Details.Address }),
+			choice("transport", domain.Toggle, func(settings *domain.Settings) *string { return &settings.Details.Transport }),
+			choice("protocol", domain.Toggle, func(settings *domain.Settings) *string { return &settings.Details.Protocol }),
+		}},
 		{
 			name: "Probe URL",
 			hint: domain.DefaultProbeURL,
@@ -143,6 +149,7 @@ type Model struct {
 	top        int
 	tab        int
 	cursor     int
+	option     int
 	scroll     int
 	width      int
 	height     int
@@ -159,6 +166,7 @@ func New(s domain.Settings, top int) *Model {
 	input.Prompt = ""
 	input.SetStyles(style.Input)
 	m := &Model{top: top, height: 1, cur: s.Clone(), orig: s, input: input}
+	m.focus(0)
 	m.move(0)
 	return m
 }
@@ -176,6 +184,11 @@ func (s *Model) Current() domain.Settings { return s.cur }
 func (s *Model) Err() string { return s.err }
 
 func (s *Model) Editing() bool { return s.input.Focused() }
+
+func (s *Model) Selecting() bool {
+	current := s.at()
+	return len(current.enum) > 0 || len(current.multi) > 0
+}
 
 func (s *Model) CancelNavigation() { s.navigation.Reset() }
 
@@ -231,6 +244,10 @@ func (s *Model) key(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 
 	case "enter":
 		return false, s.activate()
+	case "space":
+		if current := s.at(); len(current.enum) > 0 || len(current.multi) > 0 {
+			return false, s.activate()
+		}
 
 	case "d":
 		if f := s.at(); f.removable() {
@@ -273,13 +290,15 @@ func (s *Model) mouse(msg tea.MouseMsg) tea.Cmd {
 				continue
 			}
 			if index != s.cursor {
-				s.cursor = index
+				s.focus(index)
 				s.move(0)
 				return nil
 			}
-			if len(rows[index].enum) > 0 && position > bounds.start {
-				s.assign(rows[index], rows[index].enum[position-bounds.start-1])
-				return nil
+			if s.Selecting() {
+				if position == bounds.start {
+					return nil
+				}
+				s.option = position - bounds.start - 1
 			}
 			return s.activate()
 		}
@@ -302,8 +321,16 @@ func (s *Model) activate() tea.Cmd {
 	defer s.clamp()
 	s.move(0)
 	f := s.at()
+	if len(f.multi) > 0 {
+		value := "on"
+		if f.multi[s.option].value(&s.cur) == "on" {
+			value = "off"
+		}
+		s.assign(f.multi[s.option], value)
+		return nil
+	}
 	if len(f.enum) > 0 {
-		s.step(1)
+		s.assign(f, f.enum[s.option])
 		return nil
 	}
 
@@ -340,11 +367,19 @@ func (s *Model) editKey(msg tea.KeyPressMsg) tea.Cmd {
 // step cycles an enum choice
 func (s *Model) step(delta int) {
 	f := s.at()
-	if len(f.enum) == 0 {
-		return
+	count := max(len(f.enum), len(f.multi))
+	if count > 0 {
+		s.option = min(max(s.option+delta, 0), count-1)
+		s.clamp()
 	}
-	i := (slices.Index(f.enum, f.value(&s.cur)) + delta + len(f.enum)) % len(f.enum)
-	s.assign(f, f.enum[i])
+}
+
+func (s *Model) focus(cursor int) {
+	s.cursor, s.option = cursor, 0
+	current := s.at()
+	if len(current.enum) > 0 {
+		s.option = max(slices.Index(current.enum, current.value(&s.cur)), 0)
+	}
 }
 
 func (s *Model) assign(f field, v string) {
@@ -377,11 +412,20 @@ func (s *Model) listRows(l *list) []field {
 	return append(out, field{name: "+ add rule", bare: true, hint: "domain, ip, app or path", list: l, index: -1})
 }
 
-func (f field) editable() bool { return f.set != nil || f.list != nil }
+func (f field) editable() bool { return f.set != nil || f.list != nil || len(f.multi) > 0 }
 
 func (f field) removable() bool { return f.list != nil && f.index >= 0 }
 
 func (f field) value(settings *domain.Settings) string {
+	if len(f.multi) > 0 {
+		var selected []string
+		for _, option := range f.multi {
+			if option.value(settings) == "on" {
+				selected = append(selected, option.name)
+			}
+		}
+		return cmp.Or(strings.Join(selected, ", "), "none")
+	}
 	if f.list != nil {
 		if f.index >= 0 {
 			return (*f.list.at(settings))[f.index]
@@ -443,14 +487,20 @@ func (s *Model) move(delta int) {
 		}
 	}
 	cursor, _ := slices.BinarySearch(editable, s.cursor)
-	s.cursor = editable[min(max(cursor+delta, 0), len(editable)-1)]
+	delta = min(max(delta, -len(editable)), len(editable))
+	cursor = editable[min(max(cursor+delta, 0), len(editable)-1)]
+	if cursor != s.cursor {
+		s.focus(cursor)
+	}
 	layout, total := s.layout(rows)
 	s.reveal(layout, total)
+	s.clamp()
 }
 
 func (s *Model) switchTab(delta int) {
 	s.tab = (s.tab + delta + len(tabs)) % len(tabs)
-	s.cursor, s.scroll, s.err = 0, 0, ""
+	s.scroll, s.err = 0, ""
+	s.focus(0)
 	s.move(0)
 }
 

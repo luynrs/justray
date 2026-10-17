@@ -12,7 +12,7 @@ func (s *Model) navigate(motion navigation.Motion) {
 		s.move(motion.Distance(s.height, len(rows)))
 		return
 	case navigation.Line, navigation.Last:
-		s.cursor = 0
+		s.focus(0)
 		if motion.Action == navigation.Last {
 			s.move(len(rows))
 		} else {
@@ -34,9 +34,11 @@ func (s *Model) navigate(motion navigation.Motion) {
 				s.cursor--
 			}
 		}
+		s.focus(s.cursor)
 		s.scroll += delta
 		layout, total = s.layout(rows)
 		s.reveal(layout, total)
+		s.clamp()
 	case navigation.Scroll:
 		s.scrollBy(motion.Distance(s.height, total))
 	}

@@ -171,7 +171,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		showHelp = m.activeModal == modalNone && msg.String() == "?" && !m.editing()
 	case tea.MouseClickMsg:
-		showHelp = m.activeModal == modalNone && !m.editing() && msg.Button == tea.MouseLeft && m.h >= topLines+footerLines+1 && msg.Y == m.h-1 && msg.X >= m.w-lipgloss.Width(m.helpHint()) && msg.X < m.w
+		showHelp = m.activeModal == modalNone && !m.editing() && msg.Button == tea.MouseLeft && m.h >= topLines+footerLines+1 && msg.Y == m.h-1 && msg.X >= m.w-lipgloss.Width(m.helpHint()) && msg.X < m.w && strings.HasSuffix(m.footerHint(), m.helpHint())
 	}
 	if showHelp {
 		m.navigation.Reset()

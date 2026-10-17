@@ -53,6 +53,25 @@ func KeyHint(key, description string) string {
 	return Bold.Render(key) + Gray.Render(" "+description)
 }
 
+func KeyHints(width int, keys ...[2]string) string {
+	var result string
+	for _, key := range keys {
+		label := KeyHint(key[0], key[1])
+		if result == "" && lipgloss.Width(label) > width {
+			primary, _, _ := strings.Cut(key[0], "/")
+			label = Clip(Bold.Render(primary), width)
+		}
+		if result != "" {
+			label = Gray.Render(" "+Sep()+" ") + label
+		}
+		if length := lipgloss.Width(label); length <= width {
+			result += label
+			width -= length
+		}
+	}
+	return result
+}
+
 func Segment(s string, active bool) string {
 	if !active {
 		return " " + Gray.Render(s) + " "
