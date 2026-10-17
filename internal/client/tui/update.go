@@ -211,7 +211,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "r":
 		return m.refresh()
 	case "R", "shift+r":
-		return m, action(false, m.start, func() error { return m.client.RefreshSubscriptions(m.watch) })
+		return m, action(false, m.start, func() error { return m.client.RefreshSubscriptions(m.watch, "") })
 	case "m":
 		return m.setTun(!m.snapshot.Status.Tun)
 	case "a":

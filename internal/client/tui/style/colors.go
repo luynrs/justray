@@ -9,23 +9,14 @@ import (
 )
 
 var (
-	Black   = lipgloss.NewStyle().Foreground(lipgloss.Black)
-	Red     = lipgloss.NewStyle().Foreground(lipgloss.Red)
-	Green   = lipgloss.NewStyle().Foreground(lipgloss.Green)
-	Yellow  = lipgloss.NewStyle().Foreground(lipgloss.Yellow)
-	Blue    = lipgloss.NewStyle().Foreground(lipgloss.Blue)
-	Magenta = lipgloss.NewStyle().Foreground(lipgloss.Magenta)
-	Cyan    = lipgloss.NewStyle().Foreground(lipgloss.Cyan)
-	White   = lipgloss.NewStyle().Foreground(lipgloss.White)
+	Red    = lipgloss.NewStyle().Foreground(lipgloss.Red)
+	Green  = lipgloss.NewStyle().Foreground(lipgloss.Green)
+	Yellow = lipgloss.NewStyle().Foreground(lipgloss.Yellow)
+	Blue   = lipgloss.NewStyle().Foreground(lipgloss.Blue)
+	Cyan   = lipgloss.NewStyle().Foreground(lipgloss.Cyan)
+	White  = lipgloss.NewStyle().Foreground(lipgloss.White)
 
-	Gray          = lipgloss.NewStyle().Foreground(lipgloss.BrightBlack)
-	BrightRed     = lipgloss.NewStyle().Foreground(lipgloss.BrightRed)
-	BrightGreen   = lipgloss.NewStyle().Foreground(lipgloss.BrightGreen)
-	BrightYellow  = lipgloss.NewStyle().Foreground(lipgloss.BrightYellow)
-	BrightBlue    = lipgloss.NewStyle().Foreground(lipgloss.BrightBlue)
-	BrightMagenta = lipgloss.NewStyle().Foreground(lipgloss.BrightMagenta)
-	BrightCyan    = lipgloss.NewStyle().Foreground(lipgloss.BrightCyan)
-	BrightWhite   = lipgloss.NewStyle().Foreground(lipgloss.BrightWhite)
+	Gray = lipgloss.NewStyle().Foreground(lipgloss.BrightBlack)
 
 	Bold = lipgloss.NewStyle().Bold(true)
 

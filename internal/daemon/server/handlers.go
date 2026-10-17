@@ -90,9 +90,9 @@ func (s *Server) dispatch(ctx context.Context, req ipc.Request) (any, error) {
 		return nil, s.core.RemoveNode(ctx, domain.NodeRef{SubscriptionID: a.SubscriptionID, NodeID: a.NodeID})
 	case "MoveSubscription":
 		return nil, s.core.MoveSubscription(ctx, a.SubscriptionID, a.Direction)
-	case "RefreshSubscriptions", "RefreshSubscription":
+	case "RefreshSubscriptions":
 		var ids []string
-		if req.Method == "RefreshSubscription" {
+		if a.SubscriptionID != "" {
 			ids = []string{a.SubscriptionID}
 		}
 		err := s.core.RefreshSubscriptions(ctx, ids...)

@@ -145,11 +145,8 @@ func (c *Client) RemoveNode(ctx context.Context, ref domain.NodeRef) error {
 func (c *Client) MoveSubscription(ctx context.Context, id string, dir int) error {
 	return c.command(ctx, "MoveSubscription", Arguments{SubscriptionID: id, Direction: dir})
 }
-func (c *Client) RefreshSubscriptions(ctx context.Context) error {
-	return c.command(ctx, "RefreshSubscriptions", Arguments{})
-}
-func (c *Client) RefreshSubscription(ctx context.Context, id string) error {
-	return c.command(ctx, "RefreshSubscription", Arguments{SubscriptionID: id})
+func (c *Client) RefreshSubscriptions(ctx context.Context, id string) error {
+	return c.command(ctx, "RefreshSubscriptions", Arguments{SubscriptionID: id})
 }
 func (c *Client) Connect(ctx context.Context, ref domain.NodeRef, mode *bool) error {
 	return c.command(ctx, "Connect", Arguments{NodeID: ref.NodeID, SubscriptionID: ref.SubscriptionID, Tun: mode})

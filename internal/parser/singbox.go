@@ -106,18 +106,8 @@ func (transport *singboxTransportConfig) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-var singboxProtos = map[string]domain.Proto{
-	"vless": domain.VLESS, "vmess": domain.VMess, "trojan": domain.Trojan,
-	"shadowsocks": domain.SS, "hysteria": domain.HY1, "hysteria2": domain.HY2,
-	"tuic": domain.TUIC, "anytls": domain.AnyTLS, "wireguard": domain.WG,
-	"shadowtls": domain.Shadow, "socks": domain.SOCKS, "http": domain.HTTP,
-}
-
 func singboxNode(ob singboxOutbound, stlsByTag map[string]singboxOutbound) (domain.Node, error) {
-	proto, ok := singboxProtos[strings.ToLower(ob.Type)]
-	if !ok {
-		return domain.Node{}, errUnsupported
-	}
+	proto := domain.Proto(strings.ToLower(ob.Type))
 
 	server, port := ob.Server, ob.ServerPort
 	if proto == domain.WG && len(ob.Peers) > 0 {
@@ -215,6 +205,8 @@ func singboxNode(ob singboxOutbound, stlsByTag map[string]singboxOutbound) (doma
 			return domain.Node{}, errors.New("socks: unsupported version")
 		}
 		n.Auth = domain.Auth{Username: ob.Username, Password: ob.Password}
+	default:
+		return domain.Node{}, errUnsupported
 	}
 
 	return n, nil

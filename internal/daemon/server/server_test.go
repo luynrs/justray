@@ -551,7 +551,7 @@ func TestSubscriptionRefresh(t *testing.T) {
 	refresh := func(test *testing.T, content string) store.State {
 		test.Helper()
 		body.Store(content)
-		requireNoError(test, client.RefreshSubscription(test.Context(), added.SubscriptionID))
+		requireNoError(test, client.RefreshSubscriptions(test.Context(), added.SubscriptionID))
 		state, err := disk.Load()
 		requireNoError(test, err)
 		return state
@@ -626,7 +626,7 @@ func TestSubscriptionRefresh(t *testing.T) {
 	for name, content := range invalidImports {
 		t.Run(name, func(t *testing.T) {
 			body.Store(content)
-			if err := client.RefreshSubscription(t.Context(), added.SubscriptionID); err == nil || strings.Contains(err.Error(), "secret") {
+			if err := client.RefreshSubscriptions(t.Context(), added.SubscriptionID); err == nil || strings.Contains(err.Error(), "secret") {
 				t.Fatalf("refresh error: %v", err)
 			}
 			after, err := disk.Load()
@@ -652,7 +652,7 @@ func TestSubscriptionRefresh(t *testing.T) {
 		t.Fatalf("partial refresh warning is missing from IPC: %+v, %v", snapshot.Subscriptions, err)
 	}
 	body.Store("vless://uuid@example.com:443?type=quic")
-	if err := client.RefreshSubscription(t.Context(), added.SubscriptionID); err == nil || !strings.Contains(err.Error(), `skipped nodes: 1 (unsupported transport "quic": 1)`) {
+	if err := client.RefreshSubscriptions(t.Context(), added.SubscriptionID); err == nil || !strings.Contains(err.Error(), `skipped nodes: 1 (unsupported transport "quic": 1)`) {
 		t.Fatalf("unusable-only refresh: %v", err)
 	}
 	unchanged, err := disk.Load()
@@ -860,7 +860,7 @@ func TestSubscriptionRefresh(t *testing.T) {
 			} else {
 				body.Store(`{"outbounds":[{"protocol":"future-proxy"}]}`)
 			}
-			if err := client.RefreshSubscription(t.Context(), added.SubscriptionID); err == nil {
+			if err := client.RefreshSubscriptions(t.Context(), added.SubscriptionID); err == nil {
 				t.Fatal("unsupported-only refresh succeeded")
 			}
 			unchanged, err := disk.Load()
@@ -886,7 +886,7 @@ func TestSubscriptionRefresh(t *testing.T) {
 		defer cancel()
 		ownerCtx, cancelOwner := context.WithCancel(ctx)
 		defer cancelOwner()
-		request := ipc.Request{Method: "RefreshSubscription", Arguments: ipc.Arguments{SubscriptionID: added.SubscriptionID}}
+		request := ipc.Request{Method: "RefreshSubscriptions", Arguments: ipc.Arguments{SubscriptionID: added.SubscriptionID}}
 		done := make(chan error, 1)
 		go func() {
 			done <- sendRequest(ownerCtx, server, request)
@@ -915,6 +915,20 @@ func TestSubscriptionRefresh(t *testing.T) {
 	if err != nil || len(snap.Nodes) != 1 || snap.Nodes[0].Name != "first" || snap.Subscriptions[0].Refreshing ||
 		len(snap.Collapsed) != 1 || snap.Collapsed[0] != added.SubscriptionID {
 		t.Fatalf("refresh lost a concurrent change: %+v, %v", snap, err)
+	}
+	body.Store(first)
+	_, err = client.AddSubscription(t.Context(), source.URL)
+	requireNoError(t, err)
+	body.Store(second)
+	requireNoError(t, client.RefreshSubscriptions(t.Context(), added.SubscriptionID))
+	snapshot, err := client.Snapshot(t.Context())
+	if err != nil || len(snapshot.Nodes) != 2 || snapshot.Nodes[0].Name != "second" || snapshot.Nodes[1].Name != "first" {
+		t.Fatalf("selected refresh changed the wrong subscriptions: %+v, %v", snapshot.Nodes, err)
+	}
+	requireNoError(t, client.RefreshSubscriptions(t.Context(), ""))
+	snapshot, err = client.Snapshot(t.Context())
+	if err != nil || len(snapshot.Nodes) != 2 || snapshot.Nodes[0].Name != "second" || snapshot.Nodes[1].Name != "second" {
+		t.Fatalf("refresh all missed a subscription: %+v, %v", snapshot.Nodes, err)
 	}
 }
 

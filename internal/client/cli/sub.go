@@ -125,11 +125,7 @@ func (a *app) subRefresh(cmd *cobra.Command, args []string) error {
 		subscriptionID, name = sub.SubscriptionID, a.clean(sub.Name)
 	}
 	stop := spin("Refreshing " + name)
-	if subscriptionID == "" {
-		err = a.client.RefreshSubscriptions(cmd.Context())
-	} else {
-		err = a.client.RefreshSubscription(cmd.Context(), subscriptionID)
-	}
+	err = a.client.RefreshSubscriptions(cmd.Context(), subscriptionID)
 	stop()
 	if subscriptionID != "" {
 		if err != nil {

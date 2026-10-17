@@ -68,7 +68,7 @@ func (m Model) refresh() (tea.Model, tea.Cmd) {
 	if !ok || !row.Sub.Refreshable {
 		return m, nil
 	}
-	return m, action(false, m.start, func() error { return m.client.RefreshSubscription(m.watch, row.Sub.SubscriptionID) })
+	return m, action(false, m.start, func() error { return m.client.RefreshSubscriptions(m.watch, row.Sub.SubscriptionID) })
 }
 
 func (m Model) moveSub(dir int) (tea.Model, tea.Cmd) {
