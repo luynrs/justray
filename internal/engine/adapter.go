@@ -96,7 +96,7 @@ func startBox(ctx context.Context, opts option.Options) (*sbox.Box, error) {
 		if !errors.Is(err, syscall.EBUSY) || attempt == 2 {
 			return nil, err
 		}
-		link.Delete(domain.TunInterface)
+		link.Delete(domain.Interface)
 	}
 }
 
@@ -169,7 +169,7 @@ func (e *box) tunAdd() error {
 		if !errors.Is(err, syscall.EBUSY) || attempt == 1 {
 			return err
 		}
-		link.Delete(domain.TunInterface)
+		link.Delete(domain.Interface)
 	}
 }
 
@@ -179,7 +179,7 @@ func (e *box) tunRemove() error {
 		return err
 	}
 	e.tun = false
-	link.Delete(domain.TunInterface)
+	link.Delete(domain.Interface)
 	return nil
 }
 
@@ -203,7 +203,7 @@ func (e *box) Stop() error {
 		err = nil
 	}
 	if tun {
-		link.Delete(domain.TunInterface)
+		link.Delete(domain.Interface)
 	}
 	return err
 }

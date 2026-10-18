@@ -10,14 +10,15 @@ import (
 )
 
 const (
-	DefaultPort     = 10808
-	DefaultDNS      = "8.8.8.8"
-	DefaultLogLevel = "error"
-	DefaultTunMTU   = 9000
-	DefaultTunStack = "gvisor"
-	DefaultRefresh  = 6
-	DefaultProbeURL = "http://www.gstatic.com/generate_204"
-	TunInterface    = "justray"
+	DefaultPort      = 10808
+	DefaultDNS       = "8.8.8.8"
+	DefaultLogLevel  = "error"
+	DefaultTunMTU    = 9000
+	DefaultTunStack  = "gvisor"
+	DefaultIPVersion = "ipv4"
+	DefaultRefresh   = 6
+	DefaultProbeURL  = "http://www.gstatic.com/generate_204"
+	Interface        = "justray"
 )
 
 const (
@@ -97,7 +98,7 @@ func (s Settings) Normalize() (Settings, error) {
 		num("refresh interval", &s.RefreshEvery, 0, 0, 24*30),
 		one("log level", &s.LogLevel, DefaultLogLevel, LogLevels),
 		one("stack", &s.TunStack, DefaultTunStack, TunStacks),
-		one("ip version", &s.IPVersion, "mixed", IPVersions),
+		one("ip version", &s.IPVersion, DefaultIPVersion, IPVersions),
 		one("mode", &s.Mode, ProxyAll, Modes),
 		one("strict route", &s.TunStrict, "on", Toggle),
 		one("dns hijack", &s.DNSHijack, "on", Toggle),

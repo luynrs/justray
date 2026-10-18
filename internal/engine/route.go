@@ -105,7 +105,7 @@ func tunInbound(s domain.Settings) option.Inbound {
 	if s.IPVersion != "ipv4" {
 		address = append(address, netip.MustParsePrefix("fdfe:dcba:9876::1/126"))
 	}
-	interfaceName := domain.TunInterface
+	interfaceName := domain.Interface
 	if runtime.GOOS == "darwin" {
 		interfaceName = "" // macOS assigns utun names
 	}
