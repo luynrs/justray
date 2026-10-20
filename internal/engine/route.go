@@ -39,21 +39,28 @@ func match(list []string, action option.RuleAction) []option.Rule {
 }
 
 func rules(s domain.Settings) []option.Rule {
-	// Deprecated: wlbe in 1.7.1 with new port settings
-	out := []option.Rule{{
-		Type: C.RuleTypeDefault,
-		DefaultOptions: option.DefaultRule{
-			RawDefaultRule: option.RawDefaultRule{Inbound: []string{"mixed-in"}},
-			RuleAction:     toProxy,
-		},
-	}}
-
+	var out []option.Rule
 	if s.DNSHijack == "on" {
 		out = append(out, option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{
 			RawDefaultRule: option.RawDefaultRule{Inbound: []string{"tun-in"}, Port: []uint16{53}},
 			RuleAction:     option.RuleAction{Action: C.RuleActionTypeHijackDNS},
 		}})
 	}
+	if s.IPVersion != "mixed" {
+		blockedNetworks := []string{"::/0"}
+		if s.IPVersion == "ipv6" {
+			blockedNetworks = []string{"0.0.0.0/0", "::ffff:0:0/96"}
+		}
+		out = append(out, option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{
+			RawDefaultRule: option.RawDefaultRule{IPCIDR: blockedNetworks},
+			RuleAction:     reject,
+		}})
+	}
+	// Deprecated: wlbe in 1.7.1 with new port settings
+	out = append(out, option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{
+		RawDefaultRule: option.RawDefaultRule{Inbound: []string{"mixed-in"}},
+		RuleAction:     toProxy,
+	}})
 	resolveInbounds := []string{"tun-in"}
 	if s.BypassLocal == "on" {
 		resolveInbounds = nil
@@ -98,13 +105,6 @@ func rules(s domain.Settings) []option.Rule {
 }
 
 func tunInbound(s domain.Settings) option.Inbound {
-	var address []netip.Prefix
-	if s.IPVersion != "ipv6" {
-		address = append(address, netip.MustParsePrefix("172.19.0.1/30"))
-	}
-	if s.IPVersion != "ipv4" {
-		address = append(address, netip.MustParsePrefix("fdfe:dcba:9876::1/126"))
-	}
 	interfaceName := domain.Interface
 	if runtime.GOOS == "darwin" {
 		interfaceName = "" // macOS assigns utun names
@@ -114,9 +114,12 @@ func tunInbound(s domain.Settings) option.Inbound {
 		InterfaceName: interfaceName,
 		MTU:           uint32(s.TunMTU),
 		Stack:         s.TunStack,
-		Address:       address,
-		AutoRoute:     true,
-		StrictRoute:   s.TunStrict == "on",
+		Address: []netip.Prefix{
+			netip.MustParsePrefix("172.19.0.1/30"),
+			netip.MustParsePrefix("fdfe:dcba:9876::1/126"),
+		},
+		AutoRoute:   true,
+		StrictRoute: s.TunStrict == "on",
 	}
 	return option.Inbound{Type: C.TypeTun, Tag: "tun-in", Options: tunOpts}
 }

@@ -42,7 +42,7 @@ func build(n domain.Node, s domain.Settings, logPath string, tun bool) *option.O
 		Route: &option.RouteOptions{
 			Final:                 final(s),
 			AutoDetectInterface:   true,
-			DefaultDomainResolver: &option.DomainResolveOptions{Server: "remote", Strategy: dnsStrategy[s.IPVersion]},
+			DefaultDomainResolver: &option.DomainResolveOptions{Server: "remote", Strategy: option.DomainStrategy(C.DomainStrategyPreferIPv4)},
 			Rules:                 rules(s),
 		},
 	}
@@ -61,7 +61,7 @@ func probeConfig(s domain.Settings, logPath string) *option.Options {
 		Log: &option.LogOptions{Level: s.LogLevel, Output: logPath},
 		Route: &option.RouteOptions{
 			AutoDetectInterface:   true,
-			DefaultDomainResolver: &option.DomainResolveOptions{Server: "remote", Strategy: dnsStrategy[s.IPVersion]},
+			DefaultDomainResolver: &option.DomainResolveOptions{Server: "remote", Strategy: option.DomainStrategy(C.DomainStrategyPreferIPv4)},
 		},
 		Outbounds: []option.Outbound{{Type: C.TypeDirect, Tag: "direct", Options: &option.DirectOutboundOptions{}}},
 		DNS: &option.DNSOptions{RawDNSOptions: option.RawDNSOptions{
@@ -122,7 +122,7 @@ func dnsServers(s domain.Settings, detourTag, tag string) []option.DNSServerOpti
 		return []option.DNSServerOptions{{Type: transportType, Tag: tag, Options: &remote}}
 	}
 	if _, err := netip.ParseAddr(remote.Server); err != nil {
-		remote.DomainResolver = &option.DomainResolveOptions{Server: tag + "-bootstrap", Strategy: dnsStrategy[s.IPVersion]}
+		remote.DomainResolver = &option.DomainResolveOptions{Server: tag + "-bootstrap", Strategy: option.DomainStrategy(C.DomainStrategyPreferIPv4)}
 	}
 	servers := []option.DNSServerOptions{
 		{

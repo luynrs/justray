@@ -95,7 +95,7 @@ func (engine *box) Probe(ctx context.Context, nodes []domain.Node, settings doma
 					if node.Protocol == domain.WG && node.ConfigKey() == activeKey {
 						dialer = current
 					}
-					result, err := probe(runtimeCtx, node, instance, "p"+strconv.Itoa(target[0]), settings.ProbeURL, dialer)
+					result, err := probe(runtimeCtx, node, instance, "p"+strconv.Itoa(target[0]), settings, dialer)
 					<-slots
 					if err == nil {
 						for _, index := range target {
@@ -110,7 +110,7 @@ func (engine *box) Probe(ctx context.Context, nodes []domain.Node, settings doma
 	return runtimeCtx.Err()
 }
 
-func probe(ctx context.Context, node domain.Node, instance *sbox.Box, tag, url string, dialer adapter.Outbound) (Result, error) {
+func probe(ctx context.Context, node domain.Node, instance *sbox.Box, tag string, settings domain.Settings, dialer adapter.Outbound) (Result, error) {
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
@@ -136,7 +136,7 @@ func probe(ctx context.Context, node domain.Node, instance *sbox.Box, tag, url s
 	}
 	var milliseconds int
 	if err == nil {
-		milliseconds, err = delay(requestCtx, dialer, url)
+		milliseconds, err = delay(requestCtx, dialer, settings)
 	}
 	if ctx.Err() != nil {
 		return Result{}, ctx.Err()
@@ -151,20 +151,24 @@ func probe(ctx context.Context, node domain.Node, instance *sbox.Box, tag, url s
 	return result, nil
 }
 
-func delay(ctx context.Context, dialer N.Dialer, url string) (int, error) {
+func delay(ctx context.Context, dialer N.Dialer, settings domain.Settings) (int, error) {
 	client := &http.Client{
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		Transport: &http.Transport{
 			DisableKeepAlives: true,
 			DialContext: func(ctx context.Context, _, addr string) (net.Conn, error) {
-				return dialer.DialContext(ctx, N.NetworkTCP, M.ParseSocksaddr(addr))
+				destination := M.ParseSocksaddr(addr).Unwrap()
+				if settings.IPVersion == "ipv4" && destination.IsIPv6() || settings.IPVersion == "ipv6" && destination.IsIPv4() {
+					return nil, fmt.Errorf("destination %s is excluded by IP version %s", destination, settings.IPVersion)
+				}
+				return dialer.DialContext(ctx, N.NetworkTCP, destination)
 			},
 		},
 	}
 	defer client.CloseIdleConnections()
 
 	start := time.Now()
-	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, settings.ProbeURL, nil)
 	if err != nil {
 		return 0, err
 	}

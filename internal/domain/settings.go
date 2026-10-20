@@ -94,7 +94,7 @@ func (s Settings) Clone() Settings {
 func (s Settings) Normalize() (Settings, error) {
 	checks := []error{
 		num("port", &s.Port, DefaultPort, 1, 65535),
-		num("mtu", &s.TunMTU, DefaultTunMTU, 576, 65535),
+		num("mtu", &s.TunMTU, DefaultTunMTU, 1280, 65535),
 		num("refresh interval", &s.RefreshEvery, 0, 0, 24*30),
 		one("log level", &s.LogLevel, DefaultLogLevel, LogLevels),
 		one("stack", &s.TunStack, DefaultTunStack, TunStacks),
