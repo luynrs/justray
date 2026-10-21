@@ -14,7 +14,7 @@ import (
 
 var dnsStrategy = map[string]option.DomainStrategy{
 	"ipv4":  option.DomainStrategy(C.DomainStrategyIPv4Only),
-	"ipv6":  option.DomainStrategy(C.DomainStrategyIPv6Only),
+	"ipv6":  option.DomainStrategy(C.DomainStrategyPreferIPv6),
 	"mixed": option.DomainStrategy(C.DomainStrategyPreferIPv4),
 }
 

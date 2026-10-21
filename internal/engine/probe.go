@@ -157,11 +157,7 @@ func delay(ctx context.Context, dialer N.Dialer, settings domain.Settings) (int,
 		Transport: &http.Transport{
 			DisableKeepAlives: true,
 			DialContext: func(ctx context.Context, _, addr string) (net.Conn, error) {
-				destination := M.ParseSocksaddr(addr).Unwrap()
-				if settings.IPVersion == "ipv4" && destination.IsIPv6() || settings.IPVersion == "ipv6" && destination.IsIPv4() {
-					return nil, fmt.Errorf("destination %s is excluded by IP version %s", destination, settings.IPVersion)
-				}
-				return dialer.DialContext(ctx, N.NetworkTCP, destination)
+				return dialer.DialContext(ctx, N.NetworkTCP, M.ParseSocksaddr(addr).Unwrap())
 			},
 		},
 	}
