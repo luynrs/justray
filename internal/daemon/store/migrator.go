@@ -74,11 +74,7 @@ func (d Disk) Migrate() error {
 						}
 					}
 				}
-				ref, err := json.Marshal(domain.NodeRef{SubscriptionID: subscriptionID, NodeID: nodeID})
-				if err != nil {
-					return err
-				}
-				document[name] = ref
+				document[name], _ = json.Marshal(domain.NodeRef{SubscriptionID: subscriptionID, NodeID: nodeID})
 				delete(document, name+"_subscription")
 				migrated = true
 			}
@@ -95,19 +91,12 @@ func (d Disk) Migrate() error {
 			}
 			if version == "auto" {
 				connection["ip_version"] = json.RawMessage(`"mixed"`)
-				encoded, err := json.Marshal(connection)
-				if err != nil {
-					return err
-				}
-				document["connection"] = encoded
+				document["connection"], _ = json.Marshal(connection)
 				migrated = true
 			}
 		}
 		if migrated {
-			file.after, err = json.MarshalIndent(document, "", "  ")
-			if err != nil {
-				return err
-			}
+			file.after, _ = json.MarshalIndent(document, "", "  ")
 			file.after = append(file.after, '\n')
 			changed = true
 		}

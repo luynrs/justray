@@ -252,12 +252,6 @@ func (a *app) connectDaemon(ctx context.Context, startMissing bool) error {
 }
 
 func spawn(bin, dir string) error {
-	devNull, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = devNull.Close() }()
-
 	errLog, err := os.OpenFile(ipc.DaemonLog(dir), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
@@ -265,7 +259,7 @@ func spawn(bin, dir string) error {
 	defer func() { _ = errLog.Close() }()
 
 	cmd := exec.Command(bin)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = devNull, devNull, errLog
+	cmd.Stderr = errLog
 	detach.Cmd(cmd)
 	if err := cmd.Start(); err != nil {
 		return err

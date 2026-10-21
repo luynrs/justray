@@ -92,21 +92,17 @@ func detour(s domain.Settings) string {
 }
 
 func dnsServers(s domain.Settings, detourTag, tag string) []option.DNSServerOptions {
-	dns := s.DNS
-	if dns == "" {
-		dns = domain.DefaultDNS
-	}
 	remote := option.RemoteDNSServerOptions{
 		RawLocalDNSServerOptions: option.RawLocalDNSServerOptions{
 			DialerOptions: option.DialerOptions{Detour: detourTag},
 		},
-		DNSServerAddressOptions: option.DNSServerAddressOptions{Server: dns},
+		DNSServerAddressOptions: option.DNSServerAddressOptions{Server: s.DNS},
 	}
 	transportType := C.DNSTypeUDP
 	if detourTag != "" {
 		transportType = C.DNSTypeTCP
 	}
-	u, _ := url.Parse(dns) // Settings.Normalize validates the URL
+	u, _ := url.Parse(s.DNS) // Settings.Normalize validates the URL
 	if u != nil && u.Hostname() != "" {
 		transportType = C.DNSTypeHTTPS
 		remote.Server = u.Hostname()
@@ -114,7 +110,7 @@ func dnsServers(s domain.Settings, detourTag, tag string) []option.DNSServerOpti
 			port, _ := strconv.ParseUint(u.Port(), 10, 16)
 			remote.ServerPort = uint16(port)
 		}
-	} else if address, err := netip.ParseAddrPort(dns); err == nil {
+	} else if address, err := netip.ParseAddrPort(s.DNS); err == nil {
 		remote.Server = address.Addr().String()
 		remote.ServerPort = address.Port()
 	}

@@ -51,25 +51,7 @@ func rules(s domain.Settings) []option.Rule {
 		RawDefaultRule: option.RawDefaultRule{Inbound: []string{"mixed-in"}},
 		RuleAction:     toProxy,
 	}})
-	resolveInbounds := []string{"tun-in"}
-	if s.BypassLocal == "on" {
-		resolveInbounds = nil
-	}
-	for _, list := range [][]string{s.Direct, s.Proxy, s.Block} {
-		for _, rule := range list {
-			if _, err := netip.ParsePrefix(rule); err == nil {
-				resolveInbounds = nil
-				break
-			}
-		}
-	}
-	out = append(out,
-		option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{RuleAction: option.RuleAction{Action: C.RuleActionTypeSniff}}},
-		option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{
-			RawDefaultRule: option.RawDefaultRule{Inbound: resolveInbounds},
-			RuleAction:     option.RuleAction{Action: C.RuleActionTypeResolve},
-		}},
-	)
+	out = append(out, option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{RuleAction: option.RuleAction{Action: C.RuleActionTypeSniff}}})
 	if s.BlockQUIC == "on" {
 		out = append(out, option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{
 			RawDefaultRule: option.RawDefaultRule{Network: []string{"udp"}, Port: []uint16{443}},
@@ -88,9 +70,6 @@ func rules(s domain.Settings) []option.Rule {
 			RuleAction:     toDirect,
 		}})
 	}
-	out = append(out, option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{
-		RuleAction: option.RuleAction{Action: C.RuleActionTypeRoute, RouteOptions: option.RouteActionOptions{Outbound: final(s)}},
-	}})
 	return out
 }
 
