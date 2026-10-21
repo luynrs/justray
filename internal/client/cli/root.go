@@ -104,13 +104,7 @@ func Execute() int {
 			a.client = ipc.New(ipc.Socket(dir))
 			return nil
 		}
-		if err := a.connectDaemon(cmd.Context(), cmd != statusCmd && cmd != subListCmd && cmd != downCmd); err != nil {
-			return err
-		}
-		if snapshot, err := a.client.Snapshot(cmd.Context()); err == nil {
-			a.syncStyle(snapshot.Settings)
-		}
-		return nil
+		return a.connectDaemon(cmd.Context(), cmd != statusCmd && cmd != subListCmd && cmd != downCmd)
 	}
 	rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		return tui.Run(a.client, a.start)

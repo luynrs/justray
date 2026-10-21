@@ -30,6 +30,9 @@ var subAddCmd = &cobra.Command{
 }
 
 func (a *app) subAdd(cmd *cobra.Command, args []string) error {
+	if snapshot, err := a.client.Snapshot(cmd.Context()); err == nil {
+		a.syncStyle(snapshot.Settings)
+	}
 	stop := spin("Fetching subscription")
 	sub, err := a.client.AddSubscription(cmd.Context(), args[0])
 	stop()
@@ -60,6 +63,7 @@ func (a *app) subRemove(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	a.syncStyle(snapshot.Settings)
 	sub, subErr := match(args[0], "subscription", snapshot.Subscriptions, func(s ipc.Subscription) (string, string) { return s.SubscriptionID, s.Name })
 	if subErr == nil {
 		name := a.clean(sub.Name)
@@ -109,6 +113,7 @@ func (a *app) subRefresh(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	a.syncStyle(snapshot.Settings)
 	if len(args) == 0 && len(snapshot.Subscriptions) == 0 {
 		out(style.Gray.Render("No subscriptions yet. Add one: " + cmd.Parent().CommandPath() + " add <url>"))
 		return nil

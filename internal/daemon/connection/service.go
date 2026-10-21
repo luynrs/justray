@@ -84,9 +84,6 @@ func (s *Service) Probe(ctx context.Context, nodes []domain.Node, settings domai
 	if instance == nil {
 		instance = s.newEngine(s.ctx, ipc.EngineLog(s.dir))
 	}
-	if instance == nil {
-		return errors.New("initialize engine: engine is nil")
-	}
 	return instance.Probe(ctx, nodes, settings, onResult)
 }
 
@@ -130,9 +127,6 @@ func (s *Service) apply(ctx context.Context, n domain.Node, ref domain.NodeRef, 
 			s.log.Printf("clear engine log failed (%v)", err)
 		}
 		eng = s.newEngine(s.ctx, ipc.EngineLog(s.dir))
-		if eng == nil {
-			return errors.New("initialize engine: engine is nil")
-		}
 	}
 	if err := eng.Apply(ctx, engine.Spec{Node: n, Settings: settings, Tun: tun}); err != nil {
 		if creating {

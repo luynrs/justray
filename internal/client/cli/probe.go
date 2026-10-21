@@ -25,6 +25,7 @@ func (a *app) probe(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	a.syncStyle(snapshot.Settings)
 	if len(snapshot.Nodes) == 0 {
 		out(style.Gray.Render("No nodes to probe. Add a subscription first: " + cmd.Root().CommandPath() + " subscription add <url>"))
 		return nil

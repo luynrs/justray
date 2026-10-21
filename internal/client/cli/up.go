@@ -33,6 +33,7 @@ func (a *app) up(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	a.syncStyle(snapshot.Settings)
 	nodes := snapshot.Nodes
 	var key string
 	if len(args) > 0 {

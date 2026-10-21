@@ -7,7 +7,6 @@ import (
 	"slices"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/luynrs/justray/internal/daemon/connection"
 	"github.com/luynrs/justray/internal/daemon/store"
@@ -75,30 +74,22 @@ func New(ctx context.Context, st store.Disk, conn *connection.Service, subs *sub
 
 func (c *Core) Shutdown() {
 	c.cancel()
-	done := make(chan struct{})
-	go func() {
-		c.opMu.Lock()
-		for c.changing != nil {
-			finished := c.changing.done
-			c.opMu.Unlock()
-			<-finished
-			c.opMu.Lock()
-		}
-		c.stMu.Lock()
-		probe := c.probing
-		c.stMu.Unlock()
-		if probe != nil {
-			<-probe.done
-		}
-		c.conn.Shutdown()
-		c.publish()
+	c.opMu.Lock()
+	for c.changing != nil {
+		finished := c.changing.done
 		c.opMu.Unlock()
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(30 * time.Second):
+		<-finished
+		c.opMu.Lock()
 	}
+	c.stMu.Lock()
+	probe := c.probing
+	c.stMu.Unlock()
+	if probe != nil {
+		<-probe.done
+	}
+	c.conn.Shutdown()
+	c.publish()
+	c.opMu.Unlock()
 }
 
 func (c *Core) current() store.State {

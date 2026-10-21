@@ -3,7 +3,9 @@
 package autostart
 
 import (
+	"bytes"
 	"context"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"os"
@@ -15,6 +17,20 @@ import (
 )
 
 const name = "justrayd"
+
+const task = `<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+	<Triggers><LogonTrigger><Enabled>true</Enabled></LogonTrigger></Triggers>
+	<Principals><Principal id="Author">
+		<LogonType>InteractiveToken</LogonType>
+		<RunLevel>HighestAvailable</RunLevel>
+	</Principal></Principals>
+	<Settings>
+		<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+		<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+		<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+	</Settings>
+	<Actions Context="Author"><Exec><Command>%s</Command></Exec></Actions>
+</Task>`
 
 func isNotFound(err error) bool {
 	if comError, ok := errors.AsType[*ole.OleError](err); ok {
@@ -28,7 +44,7 @@ func isNotFound(err error) bool {
 	return false
 }
 
-func withFolder(ctx context.Context, action func(scheduler, folder *ole.IDispatch) error) error {
+func withFolder(ctx context.Context, action func(folder *ole.IDispatch) error) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -63,12 +79,12 @@ func withFolder(ctx context.Context, action func(scheduler, folder *ole.IDispatc
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	return action(scheduler, folder.ToIDispatch())
+	return action(folder.ToIDispatch())
 }
 
 func enabled(ctx context.Context) (bool, error) {
 	var enabled bool
-	err := withFolder(ctx, func(_, folder *ole.IDispatch) error {
+	err := withFolder(ctx, func(folder *ole.IDispatch) error {
 		task, err := oleutil.CallMethod(folder, "GetTask", name)
 		if err != nil {
 			if isNotFound(err) {
@@ -96,72 +112,10 @@ func enable(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return withFolder(ctx, func(scheduler, folder *ole.IDispatch) error {
-		taskDefinition, err := oleutil.CallMethod(scheduler, "NewTask", 0)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = taskDefinition.Clear() }()
-		taskDefinitionDispatch := taskDefinition.ToIDispatch()
-
-		settings, err := oleutil.GetProperty(taskDefinitionDispatch, "Settings")
-		if err != nil {
-			return err
-		}
-		defer func() { _ = settings.Clear() }()
-		settingsDispatch := settings.ToIDispatch()
-		if _, err := oleutil.PutProperty(settingsDispatch, "DisallowStartIfOnBatteries", false); err != nil {
-			return err
-		}
-		if _, err := oleutil.PutProperty(settingsDispatch, "StopIfGoingOnBatteries", false); err != nil {
-			return err
-		}
-		if _, err := oleutil.PutProperty(settingsDispatch, "ExecutionTimeLimit", "PT0S"); err != nil {
-			return err
-		}
-
-		principal, err := oleutil.GetProperty(taskDefinitionDispatch, "Principal")
-		if err != nil {
-			return err
-		}
-		defer func() { _ = principal.Clear() }()
-		principalDispatch := principal.ToIDispatch()
-		if _, err := oleutil.PutProperty(principalDispatch, "LogonType", 3); err != nil {
-			return err
-		}
-		if _, err := oleutil.PutProperty(principalDispatch, "RunLevel", 1); err != nil {
-			return err
-		}
-
-		triggers, err := oleutil.GetProperty(taskDefinitionDispatch, "Triggers")
-		if err != nil {
-			return err
-		}
-		defer func() { _ = triggers.Clear() }()
-		trigger, err := oleutil.CallMethod(triggers.ToIDispatch(), "Create", 9)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = trigger.Clear() }()
-
-		actions, err := oleutil.GetProperty(taskDefinitionDispatch, "Actions")
-		if err != nil {
-			return err
-		}
-		defer func() { _ = actions.Clear() }()
-		action, err := oleutil.CallMethod(actions.ToIDispatch(), "Create", 0)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = action.Clear() }()
-		if _, err := oleutil.PutProperty(action.ToIDispatch(), "Path", executablePath); err != nil {
-			return err
-		}
-
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		registeredTask, err := oleutil.CallMethod(folder, "RegisterTaskDefinition", name, taskDefinitionDispatch, 6, "", "", 3, "")
+	var command bytes.Buffer
+	_ = xml.EscapeText(&command, []byte(executablePath))
+	return withFolder(ctx, func(folder *ole.IDispatch) error {
+		registeredTask, err := oleutil.CallMethod(folder, "RegisterTask", name, fmt.Sprintf(task, command.String()), 6, "", "", 3, "")
 		if err != nil {
 			return fmt.Errorf("enable autostart: %w", err)
 		}
@@ -171,7 +125,7 @@ func enable(ctx context.Context) error {
 }
 
 func disable(ctx context.Context) error {
-	return withFolder(ctx, func(_, folder *ole.IDispatch) error {
+	return withFolder(ctx, func(folder *ole.IDispatch) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}

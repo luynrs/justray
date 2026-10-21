@@ -24,6 +24,7 @@ func (a *app) down(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	a.syncStyle(snapshot.Settings)
 	st := snapshot.Status
 	if !st.Connected {
 		if err := a.client.Disconnect(cmd.Context()); err != nil {
