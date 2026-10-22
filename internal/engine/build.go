@@ -19,6 +19,7 @@ var dnsStrategy = map[string]option.DomainStrategy{
 }
 
 func build(n domain.Node, s domain.Settings, logPath string, tun bool) *option.Options {
+	dnsDetour := detour(s)
 	opts := &option.Options{
 		Log: &option.LogOptions{Level: s.LogLevel, Output: logPath},
 		Inbounds: []option.Inbound{
@@ -36,7 +37,7 @@ func build(n domain.Node, s domain.Settings, logPath string, tun bool) *option.O
 		DNS: &option.DNSOptions{RawDNSOptions: option.RawDNSOptions{
 			ReverseMapping:   true,
 			DNSClientOptions: option.DNSClientOptions{Strategy: dnsStrategy[s.IPVersion]},
-			Servers:          dnsServers(s, detour(s), "remote"),
+			Servers:          dnsServers(s.DNS, dnsDetour, "remote"),
 			Final:            "remote",
 		}},
 		Route: &option.RouteOptions{
@@ -46,8 +47,8 @@ func build(n domain.Node, s domain.Settings, logPath string, tun bool) *option.O
 			Rules:                 rules(s),
 		},
 	}
-	if detour(s) != "" {
-		opts.DNS.Servers = append(opts.DNS.Servers, dnsServers(s, "", "node")...)
+	if dnsDetour != "" {
+		opts.DNS.Servers = append(opts.DNS.Servers, dnsServers(s.DNS, "", "node")...)
 		opts.Route.DefaultDomainResolver.Server = "node"
 	}
 	if tun {
@@ -66,7 +67,7 @@ func probeConfig(s domain.Settings, logPath string) *option.Options {
 		Outbounds: []option.Outbound{{Type: C.TypeDirect, Tag: "direct", Options: &option.DirectOutboundOptions{}}},
 		DNS: &option.DNSOptions{RawDNSOptions: option.RawDNSOptions{
 			DNSClientOptions: option.DNSClientOptions{Strategy: dnsStrategy[s.IPVersion]},
-			Servers:          dnsServers(s, "", "remote"),
+			Servers:          dnsServers(s.DNS, "", "remote"),
 			Final:            "remote",
 		}},
 	}
@@ -91,18 +92,18 @@ func detour(s domain.Settings) string {
 	return "proxy"
 }
 
-func dnsServers(s domain.Settings, detourTag, tag string) []option.DNSServerOptions {
+func dnsServers(address, detourTag, tag string) []option.DNSServerOptions {
 	remote := option.RemoteDNSServerOptions{
 		RawLocalDNSServerOptions: option.RawLocalDNSServerOptions{
 			DialerOptions: option.DialerOptions{Detour: detourTag},
 		},
-		DNSServerAddressOptions: option.DNSServerAddressOptions{Server: s.DNS},
+		DNSServerAddressOptions: option.DNSServerAddressOptions{Server: address},
 	}
 	transportType := C.DNSTypeUDP
 	if detourTag != "" {
 		transportType = C.DNSTypeTCP
 	}
-	u, _ := url.Parse(s.DNS) // Settings.Normalize validates the URL
+	u, _ := url.Parse(address) // Settings.Normalize validates the URL
 	if u != nil && u.Hostname() != "" {
 		transportType = C.DNSTypeHTTPS
 		remote.Server = u.Hostname()
@@ -110,9 +111,9 @@ func dnsServers(s domain.Settings, detourTag, tag string) []option.DNSServerOpti
 			port, _ := strconv.ParseUint(u.Port(), 10, 16)
 			remote.ServerPort = uint16(port)
 		}
-	} else if address, err := netip.ParseAddrPort(s.DNS); err == nil {
-		remote.Server = address.Addr().String()
-		remote.ServerPort = address.Port()
+	} else if endpoint, err := netip.ParseAddrPort(address); err == nil {
+		remote.Server = endpoint.Addr().String()
+		remote.ServerPort = endpoint.Port()
 	}
 	if transportType != C.DNSTypeHTTPS {
 		return []option.DNSServerOptions{{Type: transportType, Tag: tag, Options: &remote}}

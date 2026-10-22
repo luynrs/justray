@@ -73,6 +73,9 @@ func parseVMess(uri string) (domain.Node, error) {
 	if net == "grpc" {
 		n.Transport.ServiceName = vm.Path // grpc exports reuse "path" as name
 	}
+	if net == "httpupgrade" {
+		n.Transport.Path = xrayHTTPUpgradePath(n.Transport.Path)
+	}
 	if net == "xhttp" || net == "splithttp" {
 		n.Transport.Network, n.Transport.Host, n.Transport.Mode = "xhttp", host0, vm.Mode
 		if n.Transport.Mode == "" && vm.Type != "none" {

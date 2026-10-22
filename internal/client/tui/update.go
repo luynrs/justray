@@ -105,33 +105,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case pushed:
-		if !msg.live {
-			m.live = false
-			if message := style.ErrorText(msg.err); message != "" && m.startup == nil && !m.busy {
-				m.err, m.errAt = message, time.Now()
-			}
-			return m, next(m.watch, m.updates)
-		}
 		initial := m.snapshot.Settings.Port == 0
 		rows := m.rows()
 		selected, selectedOK := tree.At(rows, m.cursor)
 		followSelection := m.selectionVisible(rows)
-		if !initial {
-			for _, sub := range msg.snapshot.Subscriptions {
-				if sub.Warning != "" && !slices.ContainsFunc(m.snapshot.Subscriptions, func(previous ipc.Subscription) bool {
-					return previous.SubscriptionID == sub.SubscriptionID && previous.Warning == sub.Warning && previous.UpdatedAt.Equal(sub.UpdatedAt)
-				}) {
-					m.err, m.errAt = sub.Warning, time.Now()
+		var spinnerCommand tea.Cmd
+		if msg.live {
+			if !initial {
+				for _, sub := range msg.snapshot.Subscriptions {
+					if sub.Warning != "" && !slices.ContainsFunc(m.snapshot.Subscriptions, func(previous ipc.Subscription) bool {
+						return previous.SubscriptionID == sub.SubscriptionID && previous.Warning == sub.Warning && previous.UpdatedAt.Equal(sub.UpdatedAt)
+					}) {
+						m.err, m.errAt = sub.Warning, time.Now()
+					}
 				}
 			}
+			if msg.snapshot.Status.Error != "" && msg.snapshot.Status.Error != m.snapshot.Status.Error {
+				m.err, m.errAt = msg.snapshot.Status.Error, time.Now()
+			}
+			m.snapshot = msg.snapshot
+			spinnerCommand = tea.Batch(m.syncTTY(), m.startSpinner())
+		} else if message := style.ErrorText(msg.err); message != "" && m.startup == nil && !m.busy {
+			m.err, m.errAt = message, time.Now()
 		}
-		if msg.snapshot.Status.Error != "" && msg.snapshot.Status.Error != m.snapshot.Status.Error {
-			m.err, m.errAt = msg.snapshot.Status.Error, time.Now()
-		}
-		m.snapshot = msg.snapshot
-		spinnerCommand := m.syncTTY()
-		m.live = true
-		spinnerCommand = tea.Batch(spinnerCommand, m.startSpinner())
+		m.live = msg.live
 		rows = m.rows()
 		switch {
 		case initial && m.snapshot.Status.Connected:

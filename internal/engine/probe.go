@@ -95,7 +95,7 @@ func (engine *box) Probe(ctx context.Context, nodes []domain.Node, settings doma
 					if node.Protocol == domain.WG && node.ConfigKey() == activeKey {
 						dialer = current
 					}
-					result, err := probe(runtimeCtx, node, instance, "p"+strconv.Itoa(target[0]), settings, dialer)
+					result, err := probe(runtimeCtx, node, instance, "p"+strconv.Itoa(target[0]), settings.ProbeURL, dialer)
 					<-slots
 					if err == nil {
 						for _, index := range target {
@@ -110,7 +110,7 @@ func (engine *box) Probe(ctx context.Context, nodes []domain.Node, settings doma
 	return runtimeCtx.Err()
 }
 
-func probe(ctx context.Context, node domain.Node, instance *sbox.Box, tag string, settings domain.Settings, dialer adapter.Outbound) (Result, error) {
+func probe(ctx context.Context, node domain.Node, instance *sbox.Box, tag, probeURL string, dialer adapter.Outbound) (Result, error) {
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
@@ -136,7 +136,7 @@ func probe(ctx context.Context, node domain.Node, instance *sbox.Box, tag string
 	}
 	var milliseconds int
 	if err == nil {
-		milliseconds, err = delay(requestCtx, dialer, settings)
+		milliseconds, err = delay(requestCtx, dialer, probeURL)
 	}
 	if ctx.Err() != nil {
 		return Result{}, ctx.Err()
@@ -151,7 +151,7 @@ func probe(ctx context.Context, node domain.Node, instance *sbox.Box, tag string
 	return result, nil
 }
 
-func delay(ctx context.Context, dialer N.Dialer, settings domain.Settings) (int, error) {
+func delay(ctx context.Context, dialer N.Dialer, probeURL string) (int, error) {
 	client := &http.Client{
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		Transport: &http.Transport{
@@ -164,7 +164,7 @@ func delay(ctx context.Context, dialer N.Dialer, settings domain.Settings) (int,
 	defer client.CloseIdleConnections()
 
 	start := time.Now()
-	req, err := http.NewRequestWithContext(ctx, http.MethodHead, settings.ProbeURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, probeURL, nil)
 	if err != nil {
 		return 0, err
 	}

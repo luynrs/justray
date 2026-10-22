@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/luynrs/justray/internal/domain"
@@ -56,10 +57,11 @@ type xrayStreamSettings struct {
 		Host    stringOrSlice            `json:"host"`
 		Headers map[string]stringOrSlice `json:"headers"`
 	} `json:"httpSettings"`
-	XHTTPSettings     json.RawMessage   `json:"xhttpSettings"`
-	SplitHTTPSettings json.RawMessage   `json:"splitHttpSettings"`
-	TCPSettings       xrayTCPTransport  `json:"tcpSettings"`
-	RawSettings       *xrayTCPTransport `json:"rawSettings"`
+	XHTTPSettings       json.RawMessage   `json:"xhttpSettings"`
+	SplitHTTPSettings   json.RawMessage   `json:"splitHttpSettings"`
+	TCPSettings         xrayTCPTransport  `json:"tcpSettings"`
+	RawSettings         *xrayTCPTransport `json:"rawSettings"`
+	HTTPUpgradeSettings xrayHTTPTransport `json:"httpupgradeSettings"`
 }
 
 type xrayRealitySettings struct {
@@ -179,6 +181,20 @@ func xrayTransport(s xrayStreamSettings) (domain.Transport, error) {
 		return domain.Transport{Network: "tcp", Mode: strings.ToLower(s.TCPSettings.Header.Type)}, nil
 	case "ws":
 		return domain.Transport{Network: network, Path: s.WSSettings.Path, Host: cmp.Or(s.WSSettings.Host, s.WSSettings.Headers["Host"])}, nil
+	case "httpupgrade":
+		transport := domain.Transport{Network: network, Path: xrayHTTPUpgradePath(s.HTTPUpgradeSettings.Path), Host: s.HTTPUpgradeSettings.Host}
+		headers := maps.Clone(s.HTTPUpgradeSettings.Headers)
+		for name, value := range headers {
+			if strings.EqualFold(name, "Host") {
+				transport.Host = cmp.Or(transport.Host, value)
+				delete(headers, name)
+			}
+		}
+		if len(headers) > 0 {
+			data, _ := json.Marshal(map[string]any{"headers": headers})
+			transport.Extra = string(data)
+		}
+		return transport, nil
 	case "grpc":
 		return domain.Transport{Network: network, ServiceName: s.GRPCSettings.ServiceName}, nil
 	case "http", "h2":

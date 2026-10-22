@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"maps"
 	"slices"
 	"strings"
 
@@ -231,7 +232,16 @@ func singboxTransport(t *singboxTransportConfig) domain.Transport {
 			}
 		}
 	}
-	return domain.Transport{Network: network, Path: t.Path, Host: host, ServiceName: t.ServiceName, Mode: t.Mode}
+	transport := domain.Transport{Network: network, Path: t.Path, Host: host, ServiceName: t.ServiceName, Mode: t.Mode}
+	if network == "httpupgrade" {
+		headers := maps.Clone(t.Headers)
+		maps.DeleteFunc(headers, func(name string, _ stringOrSlice) bool { return strings.EqualFold(name, "Host") })
+		if len(headers) > 0 {
+			data, _ := json.Marshal(map[string]any{"headers": headers})
+			transport.Extra = string(data)
+		}
+	}
+	return transport
 }
 
 func singboxTLS(t *singboxTLSConfig, server string) (*domain.TLS, *domain.Reality) {

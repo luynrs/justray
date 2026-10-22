@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -23,7 +24,7 @@ func Needed(err error) bool {
 	return unix.Capget(&header, &capabilities[0]) != nil || capabilities[0].Effective&(1<<unix.CAP_NET_ADMIN) == 0
 }
 
-func Restart(dir string) error {
+func Restart(dir string, reservation *os.File) error {
 	self, err := os.Executable()
 	if err != nil {
 		return err
@@ -51,7 +52,39 @@ func Restart(dir string) error {
 		}
 	}
 
-	return syscall.Exec(target, os.Args, os.Environ())
+	syscall.ForkLock.RLock()
+	defer syscall.ForkLock.RUnlock()
+	if _, err := unix.FcntlInt(reservation.Fd(), unix.F_SETFD, 0); err != nil {
+		return err
+	}
+	defer unix.CloseOnExec(int(reservation.Fd()))
+	return syscall.Exec(target, os.Args, append(os.Environ(), "JUSTRAY_ELEVATION_FD="+strconv.Itoa(int(reservation.Fd()))))
+}
+
+func TakeReservation(path string) (*os.File, error) {
+	raw := os.Getenv("JUSTRAY_ELEVATION_FD")
+	_ = os.Unsetenv("JUSTRAY_ELEVATION_FD")
+	if raw == "" {
+		return nil, nil
+	}
+	descriptor, err := strconv.Atoi(raw)
+	if err != nil || descriptor < 3 {
+		return nil, errors.New("invalid inherited elevation lock descriptor")
+	}
+	reservation := os.NewFile(uintptr(descriptor), path)
+	info, statErr := reservation.Stat()
+	expected, pathErr := os.Stat(path)
+	flags, flagErr := unix.FcntlInt(reservation.Fd(), unix.F_GETFL, 0)
+	if statErr != nil || pathErr != nil || flagErr != nil || !info.Mode().IsRegular() || !os.SameFile(info, expected) || flags&unix.O_ACCMODE != unix.O_RDWR {
+		_ = reservation.Close()
+		return nil, errors.New("invalid inherited elevation lock")
+	}
+	if err := unix.Flock(descriptor, unix.LOCK_EX|unix.LOCK_NB); err != nil {
+		_ = reservation.Close()
+		return nil, err
+	}
+	unix.CloseOnExec(descriptor)
+	return reservation, nil
 }
 
 func hasNetAdmin(path string) bool {

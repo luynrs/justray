@@ -9,6 +9,7 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/transport/v2rayxhttp"
+	SJSON "github.com/sagernet/sing/common/json"
 	"github.com/sagernet/sing/common/json/badoption"
 	M "github.com/sagernet/sing/common/metadata"
 
@@ -54,13 +55,13 @@ func transport(n domain.Node) (*option.V2RayTransportOptions, error) {
 		}
 		return &option.V2RayTransportOptions{Type: C.V2RayTransportTypeHTTP, HTTPOptions: h}, nil
 	case "httpupgrade":
-		return &option.V2RayTransportOptions{
-			Type: C.V2RayTransportTypeHTTPUpgrade,
-			HTTPUpgradeOptions: option.V2RayHTTPUpgradeOptions{
-				Path: n.Transport.Path,
-				Host: n.Transport.Host,
-			},
-		}, nil
+		options := option.V2RayHTTPUpgradeOptions{Path: n.Transport.Path, Host: n.Transport.Host}
+		if n.Transport.Extra != "" {
+			if err := SJSON.Unmarshal([]byte(n.Transport.Extra), &options); err != nil {
+				return nil, fmt.Errorf("httpupgrade: %w", err)
+			}
+		}
+		return &option.V2RayTransportOptions{Type: C.V2RayTransportTypeHTTPUpgrade, HTTPUpgradeOptions: options}, nil
 	}
 	return nil, fmt.Errorf("unsupported transport %q", n.Transport.Network)
 }

@@ -89,16 +89,16 @@ func main() {
 			if !errors.Is(err, ipc.ErrElevate) {
 				logger.Fatalf("restore failed (%v)", err)
 			}
-			release, err := lock.File(socket + ".elevation.lock")
+			reservation, err := lock.Open(socket + ".elevation.lock")
 			for deadline := time.Now().Add(30 * time.Second); errors.Is(err, lock.ErrLocked) && time.Now().Before(deadline); {
 				time.Sleep(ipc.Retry)
-				release, err = lock.File(socket + ".elevation.lock")
+				reservation, err = lock.Open(socket + ".elevation.lock")
 			}
 			if err != nil {
 				logger.Fatalf("reserve elevation failed (%v)", err)
 			}
-			if err := elevate.Restart(dir); err != nil {
-				release()
+			if err := elevate.Restart(dir, reservation); err != nil {
+				lock.Close(reservation)
 				app.RestoreFailed(err)
 			} else {
 				_ = ln.Close()
@@ -112,7 +112,7 @@ func main() {
 					logger.Printf("elevated daemon did not start (%v)", err)
 				}
 				finish()
-				release()
+				lock.Close(reservation)
 				return
 			}
 		}
@@ -121,6 +121,30 @@ func main() {
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 
+		logsDone := make(chan struct{})
+		go func() {
+			defer close(logsDone)
+			ticker := time.NewTicker(time.Second)
+			defer ticker.Stop()
+			paths := []string{ipc.DaemonLog(dir), ipc.EngineLog(dir)}
+			for {
+				for _, path := range paths {
+					info, err := os.Stat(path)
+					if err == nil && info.Size() > 10<<20 {
+						err = ipc.ClearLog(path)
+					}
+					if err != nil && !errors.Is(err, os.ErrNotExist) {
+						logger.Printf("limit logs failed (%v)", err)
+						return
+					}
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+				}
+			}
+		}()
 		go srv.AutoRefresh()
 
 		served := make(chan error, 1)
@@ -147,10 +171,9 @@ func main() {
 
 		cleaned := make(chan struct{})
 		go func() {
-			_ = ln.Close()
-			srv.Shutdown()
 			<-served
 			app.Shutdown()
+			<-logsDone
 			close(cleaned)
 		}()
 		select {

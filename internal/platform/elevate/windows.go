@@ -16,7 +16,7 @@ func Needed(err error) bool {
 	return errors.Is(err, os.ErrPermission)
 }
 
-func Restart(_ string) error {
+func Restart(_ string, _ *os.File) error {
 	self, err := os.Executable()
 	if err != nil {
 		return err
@@ -29,3 +29,5 @@ func Restart(_ string) error {
 	}
 	return nil
 }
+
+func TakeReservation(string) (*os.File, error) { return nil, nil }

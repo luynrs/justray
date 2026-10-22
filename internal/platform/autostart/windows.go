@@ -101,9 +101,6 @@ func enabled(ctx context.Context) (bool, error) {
 		enabled = value.Val != 0
 		return nil
 	})
-	if err != nil {
-		return false, err
-	}
 	return enabled, err
 }
 
@@ -126,9 +123,6 @@ func enable(ctx context.Context) error {
 
 func disable(ctx context.Context) error {
 	return withFolder(ctx, func(folder *ole.IDispatch) error {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
 		task, err := oleutil.CallMethod(folder, "DeleteTask", name, 0)
 		if err != nil {
 			if isNotFound(err) {

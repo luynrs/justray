@@ -88,6 +88,9 @@ func parseTransport(q url.Values) domain.Transport {
 		ServiceName: svc,
 		Mode:        cmp.Or(q.Get("mode"), q.Get("headerType")),
 	}
+	if net == "httpupgrade" {
+		t.Path = xrayHTTPUpgradePath(t.Path)
+	}
 	if net == "xhttp" || net == "splithttp" {
 		t.Network, t.Host, t.Mode, t.Extra = "xhttp", q.Get("host"), q.Get("mode"), q.Get("extra")
 		if t.Mode == "" {
@@ -98,6 +101,17 @@ func parseTransport(q url.Values) domain.Transport {
 		}
 	}
 	return t
+}
+
+func xrayHTTPUpgradePath(path string) string {
+	if parsed, err := url.Parse(path); err == nil {
+		if query := parsed.Query(); query.Get("ed") != "" {
+			query.Del("ed")
+			parsed.RawQuery = query.Encode()
+			path = parsed.String()
+		}
+	}
+	return (&url.URL{Path: path}).EscapedPath()
 }
 
 func splitComma(s string) []string {

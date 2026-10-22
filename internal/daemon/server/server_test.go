@@ -285,7 +285,6 @@ func TestSubscriptionRefresh(t *testing.T) {
 		"xhttp placement":      `{"outbounds":[{"type":"vless","server":"example.com","server_port":443,"uuid":"uuid","transport":{"type":"xhttp","session_placement":"body"}}]}`,
 		"xhttp xmux":           `{"outbounds":[{"type":"vless","server":"example.com","server_port":443,"uuid":"uuid","transport":{"type":"xhttp","xmux":{"max_connections":2,"max_concurrency":2}}}]}`,
 		"xhttp range":          `{"outbounds":[{"type":"vless","server":"example.com","server_port":443,"uuid":"uuid","transport":{"type":"xhttp","sc_max_each_post_bytes":1.5}}]}`,
-		"xhttp path query":     `{"outbounds":[{"type":"vless","server":"example.com","server_port":443,"uuid":"uuid","transport":{"type":"xhttp","path":"/edge/?token=value"}}]}`,
 		"hy2 negative up":      `{"outbounds":[{"type":"hysteria2","server":"example.com","server_port":443,"password":"secret","up_mbps":-1}]}`,
 		"hy2 negative down":    `{"outbounds":[{"type":"hysteria2","server":"example.com","server_port":443,"password":"secret","down_mbps":-1}]}`,
 		"hy2 clash up":         "proxies:\n  - {type: hysteria2, server: example.com, port: 443, password: secret, up: -1}",

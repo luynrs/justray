@@ -75,7 +75,7 @@ func New(ctx context.Context, st store.Disk, conn *connection.Service, subs *sub
 func (c *Core) Shutdown() {
 	c.cancel()
 	c.opMu.Lock()
-	for c.changing != nil {
+	if c.changing != nil {
 		finished := c.changing.done
 		c.opMu.Unlock()
 		<-finished

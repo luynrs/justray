@@ -94,9 +94,6 @@ func xhttpOptions(transport domain.Transport) (option.V2RayXHTTPOptions, error) 
 	options.Path = cmp.Or(transport.Path, options.Path)
 	options.Host = cmp.Or(transport.Host, options.Host)
 	options.Mode = cmp.Or(transport.Mode, options.Mode, "auto")
-	if strings.Contains(options.Path, "?") {
-		return options, errors.New("xhttp: query parameters in path are not supported by sing-box-lx")
-	}
 	for name, values := range options.Headers {
 		if strings.EqualFold(name, "Host") && len(values) > 0 {
 			options.Host = cmp.Or(options.Host, values[0])

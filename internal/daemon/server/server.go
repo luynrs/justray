@@ -43,19 +43,28 @@ func New(ctx context.Context, logger *log.Logger, app *core.Core) *Server {
 func Listen(socket string) (net.Listener, func(), error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	var unlock func()
-	var err error
-	if elevate.Needed(syscall.EPERM) {
-		var release func()
-		release, err = lock.File(socket + ".elevation.lock")
-		if err == nil {
-			unlock, err = lock.File(socket + ".lock")
-			release()
-		}
-	} else {
-		unlock, err = lock.File(socket + ".lock")
+	reservation, err := elevate.TakeReservation(socket + ".elevation.lock")
+	if err != nil {
+		return nil, nil, err
 	}
-	for errors.Is(err, lock.ErrLocked) {
+	if reservation != nil {
+		defer lock.Close(reservation)
+	}
+	var unlock func()
+	for {
+		if reservation == nil && elevate.Needed(syscall.EPERM) {
+			var release func()
+			release, err = lock.File(socket + ".elevation.lock")
+			if err == nil {
+				unlock, err = lock.File(socket + ".lock")
+				release()
+			}
+		} else {
+			unlock, err = lock.File(socket + ".lock")
+		}
+		if !errors.Is(err, lock.ErrLocked) {
+			break
+		}
 		check, finish := context.WithTimeout(ctx, 100*time.Millisecond)
 		pingErr := ipc.New(socket).Ping(check)
 		finish()
@@ -66,9 +75,6 @@ func Listen(socket string) (net.Listener, func(), error) {
 		case <-ctx.Done():
 			return nil, nil, ctx.Err()
 		case <-time.After(ipc.Retry):
-		}
-		if !elevate.Needed(syscall.EPERM) {
-			unlock, err = lock.File(socket + ".lock")
 		}
 	}
 

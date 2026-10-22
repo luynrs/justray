@@ -19,7 +19,7 @@ func Needed(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "operation not permitted") && os.Geteuid() != 0
 }
 
-func Restart(_ string) error {
+func Restart(_ string, _ *os.File) error {
 	self, err := os.Executable()
 	if err != nil {
 		return err
@@ -51,6 +51,8 @@ func Restart(_ string) error {
 	}
 	return nil
 }
+
+func TakeReservation(string) (*os.File, error) { return nil, nil }
 
 func sameHelper(source string) bool {
 	sourceSum, sourceErr := hashFile(source)

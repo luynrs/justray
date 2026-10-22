@@ -184,18 +184,16 @@ func (s Model) valueLines(f field, selected bool, bar string) (lines []string) {
 				name = f.enum[index]
 				checked = name == f.value(&s.cur)
 			}
-			dot := style.Dot(checked)
+			markerStyle := style.Gray
 			if checked {
-				dot = style.Cyan.Render(dot)
-			} else {
-				dot = style.Gray.Render(dot)
+				markerStyle = style.Cyan
 			}
 			if index == s.option {
 				name = style.Cyan.Render(name)
 			} else {
 				name = style.Gray.Render(name)
 			}
-			lines = append(lines, bar+dot+" "+name)
+			lines = append(lines, bar+markerStyle.Render(style.Dot(checked))+" "+name)
 		}
 		return lines
 	}
