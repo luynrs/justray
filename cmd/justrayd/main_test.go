@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"runtime"
@@ -32,6 +33,9 @@ func TestLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := ipc.EnsureDir(directory); err != nil {
+		t.Fatal(err)
+	}
 	client := ipc.New(ipc.Socket(directory))
 	start := func() (*exec.Cmd, <-chan struct{}) {
 		cmd := exec.Command(os.Args[0], "-test.run=^TestLifecycle$")
@@ -59,6 +63,11 @@ func TestLifecycle(t *testing.T) {
 		}
 	}
 	for _, crash := range []bool{false, true, false} {
+		for _, path := range []string{ipc.DaemonLog(directory), ipc.EngineLog(directory)} {
+			if err := os.WriteFile(path, []byte("previous run\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
 		cmd, done := start()
 		end := time.Now().Add(10 * time.Second)
 		for client.Ping(t.Context()) != nil {
@@ -72,11 +81,24 @@ func TestLifecycle(t *testing.T) {
 			}
 			time.Sleep(20 * time.Millisecond)
 		}
+		for _, path := range []string{ipc.DaemonLog(directory), ipc.EngineLog(directory)} {
+			contents, err := os.ReadFile(path)
+			if err != nil || bytes.Contains(contents, []byte("previous run")) {
+				t.Fatalf("previous log survived startup: %s, %v", path, err)
+			}
+		}
 		if err := os.WriteFile(ipc.EngineLog(directory), []byte("beep boop"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		daemonLog, err := os.ReadFile(ipc.DaemonLog(directory))
+		if err != nil {
 			t.Fatal(err)
 		}
 		duplicate, duplicateDone := start()
 		wait(duplicate, duplicateDone, true)
+		if contents, err := os.ReadFile(ipc.DaemonLog(directory)); err != nil || !bytes.HasPrefix(contents, daemonLog) {
+			t.Fatalf("running daemon log changed: %q, %v", contents, err)
+		}
 		if contents, err := os.ReadFile(ipc.EngineLog(directory)); err != nil || string(contents) != "beep boop" {
 			t.Fatalf("engine log changed: %q, %v", contents, err)
 		}

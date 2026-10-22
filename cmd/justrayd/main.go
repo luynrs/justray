@@ -71,8 +71,10 @@ func main() {
 			}
 			logger.Fatalf("listen failed (%v)", err)
 		}
-		if err := ipc.ClearLog(ipc.EngineLog(dir)); err != nil {
-			logger.Printf("clear engine log failed (%v)", err)
+		for _, path := range []string{ipc.DaemonLog(dir), ipc.EngineLog(dir)} {
+			if err := ipc.ClearLog(path); err != nil {
+				logger.Printf("clear log failed (%v)", err)
+			}
 		}
 
 		conn := connection.New(ctx, dir, engine.New, logger)
@@ -121,30 +123,6 @@ func main() {
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 
-		logsDone := make(chan struct{})
-		go func() {
-			defer close(logsDone)
-			ticker := time.NewTicker(time.Second)
-			defer ticker.Stop()
-			paths := []string{ipc.DaemonLog(dir), ipc.EngineLog(dir)}
-			for {
-				for _, path := range paths {
-					info, err := os.Stat(path)
-					if err == nil && info.Size() > 10<<20 {
-						err = ipc.ClearLog(path)
-					}
-					if err != nil && !errors.Is(err, os.ErrNotExist) {
-						logger.Printf("limit logs failed (%v)", err)
-						return
-					}
-				}
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-				}
-			}
-		}()
 		go srv.AutoRefresh()
 
 		served := make(chan error, 1)
@@ -173,7 +151,6 @@ func main() {
 		go func() {
 			<-served
 			app.Shutdown()
-			<-logsDone
 			close(cleaned)
 		}()
 		select {
