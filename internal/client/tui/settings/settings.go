@@ -172,7 +172,7 @@ func New(s domain.Settings, top int) *Model {
 }
 
 func (s *Model) Result() (domain.Settings, domain.Settings, error) {
-	if s.abandon || s.cur.Equal(s.orig) {
+	if s.abandon || !s.Changed() {
 		return s.orig, s.orig, nil
 	}
 	next, err := s.cur.Normalize()
@@ -180,6 +180,8 @@ func (s *Model) Result() (domain.Settings, domain.Settings, error) {
 }
 
 func (s *Model) Current() domain.Settings { return s.cur }
+
+func (settings *Model) Changed() bool { return !settings.cur.Equal(settings.orig) }
 
 func (s *Model) Err() string { return s.err }
 
