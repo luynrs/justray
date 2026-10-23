@@ -21,7 +21,7 @@ func ErrorText(err error) string {
 	case "canceled":
 		return ""
 	case "timeout":
-		return "operation timed out; try again"
+		return "operation timed out"
 	default:
 		return err.Error()
 	}

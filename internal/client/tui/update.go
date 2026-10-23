@@ -99,7 +99,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.startup != nil {
 			m.startup = nil
 			if message := style.ErrorText(msg.err); message != "" && m.watch.Err() == nil {
-				m.err, m.errAt = "Could not start daemon: "+message, time.Now()
+				m.err, m.errAt = message, time.Now()
 			}
 		}
 		return m, nil

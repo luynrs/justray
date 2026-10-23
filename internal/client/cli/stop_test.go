@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -45,13 +44,12 @@ func TestStop(t *testing.T) {
 		defer func() { _ = ln.Close() }()
 		if reply == "real" {
 			version.Version = "999.0.0"
-			logger := log.New(io.Discard, "", 0)
-			app, err := core.New(t.Context(), store.Disk{Dir: dir}, connection.New(t.Context(), dir, engine.New, logger), subscription.New(t.Context(), logger))
+			app, err := core.New(t.Context(), store.Disk{Dir: dir}, connection.New(t.Context(), dir, engine.New), subscription.New(t.Context()))
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer app.Shutdown()
-			daemon := server.New(t.Context(), logger, app)
+			daemon := server.New(t.Context(), app)
 			done := make(chan error, 1)
 			go func() { done <- daemon.Serve(ln) }()
 			fmt.Println("ready")

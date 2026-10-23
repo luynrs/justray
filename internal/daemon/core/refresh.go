@@ -7,6 +7,8 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/sagernet/sing-box/log"
+
 	"github.com/luynrs/justray/internal/daemon/store"
 	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/ipc"
@@ -141,6 +143,9 @@ func (c *Core) refreshSubscription(call *refreshCall, sub store.Subscription) {
 	defer func() {
 		if err != nil && call.ctx.Err() != nil {
 			err = call.ctx.Err()
+		}
+		if err != nil {
+			log.Error("cannot refresh subscription ", sub.ID, ": ", err)
 		}
 		call.cancel()
 		c.stMu.Lock()

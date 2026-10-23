@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"log"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/sagernet/sing-box/log"
 
 	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/engine"
@@ -22,8 +23,13 @@ func TestRestoreFallback(t *testing.T) {
 		t.Skip("requires a process without TUN privileges")
 	}
 	var logs bytes.Buffer
+	factory := log.NewDefaultFactory(t.Context(), log.Formatter{}, &logs, "", nil, false)
+	_ = factory.Start()
+	t.Cleanup(func() { _ = factory.Close() })
+	defer log.SetStdLogger(log.StdLogger())
+	log.SetStdLogger(factory.Logger())
 	fake := &fakeEngine{tunErr: permission}
-	service := New(t.Context(), t.TempDir(), func(context.Context, string) engine.Engine { return fake }, log.New(&logs, "", 0))
+	service := New(t.Context(), t.TempDir(), func(context.Context, string) engine.Engine { return fake })
 	settings, _ := (domain.Settings{}).Normalize()
 	reference := domain.NodeRef{NodeID: "node"}
 	if err := service.Restore(domain.Node{ID: "node"}, reference, settings, true); !errors.Is(err, ipc.ErrElevate) {
@@ -33,7 +39,7 @@ func TestRestoreFallback(t *testing.T) {
 	if status.Connected {
 		t.Fatalf("expected disconnected when TUN needs elevation, got status=%+v", status)
 	}
-	if !strings.Contains(logs.String(), "tun requires elevation") {
+	if !strings.Contains(logs.String(), "TUN requires elevation") {
 		t.Fatalf("elevation requirement was not logged: %s", logs.String())
 	}
 	select {

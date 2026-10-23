@@ -4,13 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"log"
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
+
+	"github.com/sagernet/sing-box/log"
 
 	"github.com/luynrs/justray/internal/daemon/connection"
 	"github.com/luynrs/justray/internal/daemon/core"
@@ -33,29 +35,34 @@ func main() {
 		}
 	}
 
-	logger := log.New(os.Stderr, "justrayd: ", log.LstdFlags)
+	output := logWriter{os.Stderr}
+	factory := log.NewDefaultFactory(context.Background(), log.Formatter{
+		DisableColors: true, FullTimestamp: true, TimestampFormat: "-0700 2006-01-02 15:04:05",
+	}, &output, "", nil, false)
+	_ = factory.Start()
+	log.SetStdLogger(factory.NewLogger("daemon"))
 	dir, err := ipc.Dir()
 	if err != nil {
-		logger.Fatalf("find config dir failed (%v)", err)
+		log.Fatal("cannot find config directory: ", err)
 	}
 	if err := ipc.EnsureDir(dir); err != nil {
-		logger.Fatalf("create config dir failed (%v)", err)
+		log.Fatal("cannot create config directory: ", err)
 	}
 	socket := ipc.Socket(dir)
 
 	logFile, err := os.OpenFile(ipc.DaemonLog(dir), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
-		logger.Fatalf("open log failed (%v)", err)
+		log.Fatal("cannot open daemon log: ", err)
 	}
 	defer func() { _ = logFile.Close() }()
 
-	logger.SetOutput(logFile)
+	output = logWriter{logFile}
 	stderrInfo, stderrErr := os.Stderr.Stat()
 	logInfo, logErr := logFile.Stat()
 	if stderrErr != nil || logErr != nil || !os.SameFile(stderrInfo, logInfo) {
-		logger.SetOutput(io.MultiWriter(logFile, os.Stderr))
+		output = append(output, os.Stderr)
 		if err := debug.SetCrashOutput(logFile, debug.CrashOptions{}); err != nil {
-			logger.Printf("crash log setup failed (%v)", err)
+			log.Warn("cannot configure crash output: ", err)
 		}
 	}
 
@@ -66,30 +73,30 @@ func main() {
 		if err != nil {
 			cancel()
 			if errors.Is(err, server.ErrRunning) {
-				logger.Printf("shutdown (%v)", err)
+				log.Info(err)
 				return
 			}
-			logger.Fatalf("listen failed (%v)", err)
+			log.Fatal("cannot listen: ", err)
 		}
 		for _, path := range []string{ipc.DaemonLog(dir), ipc.EngineLog(dir)} {
 			if err := ipc.ClearLog(path); err != nil {
-				logger.Printf("clear log failed (%v)", err)
+				log.Warn("cannot clear log: ", err)
 			}
 		}
 
-		conn := connection.New(ctx, dir, engine.New, logger)
-		subs := subscription.New(ctx, logger)
+		conn := connection.New(ctx, dir, engine.New)
+		subs := subscription.New(ctx)
 		app, err := core.New(ctx, store.Disk{Dir: dir}, conn, subs)
 		if err != nil {
 			_ = ln.Close()
 			unlock()
 			cancel()
-			logger.Fatalf("startup failed (%v)", err)
+			log.Fatal("cannot start: ", err)
 		}
-		srv := server.New(ctx, logger, app)
+		srv := server.New(ctx, app)
 		if err := app.Restore(); err != nil {
 			if !errors.Is(err, ipc.ErrElevate) {
-				logger.Fatalf("restore failed (%v)", err)
+				log.Fatal("cannot restore state: ", err)
 			}
 			reservation, err := lock.Open(socket + ".elevation.lock")
 			for deadline := time.Now().Add(30 * time.Second); errors.Is(err, lock.ErrLocked) && time.Now().Before(deadline); {
@@ -97,7 +104,7 @@ func main() {
 				reservation, err = lock.Open(socket + ".elevation.lock")
 			}
 			if err != nil {
-				logger.Fatalf("reserve elevation failed (%v)", err)
+				log.Fatal("cannot reserve elevation: ", err)
 			}
 			if err := elevate.Restart(dir, reservation); err != nil {
 				lock.Close(reservation)
@@ -111,14 +118,14 @@ func main() {
 					time.Sleep(ipc.Retry)
 				}
 				if err := ready.Err(); err != nil {
-					logger.Printf("elevated daemon did not start (%v)", err)
+					log.Error("elevated daemon did not start: ", err)
 				}
 				finish()
 				lock.Close(reservation)
 				return
 			}
 		}
-		logger.Printf("listening (%s, version %s)", socket, version.String())
+		log.Info("listening on ", socket, " (version ", version.String(), ")")
 
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
@@ -135,14 +142,14 @@ func main() {
 		var serveErr error
 		select {
 		case s := <-sig:
-			logger.Printf("shutdown (%s)", s)
+			log.Info("shutting down on ", s)
 		case <-app.RestartRequested():
 			restart = true
-			logger.Print("shutdown (elevation)")
+			log.Info("shutting down for elevation")
 		case <-srv.ShutdownRequested():
-			logger.Print("shutdown (request)")
+			log.Info("shutting down on request")
 		case serveErr = <-served:
-			logger.Printf("shutdown (%v)", serveErr)
+			log.Error("listener failed: ", serveErr)
 		}
 		signal.Stop(sig)
 		cancel()
@@ -156,15 +163,31 @@ func main() {
 		select {
 		case <-cleaned:
 		case <-time.After(5 * time.Second):
-			logger.Fatal("shutdown (timed out)")
+			log.Fatal("shutdown timed out")
 		}
 		unlock()
 
 		if serveErr != nil {
-			logger.Fatalf("serve failed (%v)", serveErr)
+			os.Exit(1)
 		}
 		if !restart {
 			return
 		}
 	}
+}
+
+type logWriter []*os.File
+
+func (writer *logWriter) Write(data []byte) (int, error) {
+	record := strconv.Quote(strings.TrimSuffix(string(data), "\n"))
+	record = record[1:len(record)-1] + "\n"
+	var writeErr error
+	for _, file := range *writer {
+		_, err := file.WriteString(record)
+		writeErr = errors.Join(writeErr, err)
+	}
+	if writeErr != nil {
+		return 0, writeErr
+	}
+	return len(data), nil
 }

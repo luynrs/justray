@@ -3,8 +3,6 @@ package connection
 import (
 	"context"
 	"errors"
-	"io"
-	"log"
 	"testing"
 
 	"github.com/luynrs/justray/internal/domain"
@@ -49,7 +47,6 @@ func testService(t *testing.T, instance engine.Engine) *Service {
 	t.Helper()
 	return &Service{
 		ctx:       context.Background(),
-		log:       log.New(io.Discard, "", 0),
 		eng:       instance,
 		newEngine: func(context.Context, string) engine.Engine { return instance },
 	}

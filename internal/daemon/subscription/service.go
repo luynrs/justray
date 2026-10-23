@@ -2,9 +2,10 @@ package subscription
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"net/url"
+
+	"github.com/sagernet/sing-box/log"
 
 	"github.com/luynrs/justray/internal/daemon/store"
 )
@@ -14,10 +15,10 @@ type Service struct {
 	slots  chan struct{}
 }
 
-func New(ctx context.Context, logger *log.Logger) *Service {
+func New(ctx context.Context) *Service {
 	device, err := deviceHeaders(ctx)
-	if err != nil && logger != nil {
-		logger.Printf("device headers failed (%v)", err)
+	if err != nil {
+		log.Warn("cannot read device headers: ", err)
 	}
 	return &Service{device: device, slots: make(chan struct{}, 8)}
 }

@@ -18,8 +18,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -74,7 +76,7 @@ func TestStartup(t *testing.T) {
 	requireNoError(t, err)
 	port := listener.Addr().(*net.TCPAddr).Port
 	_ = listener.Close()
-	requireNoError(t, os.WriteFile(ipc.Config(directory), fmt.Appendf(nil, `{"connection":{"port":%d}}`, port), 0o600))
+	requireNoError(t, os.WriteFile(ipc.Config(directory), fmt.Appendf(nil, `{"general":{"log_level":"info"},"connection":{"port":%d}}`, port), 0o600))
 	client := ipc.New(ipc.Socket(directory))
 	run := func(args ...string) string {
 		t.Helper()
@@ -120,14 +122,20 @@ func TestStartup(t *testing.T) {
 		t.Fatalf("stop without daemon: %s, %v", output, err)
 	}
 	run("sub", "add", "socks://127.0.0.1:19090#fixture")
+	var refreshFails atomic.Bool
 	for _, fixture := range []struct{ name, body, endpoint string }{
 		{"ipv6", "socks://[2001:db8::1]:19090#ipv6", "[2001:db8::1]:19090"},
 		{"json-ipv6", `{"outbounds":[{"tag":"json-ipv6","type":"socks","server":"[2001:db8::2]","server_port":19091}]}`, "[2001:db8::2]:19091"},
 		{"yaml-ipv6", "proxies:\n  - {name: yaml-ipv6, type: socks5, server: '[2001:db8::3]', port: 19092}\n", "[2001:db8::3]:19092"},
+		{"control\n\x1b[31mnode\\\"", "socks://127.0.0.1:19090#control%0A%1B%5B31mnode%5C%22", "127.0.0.1:19090"},
 	} {
 		source := fixture.body
 		if !strings.HasPrefix(source, "socks://") {
 			feed := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				if refreshFails.Load() {
+					writer.WriteHeader(http.StatusServiceUnavailable)
+					return
+				}
 				_, _ = fmt.Fprint(writer, fixture.body)
 			}))
 			defer feed.Close()
@@ -140,8 +148,25 @@ func TestStartup(t *testing.T) {
 		if output := run("up", fixture.name, "--proxy"); !strings.Contains(output, fixture.endpoint) {
 			t.Errorf("imported endpoint missing from connection details: %s", output)
 		}
-		if output := run("logs", "daemon"); !strings.Contains(output, "connected ("+fixture.name+", socks "+fixture.endpoint+")") {
-			t.Errorf("imported endpoint missing from connection log: %s", output)
+		escapedName := fmt.Sprintf("%q", fixture.name)
+		escapedName = escapedName[1 : len(escapedName)-1]
+		run("down")
+		if output := run("logs", "daemon"); !strings.Contains(output, fmt.Sprintf("INFO daemon: connected to %s (socks, %s)", escapedName, fixture.endpoint)) ||
+			!strings.Contains(output, "INFO daemon: disconnected from "+escapedName) {
+			t.Errorf("connection or disconnection missing from log: %s", output)
+		}
+	}
+	refreshFails.Store(true)
+	if output, err := exec.Command(filepath.Join(bin, "justray"), "sub", "refresh").CombinedOutput(); err == nil || strings.Count(string(output), "http 503") != 2 {
+		t.Fatalf("subscription failures: %s, %v", output, err)
+	}
+	if output := run("logs", "daemon"); strings.Count(output, "http 503") != 2 || strings.Count(output, "ERROR daemon: cannot refresh subscription ") != 2 {
+		t.Fatalf("subscription failures must have separate log records: %s", output)
+	}
+	logFormat := regexp.MustCompile(`\A(?:[+-]\d{4} \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} (?:TRACE|DEBUG|INFO|WARN|ERROR|FATAL|PANIC) [^\x1b\n]*\n)+\z`)
+	for _, target := range []string{"daemon", "engine"} {
+		if output := run("logs", target); !logFormat.MatchString(output) {
+			t.Errorf("%s log format: %q", target, output)
 		}
 	}
 	run("stop")

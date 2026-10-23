@@ -30,7 +30,7 @@ func (c *Core) SetSettings(ctx context.Context, expected, settings domain.Settin
 			c.stMu.Lock()
 			c.state.Settings.Autostart = previous.Settings.Autostart
 			c.stMu.Unlock()
-			return errors.New("settings changed; reopen settings and try again")
+			return errors.New("settings conflict")
 		}
 		if settings.Equal(previous.Settings) {
 			return nil

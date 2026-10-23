@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"errors"
-	"log"
 	"net"
 	"os"
 	"sync"
@@ -17,7 +16,6 @@ import (
 )
 
 type Server struct {
-	log  *log.Logger
 	core *core.Core
 
 	ctx      context.Context
@@ -31,10 +29,10 @@ type Server struct {
 
 var ErrRunning = errors.New("another justrayd is already listening")
 
-func New(ctx context.Context, logger *log.Logger, app *core.Core) *Server {
+func New(ctx context.Context, app *core.Core) *Server {
 	ctx, cancel := context.WithCancel(ctx)
 	return &Server{
-		log: logger, core: app, ctx: ctx, cancel: cancel,
+		core: app, ctx: ctx, cancel: cancel,
 		sem: make(chan struct{}, 32), watchSem: make(chan struct{}, 64),
 		started: make(chan struct{}), done: make(chan struct{}), stop: make(chan struct{}, 1),
 	}

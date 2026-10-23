@@ -43,7 +43,7 @@ func logs(cmd *cobra.Command, args []string) error {
 	case "engine":
 		logPath = ipc.EngineLog(dir)
 	default:
-		return fmt.Errorf("unknown log target %q; pick from daemon, engine", target)
+		return fmt.Errorf("unknown log target %q", target)
 	}
 
 	follow, _ := cmd.Flags().GetBool("follow")

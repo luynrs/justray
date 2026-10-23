@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"errors"
-	"fmt"
 	"slices"
 	"strings"
 
@@ -52,7 +51,7 @@ func (a *app) up(cmd *cobra.Command, args []string) error {
 			return nil
 		}
 		if snapshot.Selected.NodeID == "" {
-			return fmt.Errorf("no node selected yet; pick one: %s <id | name>", cmd.CommandPath())
+			return errors.New("no node selected")
 		}
 		key = snapshot.Selected.NodeID
 		if snapshot.Selected.SubscriptionID != "" {

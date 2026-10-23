@@ -165,7 +165,7 @@ func (a *app) connectDaemon(ctx context.Context, startMissing bool) error {
 	caller := ctx
 	dir, err := ipc.Dir()
 	if err != nil {
-		return fmt.Errorf("resolve config dir: %w", err)
+		return fmt.Errorf("cannot find config directory: %w", err)
 	}
 	if a.client == nil {
 		a.client = ipc.New(ipc.Socket(dir))
@@ -176,7 +176,7 @@ func (a *app) connectDaemon(ctx context.Context, startMissing bool) error {
 		}
 	}
 	if err := ipc.EnsureDir(dir); err != nil {
-		return fmt.Errorf("create config dir: %w", err)
+		return fmt.Errorf("cannot create config directory: %w", err)
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -225,21 +225,21 @@ func (a *app) connectDaemon(ctx context.Context, startMissing bool) error {
 			defer finish()
 			shutdownErr := a.client.Shutdown(ctx)
 			if err := waitStopped(ctx, ipc.Socket(dir), 6*time.Second); err != nil {
-				return fmt.Errorf("restart background service: %w", errors.Join(shutdownErr, err))
+				return fmt.Errorf("cannot restart daemon: %w", errors.Join(shutdownErr, err))
 			}
 		}
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		if err := spawn(bin, dir); err != nil {
-			return fmt.Errorf("start background service: %w", err)
+			return fmt.Errorf("cannot start daemon: %w", err)
 		}
 		err = wait(ctx, a.client)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				return err
 			}
-			return fmt.Errorf("daemon did not start: %w; see %s", err, ipc.DaemonLog(dir))
+			return fmt.Errorf("cannot start daemon: %w", err)
 		}
 	}
 	return caller.Err()
@@ -282,7 +282,7 @@ func justrayd(ctx context.Context) (string, error) {
 			return bin, nil
 		}
 	}
-	return "", errors.New("matching background service is missing; reinstall justray")
+	return "", errors.New("matching daemon not found")
 }
 
 func exeName(name string) string {
@@ -356,10 +356,10 @@ func match[T any](key, noun string, items []T, idName func(T) (id, name string))
 		return hits[0], nil
 	case 0:
 		var zero T
-		return zero, fmt.Errorf("%w: no %s matches %q", errNotFound, noun, key)
+		return zero, fmt.Errorf("%s %q %w", noun, key, errNotFound)
 	default:
 		var zero T
-		return zero, fmt.Errorf("%q matches %d %ss: %s", key, len(hits), noun, strings.Join(names, ", "))
+		return zero, fmt.Errorf("ambiguous %s %q: %s", noun, key, strings.Join(names, ", "))
 	}
 }
 

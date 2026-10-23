@@ -21,7 +21,7 @@ var dnsStrategy = map[string]option.DomainStrategy{
 func build(n domain.Node, s domain.Settings, logPath string, tun bool) *option.Options {
 	dnsDetour := detour(s)
 	opts := &option.Options{
-		Log: &option.LogOptions{Level: s.LogLevel, Output: logPath},
+		Log: &option.LogOptions{Level: s.LogLevel, Output: logPath, Timestamp: true},
 		Inbounds: []option.Inbound{
 			{Type: C.TypeMixed, Tag: "mixed-in", Options: &option.HTTPMixedInboundOptions{
 				ListenOptions: option.ListenOptions{
@@ -59,7 +59,7 @@ func build(n domain.Node, s domain.Settings, logPath string, tun bool) *option.O
 
 func probeConfig(s domain.Settings, logPath string) *option.Options {
 	return &option.Options{
-		Log: &option.LogOptions{Level: s.LogLevel, Output: logPath},
+		Log: &option.LogOptions{Level: s.LogLevel, Output: logPath, Timestamp: true},
 		Route: &option.RouteOptions{
 			AutoDetectInterface:   true,
 			DefaultDomainResolver: &option.DomainResolveOptions{Server: "remote", Strategy: option.DomainStrategy(C.DomainStrategyPreferIPv4)},

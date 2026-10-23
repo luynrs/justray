@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"math"
 	"net"
 	"net/http"
@@ -73,10 +72,9 @@ func TestWatchLifecycle(t *testing.T) {
 	requireNoError(t, ipc.EnsureDir(directory))
 	listener, err := net.Listen("unix", filepath.Join(directory, "daemon.sock"))
 	requireNoError(t, err)
-	logger := log.New(io.Discard, "", 0)
-	app, err := core.New(t.Context(), store.Disk{Dir: directory}, connection.New(t.Context(), directory, engine.New, logger), subscription.New(t.Context(), logger))
+	app, err := core.New(t.Context(), store.Disk{Dir: directory}, connection.New(t.Context(), directory, engine.New), subscription.New(t.Context()))
 	requireNoError(t, err)
-	server := New(t.Context(), logger, app)
+	server := New(t.Context(), app)
 	serveDone := make(chan error, 1)
 	go func() { serveDone <- server.Serve(listener) }()
 
@@ -232,12 +230,11 @@ func TestSubscriptionRefresh(t *testing.T) {
 
 	directory := t.TempDir()
 	disk := store.Disk{Dir: directory}
-	logger := log.New(io.Discard, "", 0)
-	app, err := core.New(t.Context(), disk, connection.New(t.Context(), directory, nil, logger), subscription.New(t.Context(), logger))
+	app, err := core.New(t.Context(), disk, connection.New(t.Context(), directory, nil), subscription.New(t.Context()))
 	requireNoError(t, err)
 	listener, err := net.Listen("unix", filepath.Join(directory, "daemon.sock"))
 	requireNoError(t, err)
-	server := New(t.Context(), logger, app)
+	server := New(t.Context(), app)
 	serveDone := make(chan error, 1)
 	go func() { serveDone <- server.Serve(listener) }()
 	defer func() {
@@ -672,7 +669,6 @@ func TestSwitch(t *testing.T) {
 	}}}}); err != nil {
 		t.Fatal(err)
 	}
-	logger := log.New(io.Discard, "", 0)
 	socket := filepath.Join(directory, "daemon.sock")
 	client := ipc.New(socket)
 	a := domain.NodeRef{SubscriptionID: "sub", NodeID: "a"}
@@ -681,7 +677,7 @@ func TestSwitch(t *testing.T) {
 	start := func(failB, failTun error) (*core.Core, func()) {
 		app, err := core.New(t.Context(), disk, connection.New(t.Context(), directory, func(context.Context, string) engine.Engine {
 			return &switchEngine{failB: failB, failTun: failTun}
-		}, logger), subscription.New(t.Context(), logger))
+		}), subscription.New(t.Context()))
 		requireNoError(t, err)
 		if err := app.Restore(); err != nil {
 			if !errors.Is(err, ipc.ErrElevate) {
@@ -691,7 +687,7 @@ func TestSwitch(t *testing.T) {
 		}
 		listener, err := net.Listen("unix", socket)
 		requireNoError(t, err)
-		server := New(t.Context(), logger, app)
+		server := New(t.Context(), app)
 		done := make(chan error, 1)
 		go func() { done <- server.Serve(listener); close(done) }()
 		stop := func() {

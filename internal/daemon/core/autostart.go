@@ -3,8 +3,9 @@ package core
 import (
 	"context"
 	"errors"
-	"log"
 	"time"
+
+	"github.com/sagernet/sing-box/log"
 
 	"github.com/luynrs/justray/internal/platform/autostart"
 )
@@ -75,7 +76,7 @@ func (app *Core) readAutostart(ctx context.Context, enabled *bool) (string, erro
 				value, err = app.readAutostart(app.ctx, nil)
 			}
 			if err != nil && app.ctx.Err() == nil {
-				log.Print(err)
+				log.Warn("cannot read autostart status: ", err)
 			}
 			app.stMu.Lock()
 			app.state.Settings.Autostart = value

@@ -95,11 +95,7 @@ func (s *Server) dispatch(ctx context.Context, req ipc.Request) (any, error) {
 		if a.SubscriptionID != "" {
 			ids = []string{a.SubscriptionID}
 		}
-		err := s.core.RefreshSubscriptions(ctx, ids...)
-		if err != nil {
-			s.log.Printf("refresh failed (%v)", err)
-		}
-		return nil, err
+		return nil, s.core.RefreshSubscriptions(ctx, ids...)
 	case "Probe":
 		return nil, s.core.Probe(ctx, a.SubscriptionID, a.NodeID)
 	case "Connect":

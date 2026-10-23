@@ -16,7 +16,7 @@ type changeCall struct {
 	err    error
 }
 
-var errChanging = errors.New("state change still running; try again after it finishes")
+var errChanging = errors.New("state change in progress")
 
 func (app *Core) change(ctx context.Context, wait bool, action func(context.Context) error) error {
 	ctx, cancel := app.requestContext(ctx)

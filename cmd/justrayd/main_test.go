@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"os/exec"
 	"runtime"
@@ -37,9 +38,9 @@ func TestLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	client := ipc.New(ipc.Socket(directory))
-	start := func() (*exec.Cmd, <-chan struct{}) {
+	start := func(stderr io.Writer) (*exec.Cmd, <-chan struct{}) {
 		cmd := exec.Command(os.Args[0], "-test.run=^TestLifecycle$")
-		cmd.Stdout, cmd.Stderr = t.Output(), t.Output()
+		cmd.Stdout, cmd.Stderr = t.Output(), stderr
 		if err := cmd.Start(); err != nil {
 			t.Fatal(err)
 		}
@@ -68,7 +69,7 @@ func TestLifecycle(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		cmd, done := start()
+		cmd, done := start(t.Output())
 		end := time.Now().Add(10 * time.Second)
 		for client.Ping(t.Context()) != nil {
 			select {
@@ -94,7 +95,7 @@ func TestLifecycle(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		duplicate, duplicateDone := start()
+		duplicate, duplicateDone := start(t.Output())
 		wait(duplicate, duplicateDone, true)
 		if contents, err := os.ReadFile(ipc.DaemonLog(directory)); err != nil || !bytes.HasPrefix(contents, daemonLog) {
 			t.Fatalf("running daemon log changed: %q, %v", contents, err)
@@ -111,5 +112,16 @@ func TestLifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 		wait(cmd, done, !crash)
+	}
+	if runtime.GOOS == "linux" {
+		requireNoError(t, os.Remove(ipc.DaemonLog(directory)))
+		requireNoError(t, os.Symlink("/dev/full", ipc.DaemonLog(directory)))
+		requireNoError(t, os.WriteFile(ipc.Config(directory), []byte("{"), 0o600))
+		var stderr bytes.Buffer
+		cmd, done := start(&stderr)
+		wait(cmd, done, false)
+		if !bytes.Contains(stderr.Bytes(), []byte("FATAL daemon: cannot start:")) {
+			t.Fatalf("fatal error missing from stderr when log is full: %q", stderr.String())
+		}
 	}
 }

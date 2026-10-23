@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"testing"
@@ -48,8 +47,7 @@ func testCore(t *testing.T, instance engine.Engine, state store.State) *Core {
 	if err := disk.SaveConfig(state.Settings); err != nil {
 		t.Fatal(err)
 	}
-	logger := log.New(io.Discard, "", 0)
-	app, err := New(t.Context(), disk, connection.New(t.Context(), "", func(context.Context, string) engine.Engine { return instance }, logger), subscription.New(t.Context(), logger))
+	app, err := New(t.Context(), disk, connection.New(t.Context(), "", func(context.Context, string) engine.Engine { return instance }), subscription.New(t.Context()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,9 +237,8 @@ func TestNewMalformed(t *testing.T) {
 	if err := os.WriteFile(path, []byte("invalid: {json: broken"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	logger := log.New(io.Discard, "", 0)
-	conn := connection.New(context.Background(), "", nil, logger)
-	subs := subscription.New(context.Background(), logger)
+	conn := connection.New(context.Background(), "", nil)
+	subs := subscription.New(context.Background())
 	if _, err := New(t.Context(), store.Disk{Dir: dir}, conn, subs); err == nil {
 		t.Fatal("want error on malformed JSON configuration")
 	}

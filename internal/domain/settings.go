@@ -110,8 +110,8 @@ func (s Settings) Normalize() (Settings, error) {
 		one("node address", &s.Details.Address, "on", Toggle),
 		one("node transport", &s.Details.Transport, "off", Toggle),
 		one("node protocol", &s.Details.Protocol, "on", Toggle),
-		text("dns", &s.DNS, DefaultDNS, "an IP address or an https:// URL", isDNS),
-		text("probe url", &s.ProbeURL, DefaultProbeURL, "a url", isURL),
+		text("dns", &s.DNS, DefaultDNS, "IP address or HTTPS URL", isDNS),
+		text("probe url", &s.ProbeURL, DefaultProbeURL, "HTTP(S) URL", isURL),
 		canon(&s.Direct),
 		canon(&s.Proxy),
 		canon(&s.Block),
@@ -133,7 +133,7 @@ func num(name string, v *int, def, lo, hi int) error {
 		*v = def
 	}
 	if *v < lo || *v > hi {
-		return fmt.Errorf("%s %d is out of range", name, *v)
+		return fmt.Errorf("%s %d out of range (%d-%d)", name, *v, lo, hi)
 	}
 	return nil
 }
@@ -143,7 +143,7 @@ func one(name string, v *string, def string, allowed []string) error {
 		*v = def
 	}
 	if !slices.Contains(allowed, *v) {
-		return fmt.Errorf("%s %q is not one of %s", name, *v, strings.Join(allowed, ", "))
+		return fmt.Errorf("invalid %s %q (allowed: %s)", name, *v, strings.Join(allowed, ", "))
 	}
 	return nil
 }
@@ -153,7 +153,7 @@ func text(name string, v *string, def, want string, ok func(string) bool) error 
 		*v = def
 	}
 	if !ok(*v) {
-		return fmt.Errorf("%s %q is not %s", name, *v, want)
+		return fmt.Errorf("invalid %s %q (expected: %s)", name, *v, want)
 	}
 	return nil
 }

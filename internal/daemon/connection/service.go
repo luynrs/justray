@@ -3,9 +3,10 @@ package connection
 import (
 	"context"
 	"errors"
-	"log"
 	"sync/atomic"
 	"time"
+
+	"github.com/sagernet/sing-box/log"
 
 	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/engine"
@@ -17,7 +18,6 @@ import (
 type Service struct {
 	ctx       context.Context
 	newEngine func(context.Context, string) engine.Engine
-	log       *log.Logger
 	dir       string
 
 	eng     engine.Engine
@@ -25,11 +25,10 @@ type Service struct {
 	restart chan struct{}
 }
 
-func New(ctx context.Context, dir string, newEngine func(context.Context, string) engine.Engine, logger *log.Logger) *Service {
+func New(ctx context.Context, dir string, newEngine func(context.Context, string) engine.Engine) *Service {
 	return &Service{
 		ctx:       ctx,
 		newEngine: newEngine,
-		log:       logger,
 		dir:       dir,
 		restart:   make(chan struct{}, 1),
 	}
@@ -52,7 +51,7 @@ func (s *Service) Disconnect(ctx context.Context) error {
 		return err
 	}
 	if name != "" {
-		s.log.Printf("disconnected (%s)", name)
+		log.Info("disconnected from ", name)
 	}
 	return nil
 }
@@ -60,7 +59,7 @@ func (s *Service) Disconnect(ctx context.Context) error {
 func (s *Service) Restore(n domain.Node, ref domain.NodeRef, settings domain.Settings, tun bool) error {
 	err := elevationError(s.apply(s.ctx, n, ref, settings, tun, true), tun)
 	if errors.Is(err, ipc.ErrElevate) {
-		s.log.Print("restore failed (tun requires elevation)")
+		log.Info("restoring TUN requires elevation")
 		return err
 	}
 	if err != nil {
@@ -73,7 +72,7 @@ func (s *Service) SetError(err error) {
 	status := s.Status()
 	status.Error = ""
 	if err != nil {
-		s.log.Printf("restore failed (%v)", err)
+		log.Error("cannot restore connection: ", err)
 		status.Error = err.Error()
 	}
 	s.status.Store(&status)
@@ -98,7 +97,7 @@ func (s *Service) RequestRestart() {
 
 func (s *Service) Shutdown() {
 	if err := s.stop(); err != nil {
-		s.log.Printf("engine shutdown failed (%v)", err)
+		log.Error("cannot stop engine: ", err)
 	}
 }
 
@@ -124,7 +123,7 @@ func (s *Service) apply(ctx context.Context, n domain.Node, ref domain.NodeRef, 
 
 	if creating {
 		if err := ipc.ClearLog(ipc.EngineLog(s.dir)); err != nil {
-			s.log.Printf("clear engine log failed (%v)", err)
+			log.Warn("cannot clear engine log: ", err)
 		}
 		eng = s.newEngine(s.ctx, ipc.EngineLog(s.dir))
 	}
@@ -145,7 +144,7 @@ func (s *Service) apply(ctx context.Context, n domain.Node, ref domain.NodeRef, 
 	s.eng = eng
 	s.status.Store(&ipc.Status{Connected: true, NodeRef: ref, NodeName: n.Name, StartedAt: started, Tun: tun, Port: settings.Port})
 	if previous.NodeRef != ref || resetStarted {
-		s.log.Printf("connected (%s, %s %s)", n.Name, n.ProtocolName(), domain.ServerAddress(n.Server, n.Port))
+		log.Info("connected to ", n.Name, " (", n.ProtocolName(), ", ", domain.ServerAddress(n.Server, n.Port), ")")
 	}
 	return nil
 }

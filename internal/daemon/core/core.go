@@ -3,10 +3,11 @@ package core
 import (
 	"context"
 	"fmt"
-	"log"
 	"slices"
 	"sync"
 	"sync/atomic"
+
+	"github.com/sagernet/sing-box/log"
 
 	"github.com/luynrs/justray/internal/daemon/connection"
 	"github.com/luynrs/justray/internal/daemon/store"
@@ -67,7 +68,7 @@ func New(ctx context.Context, st store.Disk, conn *connection.Service, subs *sub
 	c.stMu.Unlock()
 	c.opMu.Unlock()
 	if err != nil {
-		log.Print(err)
+		log.Warn("cannot read autostart status: ", err)
 	}
 	return c, nil
 }

@@ -44,11 +44,8 @@ func (s *Server) AutoRefresh() {
 		}
 		if len(ids) > 0 {
 			ctx, cancel := context.WithTimeout(s.ctx, ipc.Timeout)
-			err := s.core.RefreshSubscriptions(ctx, ids...)
+			_ = s.core.RefreshSubscriptions(ctx, ids...)
 			cancel()
-			if err != nil {
-				s.log.Printf("auto-refresh failed (%v)", err)
-			}
 		}
 	}
 }
