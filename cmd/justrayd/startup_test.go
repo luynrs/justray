@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"os"
 	"os/exec"
@@ -56,13 +57,9 @@ func TestStartup(t *testing.T) {
 	if runtime.GOOS == "darwin" {
 		t.Setenv("TMPDIR", "/tmp")
 	}
-	home, err := os.MkdirTemp("", "jr-")
-	requireNoError(t, err)
-	t.Cleanup(func() { _ = os.RemoveAll(home) })
+	home := t.TempDir()
 	bin := filepath.Join(home, "bin")
-	build := exec.Command("go", "build", "-tags=with_quic,with_utls,with_gvisor,with_grpc,with_xhttp,with_awg,badlinkname", "-ldflags=-s -w", "-o", bin+string(os.PathSeparator), "./cmd/justray", "./cmd/justrayd")
-	build.Dir = "../.."
-	if output, err := build.CombinedOutput(); err != nil {
+	if output, err := exec.Command("go", "-C", "../..", "build", "-tags=with_quic,with_utls,with_gvisor,with_grpc,with_xhttp,with_awg,badlinkname", "-ldflags=-s -w", "-o", bin+string(os.PathSeparator), "./cmd/justray", "./cmd/justrayd").CombinedOutput(); err != nil {
 		t.Fatalf("build: %s, %v", output, err)
 	}
 	for _, key := range []string{"HOME", "APPDATA", "XDG_CONFIG_HOME"} {
@@ -103,18 +100,16 @@ func TestStartup(t *testing.T) {
 		t.Helper()
 		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 		defer cancel()
-		for {
-			snapshot, err := client.Snapshot(ctx)
-			if err == nil {
-				if snapshot.Status.Connected != connected {
-					t.Fatalf("connection: %+v", snapshot.Status)
-				}
-				return
-			}
+		snapshot, err := client.Snapshot(ctx)
+		for err != nil {
 			if ctx.Err() != nil {
 				t.Fatal(err)
 			}
 			time.Sleep(20 * time.Millisecond)
+			snapshot, err = client.Snapshot(ctx)
+		}
+		if snapshot.Status.Connected != connected {
+			t.Fatalf("connection: %+v", snapshot.Status)
 		}
 	}
 	stopped := exec.Command(filepath.Join(bin, "justray"), "stop")
@@ -328,15 +323,22 @@ func TestStartup(t *testing.T) {
 		t.Fatal("WG peer missing from subscription")
 	}
 	settings := snapshot.Settings
-	settings.ProbeURL = "http://198.51.100.7/"
-	requireNoError(t, client.SetSettings(t.Context(), snapshot.Settings, settings))
 	trafficClient := &http.Client{Transport: &http.Transport{
 		Proxy: http.ProxyURL(&url.URL{Scheme: "http", Host: fmt.Sprintf("127.0.0.1:%d", port)}), DisableKeepAlives: true,
 	}, Timeout: 5 * time.Second}
 	defer trafficClient.CloseIdleConnections()
+	probeAddress := netip.MustParseAddr("198.18.0.0")
+	nextURL := func() string {
+		t.Helper()
+		previous := settings
+		probeAddress = probeAddress.Next()
+		settings.ProbeURL = "http://" + probeAddress.String() + "/"
+		requireNoError(t, client.SetSettings(t.Context(), previous, settings))
+		return settings.ProbeURL
+	}
 	traffic := func(protocol string) {
 		t.Helper()
-		response, err := trafficClient.Head(settings.ProbeURL)
+		response, err := trafficClient.Head(nextURL())
 		requireNoError(t, err)
 		_ = response.Body.Close()
 		if response.StatusCode != http.StatusNoContent || response.Header.Get("X-Justray-Peer") != protocol {
@@ -345,8 +347,9 @@ func TestStartup(t *testing.T) {
 	}
 	probe := func(name string) {
 		t.Helper()
+		nextURL()
 		if output := run("probe", name); strings.Contains(output, "failed") || strings.Contains(output, "t/o") || !strings.Contains(output, "ms") {
-			t.Fatalf("probe through %s: %s", name, output)
+			t.Fatalf("probe through %s: %s\nengine log:\n%s", name, output, run("logs", "engine"))
 		}
 		snapshot, err := client.Snapshot(t.Context())
 		requireNoError(t, err)
@@ -358,28 +361,22 @@ func TestStartup(t *testing.T) {
 	}
 	run("down")
 	probe(peerSubscription)
-	for _, node := range []struct{ name, protocol string }{
-		{"runtime-hy2", "hysteria2"}, {"runtime-wg", "wireguard"},
-		{"vpn-wg", "wireguard"},
-		{"runtime-awg2", "awg2"}, {"yaml-awg2", "awg2"}, {"uri-awg2", "awg2"},
-		{"runtime-awg3", "awg3"}, {"yaml-awg3", "awg3"}, {"vpn-awg3-false", "awg3"}, {"vpn-awg3-true", "awg3"},
+	for _, node := range []struct{ name, protocol, peer string }{
+		{"runtime-hy2", "hysteria2", "hysteria2"}, {"runtime-wg", "wireguard", "wireguard"},
+		{"vpn-wg", "wireguard", "wireguard"},
+		{"runtime-awg2", "amneziawg", "awg2"}, {"yaml-awg2", "amneziawg", "awg2"}, {"uri-awg2", "amneziawg", "awg2"},
+		{"runtime-awg3", "amneziawg", "awg3"}, {"yaml-awg3", "amneziawg", "awg3"}, {"vpn-awg3-false", "amneziawg", "awg3"}, {"vpn-awg3-true", "amneziawg", "awg3"},
 	} {
-		protocol := node.protocol
-		if strings.HasPrefix(protocol, "awg") {
-			protocol = "amneziawg"
+		if output := run("up", node.name, "--proxy"); !strings.Contains(output, node.protocol) {
+			t.Fatalf("connection protocol %s missing: %s", node.protocol, output)
 		}
-		if output := run("up", node.name, "--proxy"); !strings.Contains(output, protocol) {
-			t.Fatalf("connection protocol %s missing: %s", protocol, output)
-		}
-		traffic(node.protocol)
-		probes := []string{node.name, peerSubscription}
+		traffic(node.peer)
+		probe(node.name)
+		probe(peerSubscription)
 		if node.protocol == "wireguard" {
-			probes = append(probes, "duplicate-peer")
+			probe("duplicate-peer")
 		}
-		for _, name := range probes {
-			probe(name)
-		}
-		traffic(node.protocol)
+		traffic(node.peer)
 	}
 	uriOptions.Set("jmin", "81")
 	run("sub", "add", (&url.URL{Scheme: "wireguard", User: url.User(base64.StdEncoding.EncodeToString(clientKey.Bytes())), Host: fmt.Sprintf("%s:%d", peerAddress, peerPorts[2]), RawQuery: uriOptions.Encode(), Fragment: "invalid-awg"}).String())
@@ -397,6 +394,7 @@ func TestStartup(t *testing.T) {
 		{"runtime-wg", "runtime-hy2", "hysteria2"},
 		{"duplicate-peer", "runtime-wg", "wireguard"},
 	} {
+		nextURL()
 		release := make(chan struct{})
 		blockedRequests <- release
 		probeResult := make(chan error, 1)
@@ -458,10 +456,7 @@ func TestStartup(t *testing.T) {
 	t.Cleanup(func() { _ = os.WriteFile(auth+".release", nil, 0o600) })
 	start()
 	deadline := time.Now().Add(10 * time.Second)
-	for {
-		if _, err := os.Stat(auth); err == nil {
-			break
-		}
+	for _, err := os.Stat(auth); err != nil; _, err = os.Stat(auth) {
 		if time.Now().After(deadline) {
 			t.Fatal("daemon did not request elevation")
 		}
