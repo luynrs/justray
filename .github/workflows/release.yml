@@ -4,9 +4,6 @@ on:
   push:
     tags: ["v*"]
 
-permissions:
-  contents: write
-
 jobs:
   check:
     uses: ./.github/workflows/ci.yml
@@ -14,22 +11,23 @@ jobs:
   release:
     needs: check
     runs-on: ubuntu-latest
-    env:
-      GOFLAGS: -tags=with_quic,with_utls,with_gvisor,with_grpc,with_xhttp,with_awg,badlinkname
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+
       - name: Verify
         run: |
           version=$(awk -F '"' '/^var Version = / { print $2 }' internal/version/version.go)
-          test -n "$version"
-          test "$GITHUB_REF_NAME" = "v$version"
-      - name: Publish
-        uses: goreleaser/goreleaser-action@v7
+          test -n "$version" && test "$GITHUB_REF_NAME" = "v$version"
+
+      - uses: goreleaser/goreleaser-action@v7
         with:
           args: release --clean
         env:

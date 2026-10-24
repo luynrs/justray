@@ -2,27 +2,25 @@ version: 2
 project_name: justray
 
 builds:
-  - id: justray
+  - &common_build
+    id: justray
     main: ./cmd/justray
     binary: justray
     env: [CGO_ENABLED=0]
     flags: ["-tags=with_quic,with_utls,with_gvisor,with_grpc,with_xhttp,with_awg,badlinkname"]
-    ldflags: ["-s -w -X github.com/luynrs/justray/internal/version.Version={{.Version}}"]
+    ldflags: ["-s -w -X github.com/luynrs/justray/internal/version.Version={{ .Version }}"]
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
 
-  - id: justrayd
+  - <<: *common_build
+    id: justrayd
     main: ./cmd/justrayd
     binary: justrayd
-    env: [CGO_ENABLED=0]
-    flags: ["-tags=with_quic,with_utls,with_gvisor,with_grpc,with_xhttp,with_awg,badlinkname"]
-    ldflags: ['-s -w {{ if eq .Os "windows" }}-H windowsgui {{ end }}-X github.com/luynrs/justray/internal/version.Version={{.Version}}']
-    goos: [linux, darwin, windows]
-    goarch: [amd64, arm64]
+    ldflags: ['-s -w {{ if eq .Os "windows" }}-H windowsgui {{ end }}-X github.com/luynrs/justray/internal/version.Version={{ .Version }}']
 
 archives:
   - ids: [justray, justrayd]
-    name_template: "justray_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    name_template: 'justray-{{ .Version }}-{{ if eq .Os "darwin" }}macos{{ else }}{{ .Os }}{{ end }}-{{ .Arch }}'
     formats: [tar.gz]
     format_overrides:
       - goos: windows
@@ -31,32 +29,47 @@ archives:
 checksum:
   name_template: checksums.txt
 
+nfpms:
+  - ids: [justray, justrayd]
+    formats: [deb, rpm]
+    file_name_template: "justray-{{ .Version }}-{{ .Arch }}"
+    homepage: &url https://github.com/luynrs/justray
+    maintainer: luynrs <157303229+luynrs@users.noreply.github.com>
+    description: &desc A modern VPN client that lives in your terminal
+    license: &lic GPL-3.0-or-later
+    contents:
+      - src: LICENSE
+        dst: /usr/share/doc/justray/LICENSE
+        file_info: { mode: 0644 }
+      - src: /usr/bin/justray
+        dst: /usr/bin/jray
+        type: symlink
+    overrides:
+      deb:
+        dependencies: [libcap2-bin]
+      rpm:
+        dependencies: [libcap]
+
 changelog:
   sort: asc
   abbrev: 7
-  format: "[`{{ .SHA }}`](https://github.com/luynrs/justray/commit/{{ .SHA }}) {{ .Message }}"
+  format: "`{{ .SHA }}` {{ .Message }}"
   groups:
     - title: "🚀 Features"
       regexp: '^.*?feat(\([[:word:]-]+\))??!?:.+$'
       order: 0
-
     - title: "🐛 Bug Fixes"
       regexp: '^.*?fix(\([[:word:]-]+\))??!?:.+$'
       order: 1
-
     - title: "⚡ Performance"
       regexp: '^.*?perf(\([[:word:]-]+\))??!?:.+$'
       order: 2
-
     - title: "♻️ Refactoring"
       regexp: '^.*?refactor(\([[:word:]-]+\))??!?:.+$'
       order: 3
-
   filters:
     exclude:
-      - '^.*?docs(\([[:word:]-]+\))??!?:'
-      - '^.*?chore(\([[:word:]-]+\))??!?:'
-      - '^.*?ci(\([[:word:]-]+\))??!?:'
+      - '^.*?(docs|chore|ci)(\([[:word:]-]+\))??!?:'
       - '^.*?Merge (pull request|branch)'
 
 homebrew_casks:
@@ -65,14 +78,12 @@ homebrew_casks:
     repository:
       owner: luynrs
       name: homebrew-tap
-      branch: main
       token: "{{ .Env.HOMEBREW_TOKEN }}"
-    homepage: https://github.com/luynrs/justray
-    description: A modern VPN client that lives in your terminal
-    license: GPL-3.0-or-later
+    homepage: *url
+    description: *desc
+    license: *lic
     skip_upload: auto
-    custom_block: |
-      binary "justray", target: "jray"
+    custom_block: 'binary "justray", target: "jray"'
     hooks:
       post:
         install_steps: |
@@ -85,22 +96,15 @@ winget:
     publisher: luynrs
     package_identifier: luynrs.justray
     package_name: JustRay
-    short_description: A modern VPN client that lives in your terminal
-    description: A terminal VPN client with support for subscriptions and multiple protocols.
-    homepage: https://github.com/luynrs/justray
-    publisher_url: https://github.com/luynrs
-    publisher_support_url: https://github.com/luynrs/justray/issues
-    privacy_url: https://github.com/luynrs/justray/blob/{{ .Tag }}/PRIVACY.md
-    license: GPL-3.0-or-later
-    license_url: https://github.com/luynrs/justray/blob/{{ .Tag }}/LICENSE
+    short_description: *desc
+    homepage: *url
+    license: *lic
     tags: [cli, vpn, terminal]
-    path: manifests/l/luynrs/justray/{{ .Version }}
     skip_upload: auto
     repository:
       owner: luynrs
       name: winget-pkgs
       token: "{{ .Env.WINGET_TOKEN }}"
-      branch: justray-{{ .Version }}
       pull_request:
         enabled: true
         base:
@@ -110,22 +114,21 @@ winget:
 
 aurs:
   - name: justray-bin
-    homepage: https://github.com/luynrs/justray
-    description: A modern VPN client that lives in your terminal
-    license: GPL-3.0-or-later
+    homepage: *url
+    description: *desc
+    license: *lic
     private_key: "{{ .Env.AUR_KEY }}"
     git_url: ssh://aur@aur.archlinux.org/justray-bin.git
     url_template: https://github.com/luynrs/justray/releases/download/{{ .Tag }}/{{ .ArtifactName }}
     skip_upload: auto
     provides: [justray]
     conflicts: [justray]
-    package: |-
+    package: |
       install -Dm755 "./justray" "${pkgdir}/usr/bin/justray"
       install -Dm755 "./justrayd" "${pkgdir}/usr/bin/justrayd"
       ln -s justray "${pkgdir}/usr/bin/jray"
 
 release:
   name_template: "{{ .Version }}"
-  draft: false
   prerelease: auto
   mode: replace

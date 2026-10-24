@@ -5,25 +5,18 @@ set -efu
 repo="https://github.com/luynrs/justray"
 version="${JUSTRAY_VERSION:-latest}"
 
-step() {
-	printf '• %s' "$1"
-	if [ ! -t 1 ]; then printf '\n'; fi
-}
-
-pass() {
-	if [ -t 1 ]; then printf '\r\033[K'; fi
-	printf '✓ %s\n' "$1"
+log() {
+	printf '%s\n' "$1"
 }
 
 fail() {
-	if [ -t 1 ]; then printf '\r\033[K'; fi
-	printf '✗ %s\n' "$1" >&2
+	printf '%s\n' "$1" >&2
 	exit 1
 }
 
 case "$(uname -s)" in
 	Linux) os=linux ;;
-	Darwin) os=darwin ;;
+	Darwin) os=macos ;;
 	*) fail "Unsupported OS: $(uname -s)" ;;
 esac
 
@@ -38,10 +31,8 @@ case "$version" in
 	*) base="$repo/releases/download/$version" ;;
 esac
 
-if [ -n "${JUSTRAY_DIRECTORY:-}" ]; then
-	dir="$JUSTRAY_DIRECTORY"
-else
-	dir="$HOME/.local/bin"
+dir="${JUSTRAY_DIRECTORY:-$HOME/.local/bin}"
+if [ -z "${JUSTRAY_DIRECTORY:-}" ]; then
 	for candidate in "$HOME/.local/bin" "$HOME/bin" /usr/local/bin; do
 		case ":$PATH:" in
 			*":$candidate:"*)
@@ -67,7 +58,7 @@ cleanup() {
 	rm -rf "$tmp"
 
 	if [ "$restart" -eq 1 ] && [ -x "$dir/justrayd" ]; then
-		printf '• Restarting daemon...\n'
+		log "Restarting daemon..."
 		nohup "$dir/justrayd" >/dev/null 2>&1 </dev/null &
 	fi
 }
@@ -75,16 +66,17 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 
-step "Fetching release..."
+log "Fetching release..."
 
 checksums="$tmp/checksums.txt"
 curl -fsSL --retry 3 "$base/checksums.txt" -o "$checksums" 2>/dev/null || fail "Failed to fetch release metadata"
 
 line=$(
-	awk -v platform="${os}_${arch}" '
+	awk -v platform="${os}[-_]${arch}" '
+		BEGIN { sub(/^macos/, "(macos|darwin)", platform) }
 		length($1) == 64 && $1 ~ /^[[:xdigit:]]+$/ {
 			sub(/^\*/, "", $2)
-			if ($2 ~ ("^justray_[^/[:space:]]+_" platform "\\.tar\\.gz$")) print tolower($1), $2
+			if ($2 ~ ("^justray[-_][^/[:space:]]+[-_]" platform "\\.tar\\.gz$")) print tolower($1), $2
 		}
 	' "$checksums"
 )
@@ -96,21 +88,15 @@ set -- $line
 expected="$1"
 archive="$2"
 
-version=${archive#justray_}
-version=${version%_"${os}_${arch}.tar.gz"}
-pass "Found v$version for ${os}/${arch}"
+version=${archive#justray?}
+version=${version%?"${arch}.tar.gz"}
+version=${version%[-_]*}
+log "Found v$version for ${os}/${arch}"
 
-step "Downloading $archive..."
+log "Downloading $archive..."
+curl -fsSL --retry 3 "$base/$archive" -o "$tmp/$archive" || fail "Failed to download $archive"
 
-set -- -fsSL
-if [ -t 1 ] && [ -t 2 ]; then
-	printf '\n'
-	set -- -fSL --progress-bar
-fi
-curl "$@" --retry 3 "$base/$archive" -o "$tmp/$archive" || fail "Failed to download $archive"
-pass "Downloaded archive"
-
-step "Verifying checksum..."
+log "Verifying checksum..."
 
 if command -v sha256sum >/dev/null 2>&1; then
 	actual=$(sha256sum < "$tmp/$archive" | awk '{print $1}')
@@ -122,9 +108,9 @@ fi
 
 [ "$actual" = "$expected" ] || fail "Checksum mismatch"
 
-pass "Verified checksum"
+log "Verified checksum"
 
-step "Extracting archive..."
+log "Extracting archive..."
 mkdir -p "$tmp/out"
 tar -xzf "$tmp/$archive" -C "$tmp/out" 2>/dev/null || fail "Failed to extract archive"
 
@@ -137,16 +123,15 @@ ln -sf justray "$tmp/out/jray"
 for binary in justray justrayd jray; do
 	[ ! -d "$dir/$binary" ] || fail "$dir/$binary is a directory"
 done
-pass "Extracted archive"
 
 if "$tmp/out/justray" stop >/dev/null; then
 	restart=1
-	pass "Stopped daemon"
+	log "Stopped daemon"
 else
 	[ "$?" -eq 2 ] || fail "Failed to stop daemon"
 fi
 
-step "Installing..."
+log "Installing..."
 
 for binary in justrayd justray jray; do
 	mv -f "$tmp/out/$binary" "$dir/$binary" || fail "Failed to install $binary"
@@ -154,18 +139,17 @@ done
 
 if [ "$restart" -eq 1 ]; then
 	restart=0
-	step "Restarting daemon..."
+	log "Restarting daemon..."
 	nohup "$dir/justrayd" </dev/null >/dev/null 2>&1 &
 	deadline=$(($(date +%s) + 30))
-	while [ -z "$("$dir/justray" status --json 2>/dev/null)" ]; do
+	until "$dir/justray" status --json >/dev/null 2>&1; do
 		[ "$(date +%s)" -lt "$deadline" ] || fail "Failed to restore daemon"
 		sleep 1
 	done
-	"$dir/justray" status >/dev/null || fail "Failed to restore daemon"
-	pass "Restarted daemon"
+	log "Restarted daemon"
 fi
 
-pass "Installed to $dir"
+log "Installed to $dir"
 
 case ":$PATH:" in
 	*":$dir:"*)

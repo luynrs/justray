@@ -11,33 +11,7 @@ $dir = if ($env:JUSTRAY_DIRECTORY) {
 	Join-Path $env:LOCALAPPDATA "justray"
 }
 
-$isTty = [Environment]::UserInteractive -and -not [Console]::IsOutputRedirected
-$ProgressPreference = if ($isTty -and $PSVersionTable.PSVersion.Major -ge 6) { "Continue" } else { "SilentlyContinue" }
-
-function clear_line() {
-	if ($isTty) {
-		try {
-			[Console]::SetCursorPosition(0, [Console]::CursorTop)
-			Write-Host (" " * [Console]::BufferWidth) -NoNewline
-			[Console]::SetCursorPosition(0, [Console]::CursorTop)
-		} catch {}
-	}
-}
-
-function step($message) {
-	clear_line
-	Write-Host "• $message" -NoNewline:$isTty
-}
-
-function done($message) {
-	clear_line
-	Write-Host "✓ $message"
-}
-
-function fail($message) {
-	clear_line
-	throw "✗ $message"
-}
+$ProgressPreference = "SilentlyContinue"
 
 $nativeArch = if ($env:PROCESSOR_ARCHITEW6432) {
 	$env:PROCESSOR_ARCHITEW6432
@@ -48,7 +22,7 @@ $nativeArch = if ($env:PROCESSOR_ARCHITEW6432) {
 $arch = switch ($nativeArch) {
 	"AMD64" { "amd64" }
 	"ARM64" { "arm64" }
-	default { fail "Unsupported architecture: $nativeArch" }
+	default { throw "Unsupported architecture: $nativeArch" }
 }
 
 $base = if ($version -eq "latest") {
@@ -67,9 +41,9 @@ function download($uri, $out) {
 			Invoke-WebRequest -Uri $uri -OutFile $out -UseBasicParsing
 			return
 		} catch {
-			if ($i -eq 3) { throw $_ }
-			step "Retrying download ($($i + 1)/3)..."
-			Start-Sleep -Seconds (1 * $i)
+			if ($i -eq 3) { throw }
+			Write-Host "Retrying download ($($i + 1)/3)..."
+			Start-Sleep -Seconds $i
 		}
 	}
 }
@@ -81,7 +55,7 @@ $restart = $false
 New-Item -ItemType Directory -Path $tmp | Out-Null
 
 try {
-	step "Fetching release..."
+	Write-Host "Fetching release..."
 
 	$checksums = Join-Path $tmp "checksums.txt"
 	download "$base/checksums.txt" $checksums
@@ -89,7 +63,7 @@ try {
 	$lines = @(
 		Get-Content -LiteralPath $checksums |
 			Where-Object {
-				$_ -match "^[0-9A-Fa-f]{64}\s+\*?justray_[^/\\\s]+_windows_$arch\.zip$"
+				$_ -match "^[0-9A-Fa-f]{64}\s+\*?justray[-_][^/\\\s]+[-_]windows[-_]$arch\.zip$"
 			}
 	)
 
@@ -100,23 +74,22 @@ try {
 	$hash, $archive = $lines[0].Trim() -split '\s+', 2
 	$archive = $archive.TrimStart("*")
 
-	$version = $archive -replace "^justray_(.+)_windows_$arch\.zip$", '$1'
-	done "Found v$version for windows/$arch"
+	$version = $archive -replace "^justray[-_](.+)[-_]windows[-_]$arch\.zip$", '$1'
+	Write-Host "Found v$version for windows/$arch"
 
-	step "Downloading $archive..."
+	Write-Host "Downloading $archive..."
 
 	$zip = Join-Path $tmp $archive
 	download "$base/$archive" $zip
-	done "Downloaded archive"
 
-	step "Verifying checksum..."
+	Write-Host "Verifying checksum..."
 	if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash -ne $hash) {
 		throw "Checksum mismatch"
 	}
 
-	done "Verified checksum"
+	Write-Host "Verified checksum"
 
-	step "Extracting archive..."
+	Write-Host "Extracting archive..."
 	$out = Join-Path $tmp "out"
 	Expand-Archive -LiteralPath $zip -DestinationPath $out -Force
 
@@ -127,33 +100,33 @@ try {
 	}
 
 	Copy-Item -LiteralPath "$out\justray.exe" -Destination "$out\jray.exe"
-	foreach ($exe in "justray.exe", "justrayd.exe", "jray.exe") {
+	$binaries = "justrayd.exe", "justray.exe", "jray.exe"
+	foreach ($exe in $binaries) {
 		if (Test-Path -LiteralPath "$dir\$exe" -PathType Container) {
 			throw "$dir\$exe is a directory"
 		}
 	}
-	done "Extracted archive"
 
 	& "$out\justray.exe" stop > $null
 	switch ($LASTEXITCODE) {
-		0 { $restart = $true; done "Stopped daemon" }
+		0 { $restart = $true; Write-Host "Stopped daemon" }
 		2 {}
 		default { throw "Failed to stop daemon" }
 	}
 
-	step "Installing..."
+	Write-Host "Installing..."
 
 	# Windows allows renaming running binaries away, but forbids overwriting them in place
 	$backup = [guid]::NewGuid().ToString("N")
 	try {
-		foreach ($exe in "justrayd.exe", "justray.exe", "jray.exe") {
+		foreach ($exe in $binaries) {
 			if (Test-Path -LiteralPath "$dir\$exe") {
 				Move-Item -LiteralPath "$dir\$exe" -Destination "$dir\$exe.old.$backup"
 			}
 			Move-Item -LiteralPath "$out\$exe" -Destination "$dir\$exe"
 		}
 	} catch {
-		foreach ($exe in "justrayd.exe", "justray.exe", "jray.exe") {
+		foreach ($exe in $binaries) {
 			if (-not (Test-Path -LiteralPath "$out\$exe")) {
 				Remove-Item -LiteralPath "$dir\$exe" -Force -ErrorAction SilentlyContinue
 			}
@@ -166,41 +139,34 @@ try {
 
 	Get-ChildItem -LiteralPath $dir -File -Filter *.exe.old.* -ErrorAction SilentlyContinue | Where-Object Name -Match '^(justray|jray|justrayd)\.exe\.old\.[0-9a-f]{32}$' | Remove-Item -Force -ErrorAction SilentlyContinue
 
-	$userPath = [string][Environment]::GetEnvironmentVariable("Path", "User")
-
-	if (($userPath -split ";") -notcontains $dir) {
-		$userPath = "$($userPath.TrimEnd(";"));$dir".TrimStart(";")
-		[Environment]::SetEnvironmentVariable("Path", $userPath, "User")
-	}
-
-	if (($env:Path -split ";") -notcontains $dir) {
-		$env:Path = "$($env:Path.TrimEnd(";"));$dir"
+	foreach ($scope in "User", "Process") {
+		$currentPath = [string][Environment]::GetEnvironmentVariable("Path", $scope)
+		if (($currentPath -split ";") -notcontains $dir) {
+			[Environment]::SetEnvironmentVariable("Path", "$($currentPath.TrimEnd(";"));$dir".TrimStart(";"), $scope)
+		}
 	}
 
 	if ($restart) {
 		$restart = $false
-		step "Restarting daemon..."
+		Write-Host "Restarting daemon..."
 		Start-Process "$dir\justrayd.exe" -WindowStyle Hidden
 		$timer = [Diagnostics.Stopwatch]::StartNew()
-		while (-not (& "$dir\justray.exe" status --json 2>$null)) {
+		while ($true) {
+			& "$dir\justray.exe" status --json > $null 2>$null
+			if ($LASTEXITCODE -eq 0) { break }
 			if ($timer.Elapsed.TotalSeconds -ge 30) { throw "Failed to restore daemon" }
 			Start-Sleep -Milliseconds 50
 		}
-		& "$dir\justray.exe" status > $null
-		if ($LASTEXITCODE) { throw "Failed to restore daemon" }
-		done "Restarted daemon"
+		Write-Host "Restarted daemon"
 	}
-	done "Installed to $dir"
+	Write-Host "Installed to $dir"
 	Write-Host "`nRun jray in a new terminal window."
-}
-catch {
-	fail $_.Exception.Message
 }
 finally {
 	Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
 
 	if ($restart -and (Test-Path -LiteralPath "$dir\justrayd.exe")) {
-		Write-Host "• Restarting daemon..."
+		Write-Host "Restarting daemon..."
 		Start-Process "$dir\justrayd.exe" -WindowStyle Hidden
 	}
 }

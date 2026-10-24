@@ -10,8 +10,27 @@ on:
 permissions:
   contents: read
 
+env:
+  GOFLAGS: -tags=with_quic,with_utls,with_gvisor,with_grpc,with_xhttp,with_awg,badlinkname
+
 jobs:
-  check:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.14.0
+
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          args: check
+
+  test:
     strategy:
       fail-fast: false
       matrix:
@@ -20,32 +39,17 @@ jobs:
     defaults:
       run:
         shell: bash
-    env:
-      GOFLAGS: -tags=with_quic,with_utls,with_gvisor,with_grpc,with_xhttp,with_awg,badlinkname
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - name: Verify
-        run: |
-          go vet ./...
-          go test ./...
-      - uses: golangci/golangci-lint-action@v9
-        if: runner.os == 'Linux'
-        with:
-          version: v2.14.0
-          args: --build-tags with_quic,with_utls,with_gvisor,with_grpc,with_xhttp,with_awg,badlinkname
-      - name: Build
-        run: go build ./...
-      - name: Build macOS
-        if: runner.os == 'Linux'
-        run: CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build ./...
-      - name: Race detector
-        if: runner.os == 'Linux'
-        run: GOFLAGS="$GOFLAGS -race" GORACE=atexit_sleep_ms=0 go test ./...
-      - name: GoReleaser
-        if: runner.os == 'Linux'
-        uses: goreleaser/goreleaser-action@v7
-        with:
-          args: check
+
+      - run: |
+          [ "$RUNNER_OS" = Linux ] && export GOFLAGS="$GOFLAGS -race" GORACE=atexit_sleep_ms=0
+          go test -count=1 -vet=all ./...
+
+      - run: go build ./cmd/...
+
+      - if: runner.os == 'Linux'
+        run: CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build ./cmd/...
