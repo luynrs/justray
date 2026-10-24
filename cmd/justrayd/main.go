@@ -156,7 +156,8 @@ func main() {
 
 		cleaned := make(chan struct{})
 		go func() {
-			<-served
+			for range served {
+			}
 			app.Shutdown()
 			close(cleaned)
 		}()

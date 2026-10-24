@@ -116,8 +116,7 @@ func TestProbeProgress(t *testing.T) {
 			}
 		case <-deadline:
 			cancel()
-			<-done
-			t.Fatal("results were withheld until the slow probe completed")
+			t.Fatal("results were withheld until the slow probe completed: ", <-done)
 		}
 	}
 }

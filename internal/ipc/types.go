@@ -22,7 +22,7 @@ type Request struct {
 }
 
 var ErrElevate = errors.New("elevation required")
-var ErrVersion = errors.New("client and daemon version mismatch")
+var ErrVersion = errors.New("version mismatch")
 
 type Arguments struct {
 	NodeID           string
