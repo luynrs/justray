@@ -25,20 +25,24 @@
 - **协议支持：** VMess、VLESS、Trojan、WireGuard/AmneziaWG、Shadowsocks、Hysteria 1/2、TUIC、AnyTLS、SOCKS5 等
 - **导入与设置：** 可导入节点链接，以及 Clash/Mihomo YAML、sing-box 或 Xray JSON 格式的订阅，支持自动更新和多种设置
 - **后台运行：** 后台服务和内嵌的 sing-box 核心独立于 TUI 运行，关闭界面后仍保持连接
-- **内存占用：** Linux/macOS 上约 50 MB，Windows 上约 100 MB
-- **平台支持：** 可在 Linux、macOS 13+ 和 Windows 1803+ 的现代终端中运行，包括原生 PowerShell 和 WSL
+- **内存占用：** Linux / MacOS 上约 50 MB，Windows 上约 100 MB
+- **平台支持：** 可在 Linux、MacOS 13+ 和 Windows 1803+ 的现代终端中运行
 
 ### 安装
 
 使用包管理器：
 
 ```bash
-# macOS 或 Linux
+# Linux / MacOS
 brew install luynrs/tap/justray
+```
 
+```bash
 # Arch Linux (AUR)
 yay -S justray-bin
+```
 
+```powershell
 # Windows
 winget install luynrs.justray
 ```
@@ -52,7 +56,7 @@ x eget use luynrs/justray
 或通过脚本安装：
 
 ```bash
-# Linux / macOS
+# Linux / MacOS
 curl -fsSL https://raw.githubusercontent.com/luynrs/justray/main/install.sh | sh
 ```
 
@@ -63,12 +67,9 @@ irm https://raw.githubusercontent.com/luynrs/justray/main/install.ps1 | iex
 
 Nix：
 
-Flake 支持 Linux（x86_64/aarch64）和 Apple Silicon。Intel Mac 请使用 Homebrew 或预编译的二进制文件
-
-Home Manager 模块在 Linux 上启动后台服务；在 macOS 上仅安装软件包。
+Home Manager 模块在 Linux 上启动后台服务；在 MacOS 上仅安装软件包
 
 ```bash
-# 直接运行
 nix run github:luynrs/justray
 ```
 

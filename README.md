@@ -25,20 +25,24 @@
 - **Modern protocols:** VMess, VLESS, Trojan, WireGuard/AmneziaWG, Shadowsocks, Hysteria 1/2, TUIC, AnyTLS, SOCKS5 and other
 - **Flexible:** import subscriptions from raw links or Clash/Mihomo YAML, sing-box or Xray json with automatic refresh and a wide range of settings
 - **Headless:** the daemon and embedded sing-box core run independently from the TUI, keeping connections alive after you detach
-- **Lightweight:** ~50 MB RAM on Linux/macOS and ~100 MB on Windows
-- **Cross-platform:** runs in modern terminals on Linux, macOS 13+, and Windows 1803+, including native PowerShell and WSL
+- **Lightweight:** ~50 MB RAM on Linux / MacOS and ~100 MB on Windows
+- **Cross-platform:** runs in modern terminals on Linux, MacOS 13+, and Windows 1803+
 
 ### Installation
 
 Using package manager:
 
 ```bash
-# macOS or Linux
+# Linux / MacOS
 brew install luynrs/tap/justray
+```
 
+```bash
 # Arch Linux (AUR)
 yay -S justray-bin
+```
 
+```powershell
 # Windows
 winget install luynrs.justray
 ```
@@ -52,7 +56,7 @@ x eget use luynrs/justray
 Or via script:
 
 ```bash
-# Linux / macOS
+# Linux / MacOS
 curl -fsSL https://raw.githubusercontent.com/luynrs/justray/main/install.sh | sh
 ```
 
@@ -61,14 +65,9 @@ curl -fsSL https://raw.githubusercontent.com/luynrs/justray/main/install.sh | sh
 irm https://raw.githubusercontent.com/luynrs/justray/main/install.ps1 | iex
 ```
 
-Nix:
-
-The flake supports Linux (x86_64/aarch64) and Apple Silicon. On Intel Macs, use Homebrew or binaries
-
-The Home Manager module starts the daemon on Linux; on macOS it only installs the package.
+And my dear! Nix:
 
 ```bash
-# Run directly
 nix run github:luynrs/justray
 ```
 
@@ -126,19 +125,11 @@ Package manager and script installations also provide `jray` as a short alias fo
 
 ### Screenshots
 
-Main UI
-
-![JustRay](.github/assets/screenshots/main.png)
-
-![JustRay (Add)](.github/assets/screenshots/add.png)
-
-Main UI in TTY mode
-
-![JustRay (TTY)](.github/assets/screenshots/tty.png)
-
-Settings UI
-
-![JustRay (Settings)](.github/assets/screenshots/settings.png)
+| Main UI | Wow... with add modal |
+|:---:|:---:|
+| ![JustRay](.github/assets/screenshots/main.png) | ![JustRay (Add)](.github/assets/screenshots/add.png) |
+| **Main UI in TTY mode** | **Settings** |
+| ![JustRay (TTY)](.github/assets/screenshots/tty.png) | ![JustRay (Settings)](.github/assets/screenshots/settings.png) |
 
 ### License
 [GPL-3.0-or-later](LICENSE)

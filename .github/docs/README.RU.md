@@ -25,20 +25,24 @@
 - **Поддерживаемые протоколы:** VMess, VLESS, Trojan, WireGuard/AmneziaWG, Shadowsocks, Hysteria 1/2, TUIC, AnyTLS, SOCKS5 и другие
 - **Гибкость:** импорт подписок из ссылок, Clash/Mihomo YAML, sing-box или Xray JSON с автоматическим обновлением и широким выбором настроек
 - **Автономность:** демон и встроенное ядро sing-box работают независимо от TUI, сохраняя подключение после закрытия интерфейса
-- **Легковесность:** около 50 МБ RAM на Linux/macOS и 100 МБ на Windows
-- **Кроссплатформенность:** работает в современных терминалах на Linux, macOS 13+ и Windows 1803+, включая PowerShell и WSL
+- **Легковесность:** около 50 МБ RAM на Linux / MacOS и 100 МБ на Windows
+- **Кроссплатформенность:** работает в современных терминалах на Linux, MacOS 13+ и Windows 1803+
 
 ### Установка
 
 Через пакетный менеджер:
 
 ```bash
-# macOS или Linux
+# Linux / MacOS
 brew install luynrs/tap/justray
+```
 
+```bash
 # Arch Linux (AUR)
 yay -S justray-bin
+```
 
+```powershell
 # Windows
 winget install luynrs.justray
 ```
@@ -52,7 +56,7 @@ x eget use luynrs/justray
 Или через скрипт:
 
 ```bash
-# Linux / macOS
+# Linux / MacOS
 curl -fsSL https://raw.githubusercontent.com/luynrs/justray/main/install.sh | sh
 ```
 
@@ -63,12 +67,9 @@ irm https://raw.githubusercontent.com/luynrs/justray/main/install.ps1 | iex
 
 Nix:
 
-Flake поддерживает Linux (x86_64/aarch64) и Apple Silicon. На Mac с Intel используйте Homebrew или бинарники
-
-Модуль Home Manager запускает демон на Linux; на macOS он только устанавливает пакет.
+Модуль Home Manager запускает демон на Linux; на MacOS он только устанавливает пакет
 
 ```bash
-# Запустить напрямую
 nix run github:luynrs/justray
 ```
 
