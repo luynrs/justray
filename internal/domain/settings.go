@@ -26,7 +26,7 @@ var (
 	TunStacks  = []string{"gvisor", "system", "mixed"}
 	IPVersions = []string{"ipv4", "ipv6", "mixed"}
 	Modes      = []string{"proxy all", "direct all"}
-	ProxyTypes = []string{"Local", "System"}
+	ProxyTypes = []string{"local", "system"}
 	Toggle     = []string{"on", "off"}
 )
 
@@ -89,6 +89,7 @@ func (s Settings) Clone() Settings {
 
 // Normalize fills defaults and validates
 func (s Settings) Normalize() (Settings, error) {
+	s.ProxyType = strings.ToLower(s.ProxyType)
 	checks := []error{
 		num("port", &s.Port, DefaultPort, 1, 65535),
 		num("mtu", &s.TunMTU, DefaultTunMTU, 1280, 65535),
@@ -96,7 +97,7 @@ func (s Settings) Normalize() (Settings, error) {
 		one("log level", &s.LogLevel, DefaultLogLevel, LogLevels),
 		one("stack", &s.TunStack, DefaultTunStack, TunStacks),
 		one("ip version", &s.IPVersion, DefaultIPVersion, IPVersions),
-		one("proxy type", &s.ProxyType, "Local", ProxyTypes),
+		one("proxy type", &s.ProxyType, "local", ProxyTypes),
 		one("mode", &s.Mode, "proxy all", Modes),
 		one("strict route", &s.TunStrict, "on", Toggle),
 		one("dns hijack", &s.DNSHijack, "on", Toggle),

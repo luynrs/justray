@@ -183,6 +183,7 @@ func (s Model) valueLines(f field, selected bool, bar string) (lines []string) {
 			} else {
 				name = f.enum[index]
 				checked = name == f.value(&s.cur)
+				name = optionLabel(name)
 			}
 			markerStyle := style.Gray
 			if checked {
@@ -200,7 +201,22 @@ func (s Model) valueLines(f field, selected bool, bar string) (lines []string) {
 
 	v := f.value(&s.cur)
 	if v == "" {
-		v = cmp.Or(f.hint, "auto")
+		v = cmp.Or(f.hint, "Auto")
+	}
+	if len(f.enum) > 0 {
+		v = optionLabel(v)
 	}
 	return []string{bar + style.Gray.Render(v)}
+}
+
+func optionLabel(value string) string {
+	switch value {
+	case "ipv4":
+		return "IPv4"
+	case "ipv6":
+		return "IPv6"
+	case "gvisor":
+		return "gVisor"
+	}
+	return strings.ToUpper(value[:1]) + value[1:]
 }

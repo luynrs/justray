@@ -99,7 +99,7 @@ func TestWatchLifecycle(t *testing.T) {
 			}
 		}
 	}
-	if err := readSnapshot(); err != nil || snapshot.Settings.Port != domain.DefaultPort {
+	if err := readSnapshot(); err != nil || snapshot.Settings.Port != domain.DefaultPort || snapshot.Settings.ProxyType != "local" {
 		t.Fatalf("initial snapshot: %+v, %v", snapshot, err)
 	}
 	if snapshot.Settings.Details != (domain.Details{Address: "on", Transport: "off", Protocol: "on"}) {
@@ -684,6 +684,11 @@ func TestSwitch(t *testing.T) {
 				t.Fatal(err)
 			}
 			app.RestoreFailed(err)
+		}
+		select {
+		case <-app.RestartRequested():
+			t.Fatal("restoring state requested an IPC restart")
+		default:
 		}
 		listener, err := net.Listen("unix", socket)
 		requireNoError(t, err)

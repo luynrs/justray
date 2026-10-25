@@ -1,11 +1,6 @@
 package server
 
-import (
-	"context"
-	"time"
-
-	"github.com/luynrs/justray/internal/ipc"
-)
+import "time"
 
 func (s *Server) AutoRefresh() {
 	ticker := time.NewTicker(time.Minute)
@@ -23,29 +18,22 @@ func (s *Server) AutoRefresh() {
 		if every == 0 {
 			continue
 		}
-		active := map[string]struct{}{}
-		for _, sub := range snapshot.Subscriptions {
-			if sub.Refreshable && time.Since(sub.UpdatedAt) >= every {
-				active[sub.SubscriptionID] = struct{}{}
-			}
-		}
-		for id := range tried {
-			if _, ok := active[id]; !ok {
-				delete(tried, id)
-			}
-		}
+		next := map[string]time.Time{}
 		var ids []string
-		for id := range active {
-			if time.Since(tried[id]) < 15*time.Minute {
+		for _, sub := range snapshot.Subscriptions {
+			if !sub.Refreshable || time.Since(sub.UpdatedAt) < every {
 				continue
 			}
-			tried[id] = time.Now()
-			ids = append(ids, id)
+			lastAttempt := tried[sub.SubscriptionID]
+			if time.Since(lastAttempt) >= 15*time.Minute {
+				lastAttempt = time.Now()
+				ids = append(ids, sub.SubscriptionID)
+			}
+			next[sub.SubscriptionID] = lastAttempt
 		}
+		tried = next
 		if len(ids) > 0 {
-			ctx, cancel := context.WithTimeout(s.ctx, ipc.Timeout)
-			_ = s.core.RefreshSubscriptions(ctx, ids...)
-			cancel()
+			_ = s.core.RefreshSubscriptions(s.ctx, ids...)
 		}
 	}
 }

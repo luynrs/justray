@@ -262,8 +262,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if m.snapshot.Settings.Port == 0 {
 			return m, nil
 		}
-		m.dialog = settings.New(m.snapshot.Settings, topLines)
-		m.dialog.Resize(m.w, m.height())
+		m.dialog = settings.New(m.snapshot.Settings, topLines, m.w, m.height())
 		spinnerCommand := m.syncTTY()
 		return m, spinnerCommand
 	case "/":

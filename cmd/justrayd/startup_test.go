@@ -117,6 +117,9 @@ func TestStartup(t *testing.T) {
 		t.Fatalf("stop without daemon: %s, %v", output, err)
 	}
 	run("sub", "add", "socks://127.0.0.1:19090#fixture")
+	if output := run("status"); !strings.Contains(output, "Disconnected") {
+		t.Fatalf("disconnected status: %s", output)
+	}
 	var refreshFails atomic.Bool
 	for _, fixture := range []struct{ name, body, endpoint string }{
 		{"ipv6", "socks://[2001:db8::1]:19090#ipv6", "[2001:db8::1]:19090"},
@@ -140,7 +143,7 @@ func TestStartup(t *testing.T) {
 		if output := run("sub", "list"); !strings.Contains(output, fixture.endpoint) {
 			t.Errorf("imported endpoint missing from subscription list: %s", output)
 		}
-		if output := run("up", fixture.name, "--proxy"); !strings.Contains(output, fixture.endpoint) {
+		if output := run("up", fixture.name, "--proxy"); !strings.Contains(output, fixture.endpoint) || !strings.Contains(output, "Connected via PROXY") {
 			t.Errorf("imported endpoint missing from connection details: %s", output)
 		}
 		escapedName := fmt.Sprintf("%q", fixture.name)

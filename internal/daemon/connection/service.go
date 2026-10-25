@@ -20,9 +20,8 @@ type Service struct {
 	newEngine func(context.Context, string) engine.Engine
 	dir       string
 
-	eng     engine.Engine
-	status  atomic.Pointer[ipc.Status]
-	restart chan struct{}
+	eng    engine.Engine
+	status atomic.Pointer[ipc.Status]
 }
 
 func New(ctx context.Context, dir string, newEngine func(context.Context, string) engine.Engine) *Service {
@@ -30,7 +29,6 @@ func New(ctx context.Context, dir string, newEngine func(context.Context, string
 		ctx:       ctx,
 		newEngine: newEngine,
 		dir:       dir,
-		restart:   make(chan struct{}, 1),
 	}
 }
 
@@ -84,15 +82,6 @@ func (s *Service) Probe(ctx context.Context, nodes []domain.Node, settings domai
 		instance = s.newEngine(s.ctx, ipc.EngineLog(s.dir))
 	}
 	return instance.Probe(ctx, nodes, settings, onResult)
-}
-
-func (s *Service) RestartRequested() <-chan struct{} { return s.restart }
-
-func (s *Service) RequestRestart() {
-	select {
-	case s.restart <- struct{}{}:
-	default:
-	}
 }
 
 func (s *Service) Shutdown() {

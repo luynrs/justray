@@ -57,7 +57,7 @@ func (c *Core) RestoreFailed(err error) {
 	})
 }
 
-func (c *Core) RestartRequested() <-chan struct{} { return c.conn.RestartRequested() }
+func (c *Core) RestartRequested() <-chan struct{} { return c.restart }
 
 type elevationRequest struct{ *store.Pending }
 
@@ -88,7 +88,10 @@ func (c *Core) RequestRestart(err error) {
 		return
 	}
 	if c.current().Pending == request.Pending {
-		c.conn.RequestRestart()
+		select {
+		case c.restart <- struct{}{}:
+		default:
+		}
 	}
 }
 

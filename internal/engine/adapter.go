@@ -50,7 +50,7 @@ func (e *box) Apply(ctx context.Context, spec Spec) error {
 	tunChanged := spec.Tun != e.tun
 
 	if rebuilds(e.settings, spec.Settings, spec.Tun) || nodeChanged && tunChanged ||
-		(e.systemProxy != nil) != (!spec.Tun && spec.Settings.ProxyType == "System") {
+		(e.systemProxy != nil) != (!spec.Tun && spec.Settings.ProxyType == "system") {
 		if err := e.Stop(); err != nil {
 			return err
 		}
@@ -83,7 +83,7 @@ func (e *box) start(ctx context.Context, spec Spec) error {
 	if err != nil {
 		return err
 	}
-	if !spec.Tun && spec.Settings.ProxyType == "System" {
+	if !spec.Tun && spec.Settings.ProxyType == "system" {
 		systemProxy, err := boxsettings.NewSystemProxy(runtimeCtx, metadata.ParseSocksaddrHostPort("127.0.0.1", uint16(spec.Settings.Port)), true, nil)
 		if err != nil {
 			return errors.Join(fmt.Errorf("initialize system proxy: %w", err), inst.Close())

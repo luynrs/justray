@@ -28,24 +28,16 @@ func fields(pairs ...[2]string) {
 	out(strings.Join(lines, "\n"))
 }
 
-func state(st ipc.Status) string {
+func stateHeadline(st ipc.Status) {
 	if st.Connected {
 		text := "Connected via " + strings.ToUpper(modeWord(st.Tun))
 		if uptime := st.Uptime(); uptime > 0 {
 			text += " for " + style.Uptime(uptime)
 		}
-		return text
-	}
-	return "Disconnected"
-}
-
-func stateHeadline(st ipc.Status) {
-	text := state(st)
-	if st.Connected {
 		done(text)
 		return
 	}
-	out(style.Gray.Render(style.Sep()) + " " + text)
+	out(style.Gray.Render(style.Sep()) + " Disconnected")
 }
 
 func (a *app) nodeDetails(st ipc.Status, nodes []ipc.Node) {

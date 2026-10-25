@@ -42,11 +42,6 @@ func TestRestoreFallback(t *testing.T) {
 	if !strings.Contains(logs.String(), "TUN requires elevation") {
 		t.Fatalf("elevation requirement was not logged: %s", logs.String())
 	}
-	select {
-	case <-service.RestartRequested():
-		t.Fatal("Restore requested elevation")
-	default:
-	}
 }
 
 func TestStatusOperations(t *testing.T) {

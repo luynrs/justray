@@ -49,7 +49,7 @@ var tabs = []tab{
 		},
 		{
 			name: "Auto-refresh",
-			hint: "never",
+			hint: "Never",
 			get:  func(settings *domain.Settings) string { return hours(settings.RefreshEvery) },
 			set: func(s *domain.Settings, in string) error {
 				v, err := parseHours(in)
@@ -60,23 +60,23 @@ var tabs = []tab{
 				return nil
 			},
 		},
-		choice("Emoji", domain.Toggle, func(settings *domain.Settings) *string { return &settings.Emoji }),
+		choice("Show emoji", domain.Toggle, func(settings *domain.Settings) *string { return &settings.Emoji }),
 		choice("Force TTY", domain.Toggle, func(settings *domain.Settings) *string { return &settings.ForceTTY }),
 		choice("Log level", domain.LogLevels, func(settings *domain.Settings) *string { return &settings.LogLevel }),
 		{name: "Node details", multi: []field{
-			choice("address", domain.Toggle, func(settings *domain.Settings) *string { return &settings.Details.Address }),
-			choice("transport", domain.Toggle, func(settings *domain.Settings) *string { return &settings.Details.Transport }),
-			choice("protocol", domain.Toggle, func(settings *domain.Settings) *string { return &settings.Details.Protocol }),
+			choice("Address", domain.Toggle, func(settings *domain.Settings) *string { return &settings.Details.Address }),
+			choice("Transport", domain.Toggle, func(settings *domain.Settings) *string { return &settings.Details.Transport }),
+			choice("Protocol", domain.Toggle, func(settings *domain.Settings) *string { return &settings.Details.Protocol }),
 		}},
 		text("Probe URL", domain.DefaultProbeURL, func(settings *domain.Settings) *string { return &settings.ProbeURL }),
 	}},
 	{name: "Connection", fields: []field{
-		choice("IP version", domain.IPVersions, func(settings *domain.Settings) *string { return &settings.IPVersion }),
 		choice("Proxy type", domain.ProxyTypes, func(settings *domain.Settings) *string { return &settings.ProxyType }),
 		number("Proxy port", domain.DefaultPort, func(settings *domain.Settings) *int { return &settings.Port }),
+		choice("Preferred IP type", domain.IPVersions, func(settings *domain.Settings) *string { return &settings.IPVersion }),
 		choice("Allow LAN", domain.Toggle, func(settings *domain.Settings) *string { return &settings.AllowLAN }),
-		choice("Stack", domain.TunStacks, func(settings *domain.Settings) *string { return &settings.TunStack }),
-		number("MTU", domain.DefaultTunMTU, func(settings *domain.Settings) *int { return &settings.TunMTU }),
+		choice("Tunnel stack", domain.TunStacks, func(settings *domain.Settings) *string { return &settings.TunStack }),
+		number("Tunnel MTU", domain.DefaultTunMTU, func(settings *domain.Settings) *int { return &settings.TunMTU }),
 		choice("DNS hijack", domain.Toggle, func(settings *domain.Settings) *string { return &settings.DNSHijack }),
 		text("DNS server", domain.DefaultDNS, func(settings *domain.Settings) *string { return &settings.DNS }),
 	}},
@@ -146,13 +146,16 @@ type Model struct {
 	err        string
 }
 
-func New(s domain.Settings, top int) *Model {
+func New(s domain.Settings, top, width, height int) *Model {
 	input := textinput.New()
 	input.Prompt = ""
 	input.SetStyles(style.Input)
-	m := &Model{top: top, height: 1, cur: s.Clone(), orig: s, input: input}
+	style.ResizeInput(&input, width-8)
+	m := &Model{
+		top: top, width: width, height: max(height, 1),
+		cur: s.Clone(), orig: s, input: input,
+	}
 	m.focus(0)
-	m.move(0)
 	return m
 }
 
@@ -398,9 +401,9 @@ func (s *Model) listRows(l *list) []field {
 	out := make([]field, 0, len(entries)+2)
 	out = append(out, field{name: l.title, hint: fmt.Sprintf("(%d)", len(entries))})
 	for i, entry := range entries {
-		out = append(out, field{name: entry, bare: true, hint: "delete?", list: l, index: i})
+		out = append(out, field{name: entry, bare: true, hint: "Delete?", list: l, index: i})
 	}
-	return append(out, field{name: "+ add rule", bare: true, hint: "domain, ip, app or path", list: l, index: -1})
+	return append(out, field{name: "+ Add rule", bare: true, hint: "Domain, IP, app or path", list: l, index: -1})
 }
 
 func (f field) editable() bool { return f.set != nil || f.list != nil || len(f.multi) > 0 }
@@ -415,7 +418,7 @@ func (f field) value(settings *domain.Settings) string {
 				selected = append(selected, option.name)
 			}
 		}
-		return cmp.Or(strings.Join(selected, ", "), "none")
+		return cmp.Or(strings.Join(selected, ", "), "None")
 	}
 	if f.list != nil {
 		if f.index >= 0 {

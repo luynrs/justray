@@ -33,6 +33,7 @@ type Core struct {
 	refreshes map[string]*refreshCall
 	autostart *autostartCall
 	changing  *changeCall
+	restart   chan struct{}
 
 	snapshot atomic.Pointer[ipc.Snapshot]
 	watchers map[chan ipc.Snapshot]struct{}
@@ -57,6 +58,7 @@ func New(ctx context.Context, st store.Disk, conn *connection.Service, subs *sub
 		probes:    map[domain.NodeRef]engine.Result{},
 		refreshes: map[string]*refreshCall{},
 		watchers:  map[chan ipc.Snapshot]struct{}{},
+		restart:   make(chan struct{}, 1),
 	}
 	c.publish()
 	c.opMu.Lock()
