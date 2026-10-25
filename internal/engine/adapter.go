@@ -3,13 +3,16 @@ package engine
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"syscall"
 
 	sbox "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/adapter"
+	boxsettings "github.com/sagernet/sing-box/common/settings"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/service"
 
 	"github.com/luynrs/justray/internal/domain"
@@ -23,9 +26,10 @@ type box struct {
 	settings domain.Settings
 	logPath  string
 
-	inst *sbox.Box
-	tun  bool
-	node domain.Node
+	inst        *sbox.Box
+	tun         bool
+	node        domain.Node
+	systemProxy boxsettings.SystemProxy
 }
 
 func New(ctx context.Context, logPath string) Engine {
@@ -45,7 +49,8 @@ func (e *box) Apply(ctx context.Context, spec Spec) error {
 	nodeChanged := e.node.ID != spec.Node.ID || e.node.ConfigKey() != spec.Node.ConfigKey()
 	tunChanged := spec.Tun != e.tun
 
-	if rebuilds(e.settings, spec.Settings, spec.Tun) || nodeChanged && tunChanged {
+	if rebuilds(e.settings, spec.Settings, spec.Tun) || nodeChanged && tunChanged ||
+		(e.systemProxy != nil) != (!spec.Tun && spec.Settings.ProxyType == "System") {
 		if err := e.Stop(); err != nil {
 			return err
 		}
@@ -77,6 +82,16 @@ func (e *box) start(ctx context.Context, spec Spec) error {
 	inst, err := startBox(runtimeCtx, *build(spec.Node, spec.Settings, e.logPath, spec.Tun))
 	if err != nil {
 		return err
+	}
+	if !spec.Tun && spec.Settings.ProxyType == "System" {
+		systemProxy, err := boxsettings.NewSystemProxy(runtimeCtx, metadata.ParseSocksaddrHostPort("127.0.0.1", uint16(spec.Settings.Port)), true, nil)
+		if err != nil {
+			return errors.Join(fmt.Errorf("initialize system proxy: %w", err), inst.Close())
+		}
+		if err := systemProxy.Enable(); err != nil {
+			return errors.Join(fmt.Errorf("set system proxy: %w", err), systemProxy.Disable(), systemProxy.Close(), inst.Close())
+		}
+		e.systemProxy = systemProxy
 	}
 	e.inst, e.node = inst, spec.Node
 	e.runtime = runtimeCtx
@@ -195,8 +210,12 @@ func (e *box) Stop() error {
 	e.tun = false
 
 	var err error
+	if e.systemProxy != nil {
+		err = errors.Join(e.systemProxy.Disable(), e.systemProxy.Close())
+		e.systemProxy = nil
+	}
 	if inbound, loaded := inst.Inbound().Get("tun-in"); loaded {
-		err = inbound.(*managedTun).stop()
+		err = errors.Join(err, inbound.(*managedTun).stop())
 	}
 	err = errors.Join(err, inst.Close())
 	if errors.Is(err, os.ErrClosed) {

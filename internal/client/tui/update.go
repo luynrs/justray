@@ -350,7 +350,6 @@ func (m Model) closeSettings() (Model, tea.Cmd) {
 	next, previous, err := m.dialog.Result()
 	switch {
 	case err != nil:
-		m.err, m.errAt = style.ErrorText(err), time.Now()
 		return m, nil
 	case next.Equal(previous):
 		m.dialog = nil

@@ -94,7 +94,7 @@ func tunInbound(s domain.Settings) option.Inbound {
 }
 
 func final(s domain.Settings) string {
-	if s.Mode == domain.DirectAll {
+	if s.Mode == "direct all" {
 		return "direct"
 	}
 	return "proxy"

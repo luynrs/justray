@@ -207,7 +207,7 @@ func TestDNSRouting(t *testing.T) {
 		t.Fatalf("DoH bootstrap routing: %+v", servers)
 	}
 
-	settings.Mode = domain.DirectAll
+	settings.Mode = "direct all"
 	options = build(node, settings, "", false)
 	if len(options.DNS.Servers) != 2 || options.Route.DefaultDomainResolver.Server != "remote" || options.Route.Final != "direct" {
 		t.Fatalf("direct DNS routing: %+v", options.DNS.Servers)

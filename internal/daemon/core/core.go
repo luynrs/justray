@@ -46,11 +46,10 @@ func New(ctx context.Context, st store.Disk, conn *connection.Service, subs *sub
 	if err != nil {
 		return nil, fmt.Errorf("load state: %w", err)
 	}
-	settings, err := state.Settings.Normalize()
+	state.Settings, err = state.Settings.Normalize()
 	if err != nil {
 		return nil, fmt.Errorf("normalize settings: %w", err)
 	}
-	state.Settings = settings
 	ctx, cancel := context.WithCancel(ctx)
 	c := &Core{
 		ctx: ctx, cancel: cancel,

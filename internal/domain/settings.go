@@ -21,16 +21,12 @@ const (
 	Interface        = "justray"
 )
 
-const (
-	ProxyAll  = "proxy all"
-	DirectAll = "direct all"
-)
-
 var (
 	LogLevels  = []string{"error", "warn", "info", "debug"}
 	TunStacks  = []string{"gvisor", "system", "mixed"}
 	IPVersions = []string{"ipv4", "ipv6", "mixed"}
-	Modes      = []string{ProxyAll, DirectAll}
+	Modes      = []string{"proxy all", "direct all"}
+	ProxyTypes = []string{"Local", "System"}
 	Toggle     = []string{"on", "off"}
 )
 
@@ -57,6 +53,7 @@ type Details struct {
 }
 
 type Connection struct {
+	ProxyType string `json:"proxy_type"`
 	Port      int    `json:"port"`
 	AllowLAN  string `json:"allow_lan"` // on/off
 	IPVersion string `json:"ip_version"`
@@ -99,7 +96,8 @@ func (s Settings) Normalize() (Settings, error) {
 		one("log level", &s.LogLevel, DefaultLogLevel, LogLevels),
 		one("stack", &s.TunStack, DefaultTunStack, TunStacks),
 		one("ip version", &s.IPVersion, DefaultIPVersion, IPVersions),
-		one("mode", &s.Mode, ProxyAll, Modes),
+		one("proxy type", &s.ProxyType, "Local", ProxyTypes),
+		one("mode", &s.Mode, "proxy all", Modes),
 		one("strict route", &s.TunStrict, "on", Toggle),
 		one("dns hijack", &s.DNSHijack, "on", Toggle),
 		one("allow lan", &s.AllowLAN, "off", Toggle),

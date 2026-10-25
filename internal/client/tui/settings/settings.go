@@ -68,36 +68,17 @@ var tabs = []tab{
 			choice("transport", domain.Toggle, func(settings *domain.Settings) *string { return &settings.Details.Transport }),
 			choice("protocol", domain.Toggle, func(settings *domain.Settings) *string { return &settings.Details.Protocol }),
 		}},
-		{
-			name: "Probe URL",
-			hint: domain.DefaultProbeURL,
-			get:  func(settings *domain.Settings) string { return settings.ProbeURL },
-			set:  setStr(func(s *domain.Settings) *string { return &s.ProbeURL }, domain.DefaultProbeURL),
-		},
+		text("Probe URL", domain.DefaultProbeURL, func(settings *domain.Settings) *string { return &settings.ProbeURL }),
 	}},
 	{name: "Connection", fields: []field{
 		choice("IP version", domain.IPVersions, func(settings *domain.Settings) *string { return &settings.IPVersion }),
-		{
-			name: "Proxy port",
-			hint: strconv.Itoa(domain.DefaultPort),
-			get:  func(settings *domain.Settings) string { return strconv.Itoa(settings.Port) },
-			set:  setInt(func(s *domain.Settings) *int { return &s.Port }, domain.DefaultPort),
-		},
+		choice("Proxy type", domain.ProxyTypes, func(settings *domain.Settings) *string { return &settings.ProxyType }),
+		number("Proxy port", domain.DefaultPort, func(settings *domain.Settings) *int { return &settings.Port }),
 		choice("Allow LAN", domain.Toggle, func(settings *domain.Settings) *string { return &settings.AllowLAN }),
 		choice("Stack", domain.TunStacks, func(settings *domain.Settings) *string { return &settings.TunStack }),
-		{
-			name: "MTU",
-			hint: strconv.Itoa(domain.DefaultTunMTU),
-			get:  func(settings *domain.Settings) string { return strconv.Itoa(settings.TunMTU) },
-			set:  setInt(func(s *domain.Settings) *int { return &s.TunMTU }, domain.DefaultTunMTU),
-		},
+		number("MTU", domain.DefaultTunMTU, func(settings *domain.Settings) *int { return &settings.TunMTU }),
 		choice("DNS hijack", domain.Toggle, func(settings *domain.Settings) *string { return &settings.DNSHijack }),
-		{
-			name: "DNS server",
-			hint: domain.DefaultDNS,
-			get:  func(settings *domain.Settings) string { return settings.DNS },
-			set:  setStr(func(s *domain.Settings) *string { return &s.DNS }, domain.DefaultDNS),
-		},
+		text("DNS server", domain.DefaultDNS, func(settings *domain.Settings) *string { return &settings.DNS }),
 	}},
 	{name: "Routing", fields: []field{
 		choice("Mode", domain.Modes, func(settings *domain.Settings) *string { return &settings.Mode }),
@@ -112,36 +93,40 @@ var tabs = []tab{
 }
 
 func choice(name string, values []string, at func(*domain.Settings) *string) field {
+	field := text(name, "", at)
+	field.enum = values
+	return field
+}
+
+func text(name, def string, at func(*domain.Settings) *string) field {
 	return field{
 		name: name,
-		enum: values,
+		hint: def,
 		get:  func(settings *domain.Settings) string { return *at(settings) },
 		set: func(settings *domain.Settings, value string) error {
-			*at(settings) = value
+			*at(settings) = cmp.Or(strings.TrimSpace(value), def)
 			return nil
 		},
 	}
 }
 
-func setStr(at func(*domain.Settings) *string, def string) func(*domain.Settings, string) error {
-	return func(s *domain.Settings, in string) error {
-		*at(s) = cmp.Or(strings.TrimSpace(in), def)
-		return nil
-	}
-}
-
-func setInt(at func(*domain.Settings) *int, def int) func(*domain.Settings, string) error {
-	return func(s *domain.Settings, in string) error {
-		if in = strings.TrimSpace(in); in == "" {
-			*at(s) = def
+func number(name string, def int, at func(*domain.Settings) *int) field {
+	return field{
+		name: name,
+		hint: strconv.Itoa(def),
+		get:  func(settings *domain.Settings) string { return strconv.Itoa(*at(settings)) },
+		set: func(settings *domain.Settings, in string) error {
+			if in = strings.TrimSpace(in); in == "" {
+				*at(settings) = def
+				return nil
+			}
+			value, err := strconv.Atoi(in)
+			if err != nil {
+				return fmt.Errorf("%q is not a number", in)
+			}
+			*at(settings) = value
 			return nil
-		}
-		v, err := strconv.Atoi(in)
-		if err != nil {
-			return fmt.Errorf("%q is not a number", in)
-		}
-		*at(s) = v
-		return nil
+		},
 	}
 }
 
@@ -176,6 +161,9 @@ func (s *Model) Result() (domain.Settings, domain.Settings, error) {
 		return s.orig, s.orig, nil
 	}
 	next, err := s.cur.Normalize()
+	if err != nil {
+		s.err = err.Error()
+	}
 	return next, s.orig, err
 }
 
@@ -221,10 +209,6 @@ func (s *Model) key(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 
 	switch msg.String() {
 	case "esc":
-		if _, _, err := s.Result(); err != nil {
-			s.err = err.Error()
-			return false, nil
-		}
 		return true, nil
 
 	case "q":
@@ -457,23 +441,16 @@ func (f field) apply(s *domain.Settings, in string) error {
 	if err != nil {
 		return err
 	}
-	if err := conflict(s, at, rule); err != nil {
-		return err
+	if at == &s.Direct && slices.Contains(s.Proxy, rule) {
+		return fmt.Errorf("rule %q already exists in proxy", rule)
+	}
+	if at == &s.Proxy && slices.Contains(s.Direct, rule) {
+		return fmt.Errorf("rule %q already exists in direct", rule)
 	}
 	if f.index >= 0 {
 		(*at)[f.index] = rule
 	} else if !slices.Contains(*at, rule) {
 		*at = append(*at, rule)
-	}
-	return nil
-}
-
-func conflict(s *domain.Settings, target *[]string, rule string) error {
-	if target == &s.Direct && slices.Contains(s.Proxy, rule) {
-		return fmt.Errorf("rule %q already exists in proxy", rule)
-	}
-	if target == &s.Proxy && slices.Contains(s.Direct, rule) {
-		return fmt.Errorf("rule %q already exists in direct", rule)
 	}
 	return nil
 }

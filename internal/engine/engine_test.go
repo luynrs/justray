@@ -20,7 +20,7 @@ func TestRebuilds(t *testing.T) {
 		"port":       func(next *domain.Settings) { next.Port++ },
 		"DNS":        func(next *domain.Settings) { next.DNS = "1.1.1.1" },
 		"DNS hijack": func(next *domain.Settings) { next.DNSHijack = "off" },
-		"routing":    func(next *domain.Settings) { next.Mode = domain.DirectAll },
+		"routing":    func(next *domain.Settings) { next.Mode = "direct all" },
 		"rules":      func(next *domain.Settings) { next.Block = []string{"example.test"} },
 	} {
 		changed := settings
