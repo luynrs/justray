@@ -53,7 +53,7 @@ nfpms:
 changelog:
   sort: asc
   abbrev: 7
-  format: "`{{ .SHA }}` {{ .Message }}"
+  format: "[`{{ .SHA }}`](https://github.com/luynrs/justray/commit/{{ .SHA }}) {{ .Message }}"
   groups:
     - title: "🚀 Features"
       regexp: '^.*?feat(\([[:word:]-]+\))??!?:.+$'
@@ -98,7 +98,11 @@ winget:
     package_name: JustRay
     short_description: *desc
     homepage: *url
+    publisher_url: https://github.com/luynrs
+    publisher_support_url: https://github.com/luynrs/justray/issues
+    privacy_url: https://github.com/luynrs/justray/blob/{{ .Tag }}/PRIVACY.md
     license: *lic
+    license_url: https://github.com/luynrs/justray/blob/{{ .Tag }}/LICENSE
     tags: [cli, vpn, terminal]
     skip_upload: auto
     repository:
