@@ -1,40 +1,42 @@
 <img src=".github/assets/privacy.png" width="480" alt="privacy">
 
-Privacy Policy  
-Last updated: October 13, 2026
+# Privacy Policy
 
-JustRay is a local proxy and VPN client. The project operates no user accounts, traffic relays, or telemetry services.
+Last updated: October 67, 2026
 
-### 1. Network Traffic
+JustRay is an open-source VPN and proxy client for Linux, macOS and Windows. It does not provide servers, subscriptions or user accounts.
 
-Traffic follows your configured proxy, VPN, and direct routing rules. Remote traffic is subject to the selected provider's privacy policy.
+## Data collection
 
-Proxy mode listens on `127.0.0.1:10808` by default. TUN mode uses a virtual network adapter. Latency probes request the configured test URL through each tested node; the default is `http://www.gstatic.com/generate_204`.
+JustRay does not send telemetry, usage statistics or crash reports to the project. Your settings, subscriptions, credentials and logs are stored on your device.
 
-### 2. Subscription Requests
+## Local data
 
-Remote subscriptions are fetched over HTTP or HTTPS. Requests include the JustRay version and `X-Hwid`. OS name, OS version, and device model are included when available.
+JustRay stores its data in:
 
-`X-Hwid` is a 128-bit identifier derived from the machine ID and request hostname using SHA-256. It varies by hostname and does not guarantee anonymity.
+| Platform | Location |
+| --- | --- |
+| Linux | `$XDG_CONFIG_HOME/justray/` or `~/.config/justray/`|
+| macOS | `~/Library/Application Support/justray/` |
+| Windows | `%APPDATA%\justray\` |
 
-Cross-host redirects remove the JustRay version and OS/model headers and regenerate `X-Hwid` for the destination hostname.
+This directory contains your settings, subscription URLs, node credentials and logs. Logs may include server addresses, DNS queries and errors. Review files and remove sensitive information before sharing them.
 
-### 3. Diagnostics
+## Network connections
 
-Local logs may contain connection destinations, DNS queries, errors, and crash diagnostics. JustRay does not upload these logs or send telemetry, analytics, usage statistics, or crash reports to collection services.
+- **Proxy traffic:** Traffic follows your routing settings and may pass through the server you choose. Your provider's privacy policy applies.
+- **Subscriptions:** JustRay requests the subscription URLs you add. The provider can see the request and its source IP address. Automatic refresh defaults to six hours and can be changed or disabled in settings.
+- **Device information:** Subscription requests include the JustRay version and `X-Hwid`, an identifier derived from your machine ID and the request hostname. OS name, OS version and device model are included when available. The identifier differs between hostnames and does not guarantee anonymity. On a redirect to a different host, JustRay removes its version and device information headers and generates an identifier for the destination hostname.
+- **DNS:** JustRay uses `8.8.8.8` by default. The DNS provider can see the domain names it resolves. You can change the server in settings.
+- **Latency tests:** When you test nodes, JustRay sends a request through each node to `http://www.gstatic.com/generate_204` by default. You can change the test URL in settings.
+- **Local proxy:** The proxy listens on `127.0.0.1:10808` by default. You can change the port or allow access from your local network in settings.
 
-### 4. Local Storage
+## Removing data
 
-Settings, subscriptions, credentials, and logs are stored under:
+You can remove subscriptions from the TUI or with `jray sub remove <id>`. To remove all local settings, subscriptions, credentials and logs, stop the daemon with `justray stop`, then delete the JustRay data directory. You can also delete the files in `logs/` to clear diagnostics.
 
-- Windows: `%APPDATA%\justray\`
-- Linux: `$XDG_CONFIG_HOME/justray/`, defaulting to `~/.config/justray/`
-- macOS: `~/Library/Application Support/justray/`
+Autostart is managed by your operating system and can be disabled in JustRay's settings. Removing local data does not remove information held by your providers.
 
-Files include `config.json` (preferences), `state.json` (subscription URLs and node credentials), `logs/` (diagnostics), and `ipc/` (daemon control socket).
+## Contact
 
-Remove subscriptions with `jray sub remove <id>`. Delete files under `logs/` to clear diagnostics, or delete the data directory to remove local records.
-
-### 5. Contact
-
-Privacy questions can be submitted through the project's GitHub Issues.
+For privacy questions, open an issue at https://github.com/luynrs/justray/issues. Issues are public, so do not include secrets or unreviewed logs.
