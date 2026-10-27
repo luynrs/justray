@@ -403,7 +403,7 @@ func (s *Model) listRows(l *list) []field {
 	for i, entry := range entries {
 		out = append(out, field{name: entry, bare: true, hint: "Delete?", list: l, index: i})
 	}
-	return append(out, field{name: "+ Add rule", bare: true, hint: "Domain, IP, app or path", list: l, index: -1})
+	return append(out, field{name: "+ Add rule", bare: true, hint: "Domain, IP, app, path, geoip: or geosite:", list: l, index: -1})
 }
 
 func (f field) editable() bool { return f.set != nil || f.list != nil || len(f.multi) > 0 }

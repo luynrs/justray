@@ -24,6 +24,7 @@
 
 - **Поддерживаемые протоколы:** VMess, VLESS, Trojan, WireGuard/AmneziaWG, Shadowsocks, Hysteria 1/2, TUIC, AnyTLS, SOCKS5 и другие
 - **Гибкость:** импорт подписок из ссылок, Clash/Mihomo YAML, sing-box или Xray JSON с автоматическим обновлением и широким выбором настроек
+- **Маршрутизация по правилам:** правила для приложений, доменов, wildcard-шаблонов и GeoIP/Geosite
 - **Автономность:** демон и встроенное ядро sing-box работают независимо от TUI, сохраняя подключение после закрытия интерфейса
 - **Легковесность:** около 50 МБ RAM на Linux / MacOS и 100 МБ на Windows
 - **Кроссплатформенность:** работает в современных терминалах на Linux, MacOS 13+ и Windows 1803+
@@ -88,20 +89,20 @@ nix run github:luynrs/justray
 > [!NOTE]
 > WinGet устанавливает только `justray` и `justrayd`; алиас `jray` нужно добавить вручную
 
-- `jray`: открыть TUI
+- `justray`: открыть TUI
 
 #### Подключение
 
-- `jray up <node> [--tun | --proxy]`: запустить и подключиться
-- `jray down`: отключиться
-- `jray stop`: остановить демон
-- `jray probe [sub | id | name]`: измерить пинг
-- `jray status [--json]`: показать состояние подключения
-- `jray logs [daemon | engine] [-f]`: просмотреть логи
+- `justray up <node> [--tun | --proxy]`: запустить и подключиться
+- `justray down`: отключиться
+- `justray stop`: остановить демон
+- `justray probe [sub | id | name]`: измерить пинг
+- `justray status [--json]`: показать состояние подключения
+- `justray logs [daemon | engine] [-f]`: просмотреть логи
 
 #### Подписки и узлы
 
-`jray subscription` или `jray sub`
+`justray subscription` или `justray sub`
 
 - `add`: добавить подписку или ссылку на узел
 - `remove`: удалить подписку по ID или имени

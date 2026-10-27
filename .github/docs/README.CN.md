@@ -24,6 +24,7 @@
 
 - **协议支持：** VMess、VLESS、Trojan、WireGuard/AmneziaWG、Shadowsocks、Hysteria 1/2、TUIC、AnyTLS、SOCKS5 等
 - **导入与设置：** 可导入节点链接，以及 Clash/Mihomo YAML、sing-box 或 Xray JSON 格式的订阅，支持自动更新和多种设置
+- **基于规则的路由：** 支持应用、域名、通配符和 GeoIP/Geosite 规则
 - **后台运行：** 后台服务和内嵌的 sing-box 核心独立于 TUI 运行，关闭界面后仍保持连接
 - **内存占用：** Linux / MacOS 上约 50 MB，Windows 上约 100 MB
 - **平台支持：** 可在 Linux、MacOS 13+ 和 Windows 1803+ 的现代终端中运行
@@ -88,20 +89,20 @@ nix run github:luynrs/justray
 > [!NOTE]
 > WinGet 只提供 `justray` 和 `justrayd`；需要手动添加 `jray` 别名
 
-- `jray`：打开 TUI
+- `justray`：打开 TUI
 
 #### 连接
 
-- `jray up <node> [--tun | --proxy]`：启动后台服务并连接
-- `jray down`：断开连接
-- `jray stop`：停止后台服务
-- `jray probe [sub | id | name]`：测量节点延迟
-- `jray status [--json]`：查看连接状态
-- `jray logs [daemon | engine] [-f]`：查看日志
+- `justray up <node> [--tun | --proxy]`：启动后台服务并连接
+- `justray down`：断开连接
+- `justray stop`：停止后台服务
+- `justray probe [sub | id | name]`：测量节点延迟
+- `justray status [--json]`：查看连接状态
+- `justray logs [daemon | engine] [-f]`：查看日志
 
 #### 订阅与节点
 
-`jray subscription` 或 `jray sub`
+`justray subscription` 或 `justray sub`
 
 - `add`：添加订阅或节点链接
 - `remove`：按 ID 或名称删除订阅

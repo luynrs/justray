@@ -1,13 +1,19 @@
 package engine
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strconv"
 	"syscall"
 
 	sbox "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/httpclient"
 	boxsettings "github.com/sagernet/sing-box/common/settings"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
@@ -22,6 +28,7 @@ import (
 type box struct {
 	lifetime context.Context
 	runtime  context.Context
+	cancel   context.CancelFunc
 	settings domain.Settings
 	logPath  string
 
@@ -68,14 +75,40 @@ func (e *box) Apply(ctx context.Context, spec Spec) error {
 }
 
 func (e *box) start(ctx context.Context, spec Spec) error {
+	ctx, finish := context.WithTimeout(ctx, C.StartTimeout)
+	defer finish()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 
-	runtimeCtx := withRegistry(e.lifetime)
-	inst, err := startBox(runtimeCtx, *build(spec.Node, spec.Settings, e.logPath, spec.Tun))
+	lifetime, cancel := context.WithCancel(e.lifetime)
+	stopStartup := context.AfterFunc(ctx, cancel)
+	defer func() {
+		stopStartup()
+		if e.inst == nil {
+			cancel()
+		}
+	}()
+	runtimeCtx := withRegistry(lifetime)
+	opts := build(spec.Node, spec.Settings, e.logPath, spec.Tun)
+	if runtime.GOOS == "darwin" && os.Geteuid() == 0 && opts.Experimental != nil {
+		const directory = "/var/db/justray"
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			return fmt.Errorf("prepare rule-set cache: %w", err)
+		}
+		userID, err := strconv.ParseUint(cmp.Or(os.Getenv("JUSTRAY_UID"), "0"), 10, 32)
+		if err != nil {
+			return fmt.Errorf("invalid JUSTRAY_UID: %w", err)
+		}
+		opts.Experimental.CacheFile.Path = filepath.Join(directory, fmt.Sprintf("cache-%d.db", userID))
+	}
+	inst, err := startBox(runtimeCtx, *opts)
 	if err != nil {
-		return err
+		return errors.Join(err, ctx.Err())
+	}
+	if !stopStartup() {
+		_ = inst.Close()
+		return ctx.Err()
 	}
 	if !spec.Tun && spec.Settings.ProxyType == "system" {
 		systemProxy, err := boxsettings.NewSystemProxy(runtimeCtx, metadata.ParseSocksaddrHostPort("127.0.0.1", uint16(spec.Settings.Port)), true, nil)
@@ -89,6 +122,7 @@ func (e *box) start(ctx context.Context, spec Spec) error {
 	}
 	e.inst, e.node = inst, spec.Node
 	e.runtime = runtimeCtx
+	e.cancel = cancel
 	e.settings, e.tun = spec.Settings, spec.Tun
 	return nil
 }
@@ -97,6 +131,9 @@ func startBox(ctx context.Context, opts option.Options) (*sbox.Box, error) {
 	for attempt := 0; ; attempt++ {
 		inst, err := sbox.New(sbox.Options{Options: opts, Context: ctx})
 		if err == nil {
+			if len(opts.Route.RuleSet) > 0 {
+				service.MustRegister[adapter.HTTPClientManager](ctx, ruleSetHTTPManager{service.FromContext[adapter.HTTPClientManager](ctx).(*httpclient.Manager)})
+			}
 			err = inst.Start()
 		}
 		if err == nil {
@@ -194,11 +231,13 @@ func (e *box) Stop() error {
 	if e.inst == nil {
 		return nil
 	}
+	defer e.cancel()
 	inst := e.inst
 	tun := e.tun
 
 	e.inst = nil
 	e.runtime = nil
+	e.cancel = nil
 	e.tun = false
 
 	var err error

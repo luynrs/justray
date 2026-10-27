@@ -24,6 +24,7 @@
 
 - **Modern protocols:** VMess, VLESS, Trojan, WireGuard/AmneziaWG, Shadowsocks, Hysteria 1/2, TUIC, AnyTLS, SOCKS5 and other
 - **Flexible:** import subscriptions from raw links or Clash/Mihomo YAML, sing-box or Xray json with automatic refresh and a wide range of settings
+- **Rule-based routing:** rules for apps, domains, wildcard patterns and GeoIP/Geosite
 - **Headless:** the daemon and embedded sing-box core run independently from the TUI, keeping connections alive after you detach
 - **Lightweight:** ~50 MB RAM on Linux / MacOS and ~100 MB on Windows
 - **Cross-platform:** runs in modern terminals on Linux, MacOS 13+, and Windows 1803+
@@ -92,7 +93,7 @@ Package manager (except WinGet) and script installations also provide `jray` as 
 - `justray stop`: stop the daemon
 - `justray probe [sub | id | name]`: probe node latencies
 - `justray status [--json]`: show connection status
-- `jray logs [daemon | engine] [-f]`: view logs
+- `justray logs [daemon | engine] [-f]`: view logs
 
 #### Subscriptions & Nodes
 

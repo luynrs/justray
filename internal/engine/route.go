@@ -3,6 +3,7 @@ package engine
 import (
 	"net/netip"
 	"runtime"
+	"strings"
 
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
@@ -20,14 +21,14 @@ var (
 )
 
 func match(list []string, action option.RuleAction) []option.Rule {
-	cidrs, domains, keywords, names, paths := domain.SplitRules(list)
+	cidrs, domains, keywords, names, paths, sets := domain.SplitRules(list)
 
 	var out []option.Rule
 	for _, m := range []option.RawDefaultRule{
 		{ProcessName: names}, {ProcessPath: paths},
-		{IPCIDR: cidrs}, {DomainSuffix: domains}, {DomainKeyword: keywords},
+		{IPCIDR: cidrs}, {DomainSuffix: domains}, {DomainKeyword: keywords}, {RuleSet: sets},
 	} {
-		if len(m.ProcessName)+len(m.ProcessPath)+len(m.IPCIDR)+len(m.DomainSuffix)+len(m.DomainKeyword) == 0 {
+		if len(m.ProcessName)+len(m.ProcessPath)+len(m.IPCIDR)+len(m.DomainSuffix)+len(m.DomainKeyword)+len(m.RuleSet) == 0 {
 			continue
 		}
 		out = append(out, option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{
@@ -38,6 +39,30 @@ func match(list []string, action option.RuleAction) []option.Rule {
 	return out
 }
 
+// #SC .srs
+func ruleSets(s domain.Settings) []option.RuleSet {
+	var sets []option.RuleSet
+	seen := make(map[string]bool)
+	for _, list := range [][]string{s.Block, s.Direct, s.Proxy} {
+		for _, rule := range list {
+			kind, name, ok := strings.Cut(rule, ":")
+			if !ok || kind != "geoip" && kind != "geosite" || seen[rule] {
+				continue
+			}
+			seen[rule] = true
+			tag := kind + "-" + name
+			sets = append(sets, option.RuleSet{
+				Type: C.RuleSetTypeRemote, Tag: []string{tag}, Format: C.RuleSetFormatBinary,
+				RemoteOptions: option.RemoteRuleSet{
+					URL:        "https://raw.githubusercontent.com/SagerNet/sing-" + kind + "/rule-set/" + tag + ".srs",
+					HTTPClient: &option.HTTPClientOptions{DialerOptions: option.DialerOptions{Detour: "proxy"}},
+				},
+			})
+		}
+	}
+	return sets
+}
+
 func rules(s domain.Settings) []option.Rule {
 	var out []option.Rule
 	if s.DNSHijack == "on" {
@@ -46,23 +71,26 @@ func rules(s domain.Settings) []option.Rule {
 			RuleAction:     option.RuleAction{Action: C.RuleActionTypeHijackDNS},
 		}})
 	}
-	// Deprecated: wlbe in 1.7.1 with new port settings
 	out = append(out, option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{
-		RawDefaultRule: option.RawDefaultRule{Inbound: []string{"mixed-in"}},
-		RuleAction:     toProxy,
+		RawDefaultRule: option.RawDefaultRule{Inbound: []string{"tun-in"}},
+		RuleAction:     option.RuleAction{Action: C.RuleActionTypeSniff},
 	}})
-	out = append(out, option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{RuleAction: option.RuleAction{Action: C.RuleActionTypeSniff}}})
 	if s.BlockQUIC == "on" {
 		out = append(out, option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{
 			RawDefaultRule: option.RawDefaultRule{Network: []string{"udp"}, Port: []uint16{443}},
 			RuleAction:     reject,
 		}})
 	}
-
 	// Block > ex. Direct/Proxy > Mode
 	out = append(out, match(s.Block, reject)...)
 	out = append(out, match(s.Direct, toDirect)...)
 	out = append(out, match(s.Proxy, toProxy)...)
+
+	// Deprecated: wlbe in 1.7.1 with new port settings
+	out = append(out, option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{
+		RawDefaultRule: option.RawDefaultRule{Inbound: []string{"mixed-in"}},
+		RuleAction:     toProxy,
+	}})
 
 	if s.BypassLocal == "on" {
 		out = append(out, option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{

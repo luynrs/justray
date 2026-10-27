@@ -3,6 +3,7 @@ package engine
 import (
 	"net/netip"
 	"net/url"
+	"path/filepath"
 	"strconv"
 
 	C "github.com/sagernet/sing-box/constant"
@@ -45,7 +46,13 @@ func build(n domain.Node, s domain.Settings, logPath string, tun bool) *option.O
 			AutoDetectInterface:   true,
 			DefaultDomainResolver: &option.DomainResolveOptions{Server: "remote", Strategy: option.DomainStrategy(C.DomainStrategyPreferIPv4)},
 			Rules:                 rules(s),
+			RuleSet:               ruleSets(s),
 		},
+	}
+	if len(opts.Route.RuleSet) > 0 {
+		opts.Experimental = &option.ExperimentalOptions{CacheFile: &option.CacheFileOptions{
+			Enabled: true, Path: filepath.Join(filepath.Dir(filepath.Dir(logPath)), "cache.db"),
+		}}
 	}
 	if dnsDetour != "" {
 		opts.DNS.Servers = append(opts.DNS.Servers, dnsServers(s.DNS, "", "node")...)

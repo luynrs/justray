@@ -221,6 +221,21 @@ func isDNS(v string) bool {
 // ParseRule canonicalises a network, domain or program rule
 func ParseRule(raw string) (string, error) {
 	rule := strings.TrimSpace(raw)
+	if kind, name, ok := strings.Cut(strings.ToLower(rule), ":"); ok && (kind == "geoip" || kind == "geosite") {
+		if name == "" {
+			return "", fmt.Errorf("invalid routing rule %q", raw)
+		}
+		for index, char := range name {
+			if char >= 'a' && char <= 'z' || char >= '0' && char <= '9' {
+				continue
+			}
+			if index > 0 && strings.ContainsRune("-_!@", char) {
+				continue
+			}
+			return "", fmt.Errorf("invalid routing rule %q", raw)
+		}
+		return kind + ":" + name, nil
+	}
 	if prefix, err := parsePrefix(rule); err == nil {
 		return prefix.String(), nil
 	}
@@ -254,7 +269,7 @@ func ParseRule(raw string) (string, error) {
 }
 
 // SplitRules splits entries into cidrs, domains, keywords, names and paths
-func SplitRules(list []string) (cidrs, domains, keywords, names, paths []string) {
+func SplitRules(list []string) (cidrs, domains, keywords, names, paths, sets []string) {
 	for _, raw := range list {
 		rule := strings.TrimSpace(raw)
 		if rule == "" {
@@ -262,6 +277,8 @@ func SplitRules(list []string) (cidrs, domains, keywords, names, paths []string)
 		}
 		lower := strings.ToLower(rule)
 		switch {
+		case strings.HasPrefix(lower, "geoip:"), strings.HasPrefix(lower, "geosite:"):
+			sets = append(sets, strings.Replace(lower, ":", "-", 1))
 		case isPrefix(rule):
 			cidrs = append(cidrs, rule)
 		case strings.ContainsAny(rule, `/\`):
@@ -280,7 +297,7 @@ func SplitRules(list []string) (cidrs, domains, keywords, names, paths []string)
 			names = append(names, rule)
 		}
 	}
-	return cidrs, domains, keywords, names, paths
+	return cidrs, domains, keywords, names, paths, sets
 }
 
 func isPrefix(rule string) bool {
