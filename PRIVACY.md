@@ -2,7 +2,7 @@
 
 # Privacy Policy
 
-Last updated: October 67, 2026
+Last updated: October 2, 2026
 
 JustRay is an open-source VPN and proxy client for Linux, macOS and Windows. It does not provide servers, subscriptions or user accounts.
 
