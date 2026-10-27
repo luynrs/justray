@@ -81,25 +81,22 @@ nix run github:luynrs/justray
 
 ### Usage
 
-Package manager and script installations also provide `jray` as a short alias for `justray`
+Package manager (except WinGet) and script installations also provide `jray` as a short alias for `justray`
 
-> [!NOTE]
-> WinGet provides only `justray` and `justrayd`; the `jray` alias must be added manually
-
-- `jray`: open the TUI
+- `justray`: open the TUI
 
 #### Connection 
 
-- `jray up <node> [--tun | --proxy]`: start the daemon and connect
-- `jray down`: disconnect
-- `jray stop`: stop the daemon
-- `jray probe [sub | id | name]`: probe node latencies
-- `jray status [--json]`: show connection status
+- `justray up <node> [--tun | --proxy]`: start the daemon and connect
+- `justray down`: disconnect
+- `justray stop`: stop the daemon
+- `justray probe [sub | id | name]`: probe node latencies
+- `justray status [--json]`: show connection status
 - `jray logs [daemon | engine] [-f]`: view logs
 
 #### Subscriptions & Nodes
 
-`jray subscription` or `jray sub`
+`justray subscription <command>` or `justray sub <command>`
 
 - `add`: add a subscription or raw protocol link
 - `remove`: remove a subscription by ID or name
