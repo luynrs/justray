@@ -73,11 +73,12 @@ func (m Model) updateModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.activeModal == modalHelp {
-			if key := msg.String(); len(key) == 1 && key[0] >= '0' && key[0] <= '9' {
+			key := msg.String()
+			if len(key) == 1 && key[0] >= '0' && key[0] <= '9' {
 				m.navigation.Reset()
 				return m, nil
 			}
-			if motion, handled := m.navigation.Read(msg.String()); handled {
+			if motion, handled := m.navigation.Read(key); handled {
 				switch motion.Action {
 				case navigation.Move, navigation.Scroll, navigation.Page, navigation.HalfPage:
 					m.help.SetYOffset(m.help.YOffset() + motion.Distance(m.help.Height(), m.help.TotalLineCount()))

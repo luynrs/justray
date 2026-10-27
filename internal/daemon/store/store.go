@@ -127,14 +127,11 @@ func write(path string, data []byte) error {
 	return nil
 }
 
-func NewID() string {
-	var b [4]byte
-	rand.Read(b[:]) // documented never to fail
-	return hex.EncodeToString(b[:])
-}
+func NewID() string     { return newID(4) }
+func NewNodeID() string { return newID(16) }
 
-func NewNodeID() string {
-	var b [16]byte
-	rand.Read(b[:])
-	return hex.EncodeToString(b[:])
+func newID(size int) string {
+	var random [16]byte
+	rand.Read(random[:size]) // documented never to fail
+	return hex.EncodeToString(random[:size])
 }

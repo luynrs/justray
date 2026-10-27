@@ -52,29 +52,31 @@ func xhttpOptions(transport domain.Transport) (option.V2RayXHTTPOptions, error) 
 		delete(fields, name)
 	}
 	for _, name := range []string{"x_padding_bytes", "session_length", "uplink_chunk_size", "sc_max_each_post_bytes", "sc_min_posts_interval_ms"} {
-		if value, ok := fields[name]; ok {
-			var interval option.XmuxRange
-			if err := json.Unmarshal(value, &interval); err != nil {
-				return option.V2RayXHTTPOptions{}, fmt.Errorf("xhttp: %s must be an integer or range", name)
-			}
-			if interval != "" {
-				lower, upper, paired := strings.Cut(string(interval), "-")
-				if !paired {
-					upper = lower
-				}
-				minimum, err := strconv.ParseInt(strings.TrimSpace(lower), 10, 32)
-				maximum, endErr := strconv.ParseInt(strings.TrimSpace(upper), 10, 32)
-				if err != nil || endErr != nil || minimum < 0 || maximum < minimum {
-					return option.V2RayXHTTPOptions{}, fmt.Errorf("xhttp: invalid %s range", name)
-				}
-				if maximum == 0 && (name == "x_padding_bytes" || name == "sc_max_each_post_bytes" || name == "sc_min_posts_interval_ms") {
-					interval = ""
-				} else if minimum == 0 && (name == "x_padding_bytes" || name == "sc_max_each_post_bytes" || name == "session_length") {
-					return option.V2RayXHTTPOptions{}, fmt.Errorf("xhttp: %s range must be positive", name)
-				}
-			}
-			fields[name], _ = json.Marshal(interval)
+		value, ok := fields[name]
+		if !ok {
+			continue
 		}
+		var interval option.XmuxRange
+		if err := json.Unmarshal(value, &interval); err != nil {
+			return option.V2RayXHTTPOptions{}, fmt.Errorf("xhttp: %s must be an integer or range", name)
+		}
+		if interval != "" {
+			lower, upper, paired := strings.Cut(string(interval), "-")
+			if !paired {
+				upper = lower
+			}
+			minimum, err := strconv.ParseInt(strings.TrimSpace(lower), 10, 32)
+			maximum, maximumErr := strconv.ParseInt(strings.TrimSpace(upper), 10, 32)
+			if err != nil || maximumErr != nil || minimum < 0 || maximum < minimum {
+				return option.V2RayXHTTPOptions{}, fmt.Errorf("xhttp: invalid %s range", name)
+			}
+			if maximum == 0 && (name == "x_padding_bytes" || name == "sc_max_each_post_bytes" || name == "sc_min_posts_interval_ms") {
+				interval = ""
+			} else if minimum == 0 && (name == "x_padding_bytes" || name == "sc_max_each_post_bytes" || name == "session_length") {
+				return option.V2RayXHTTPOptions{}, fmt.Errorf("xhttp: %s range must be positive", name)
+			}
+		}
+		fields[name], _ = json.Marshal(interval)
 	}
 	if value, ok := fields["xmux"]; ok && !bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
 		var xmux map[string]json.RawMessage

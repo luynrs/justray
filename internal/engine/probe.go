@@ -126,11 +126,7 @@ func probe(ctx context.Context, node domain.Node, instance *sbox.Box, tag, probe
 		runtime, err = newNodeRuntime(requestCtx, instance.Router(), instance.LogFactory().NewLogger("probe/"+tag), tag, node)
 		if err == nil {
 			defer func() { _ = runtime.scope.Close() }()
-			for _, stage := range adapter.ListStartStages[1:] {
-				if err = runtime.start(stage); err != nil {
-					break
-				}
-			}
+			err = runtime.start(adapter.ListStartStages[1:]...)
 			dialer = runtime
 		}
 	}

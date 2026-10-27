@@ -263,11 +263,11 @@ func (a *app) nodeLine(n ipc.Node, branch string, nameW, infoW int) string {
 	}
 	line := fmt.Sprintf("%s%s  %s  %s", prefix, name, info, id)
 	if n.Probed {
+		color := style.Red
 		if n.Alive {
-			line += "  " + style.Green.Render(n.Latency())
-		} else {
-			line += "  " + style.Red.Render(n.Latency())
+			color = style.Green
 		}
+		line += "  " + color.Render(n.Latency())
 	}
 	return line
 }

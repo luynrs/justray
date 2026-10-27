@@ -160,16 +160,19 @@ func clashNode(p clashProxy) (domain.Node, error) {
 	case "ss", "shadowsocks":
 		n.Protocol = domain.SS
 		n.Auth = domain.Auth{Method: p.Cipher, Password: p.Password}
-		if plugin, _, _ := strings.Cut(p.Plugin, ";"); plugin != "" && plugin != "shadow-tls" {
-			return domain.Node{}, fmt.Errorf("clash: unsupported plugin %q", plugin)
+		if strings.Contains(p.Plugin, ";") {
+			return domain.Node{}, errors.New("clash: inline plugin options are not supported")
 		}
-		stlsOpts := p.PluginOpts
-		if stlsOpts == nil {
-			stlsOpts = p.ShadowTLSOpts
+		if p.Plugin != "" && p.Plugin != "shadow-tls" {
+			return domain.Node{}, fmt.Errorf("clash: unsupported plugin %q", p.Plugin)
 		}
+		stlsOpts := cmp.Or(p.PluginOpts, p.ShadowTLSOpts)
 		if p.Plugin == "shadow-tls" || p.ShadowTLSOpts != nil {
 			if stlsOpts == nil {
 				return domain.Node{}, errors.New("shadowtls: missing settings")
+			}
+			if stlsOpts.Fingerprint != "" {
+				return domain.Node{}, errors.New("shadowtls: certificate fingerprint is not supported")
 			}
 			n.ShadowTLS = &domain.ShadowTLS{
 				Version:  cmp.Or(stlsOpts.Version, 3),
@@ -178,6 +181,7 @@ func clashNode(p clashProxy) (domain.Node, error) {
 			}
 			n.TLS = tls
 			n.TLS.SNI = n.ShadowTLS.SNI
+			n.TLS.Insecure = n.TLS.Insecure || stlsOpts.SkipCertVerify
 		}
 
 	case "shadow-tls", "shadowtls", "stls":
@@ -303,10 +307,12 @@ func (value *reserved) UnmarshalYAML(node *yaml.Node) error {
 }
 
 type clashShadowTLSOpts struct {
-	Host     string `yaml:"host"`
-	SNI      string `yaml:"sni"`
-	Password string `yaml:"password"`
-	Version  int    `yaml:"version"`
+	Host           string `yaml:"host"`
+	SNI            string `yaml:"sni"`
+	Password       string `yaml:"password"`
+	Version        int    `yaml:"version"`
+	SkipCertVerify bool   `yaml:"skip-cert-verify"`
+	Fingerprint    string `yaml:"fingerprint"`
 }
 
 func clashTransport(p clashProxy) domain.Transport {

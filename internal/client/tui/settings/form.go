@@ -199,14 +199,11 @@ func (s Model) valueLines(f field, selected bool, bar string) (lines []string) {
 		return lines
 	}
 
-	v := f.value(&s.cur)
-	if v == "" {
-		v = cmp.Or(f.hint, "Auto")
-	}
+	value := cmp.Or(f.value(&s.cur), f.hint, "Auto")
 	if len(f.enum) > 0 {
-		v = optionLabel(v)
+		value = optionLabel(value)
 	}
-	return []string{bar + style.Gray.Render(v)}
+	return []string{bar + style.Gray.Render(value)}
 }
 
 func optionLabel(value string) string {

@@ -55,12 +55,11 @@ func receive[T any](decoder *json.Decoder) (T, error) {
 		return out, fmt.Errorf("%w (client %s, daemon %s)", ErrVersion, version.Version, cmp.Or(response.Version, "unversioned"))
 	}
 	if !response.Success {
-		if len(response.Error) == 0 {
-			return out, errors.New("daemon returned an empty error")
-		}
 		var failure *Error
-		if err := json.Unmarshal(response.Error, &failure); err != nil {
-			return out, err
+		if len(response.Error) > 0 {
+			if err := json.Unmarshal(response.Error, &failure); err != nil {
+				return out, err
+			}
 		}
 		if failure == nil {
 			return out, errors.New("daemon returned an empty error")

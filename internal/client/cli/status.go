@@ -72,15 +72,11 @@ func (a *app) status(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	ref := snapshot.Selected
-	if ref.NodeID == "" {
-		return nil
+	if ref := snapshot.Selected; ref.NodeID != "" {
+		if node := lookup(ref, snapshot.Nodes); node.NodeID != "" {
+			details := [][2]string{{"Last node", a.nodeName(node.Name, node.NodeID)}}
+			fields(append(details, a.nodeFields(node)...)...)
+		}
 	}
-	n := lookup(ref, snapshot.Nodes)
-	if n.NodeID == "" {
-		return nil
-	}
-	last := [][2]string{{"Last node", a.nodeName(n.Name, n.NodeID)}}
-	fields(append(last, a.nodeFields(n)...)...)
 	return nil
 }

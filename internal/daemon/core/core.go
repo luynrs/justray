@@ -40,9 +40,6 @@ type Core struct {
 }
 
 func New(ctx context.Context, st store.Disk, conn *connection.Service, subs *subscription.Service) (*Core, error) {
-	if err := st.Migrate(); err != nil {
-		return nil, fmt.Errorf("migrate data: %w", err)
-	}
 	state, err := st.Load()
 	if err != nil {
 		return nil, fmt.Errorf("load state: %w", err)

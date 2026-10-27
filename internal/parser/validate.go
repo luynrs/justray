@@ -55,62 +55,27 @@ func validateNode(node domain.Node) error {
 			return errors.New("shadowtls: missing settings or password")
 		}
 	case domain.WG:
-		if node.WireGuard == nil || node.WireGuard.PrivateKey == "" || node.WireGuard.PeerPublicKey == "" || len(node.WireGuard.Address) == 0 {
+		wireguard := node.WireGuard
+		if wireguard == nil || wireguard.PrivateKey == "" || wireguard.PeerPublicKey == "" || len(wireguard.Address) == 0 {
 			return errors.New("wireguard: missing keys or address")
 		}
-		if len(node.WireGuard.Reserved) != 0 && len(node.WireGuard.Reserved) != 3 {
+		if len(wireguard.Reserved) != 0 && len(wireguard.Reserved) != 3 {
 			return errors.New("wireguard: reserved must be three bytes")
 		}
-		const maxDatagramSize = 65507
-		if node.WireGuard.Jc > math.MaxUint16 || node.WireGuard.Jmin > maxDatagramSize || node.WireGuard.Jmax > maxDatagramSize || uint64(node.WireGuard.Jc)*(uint64(node.WireGuard.Jmax)+8) > 8<<20 {
+		if wireguard.Jc > math.MaxUint16 || wireguard.Jmin > maxDatagramSize || wireguard.Jmax > maxDatagramSize || uint64(wireguard.Jc)*(uint64(wireguard.Jmax)+8) > 8<<20 {
 			return errors.New("amneziawg: junk count or packet size exceeds allocation limits")
 		}
-		for _, packet := range []string{node.WireGuard.I1, node.WireGuard.I2, node.WireGuard.I3, node.WireGuard.I4, node.WireGuard.I5} {
-			if strings.ContainsAny(packet, "\r\n") {
-				return errors.New("amneziawg: packet templates must not contain line breaks")
-			}
-			size := 0
-			for {
-				_, remaining, found := strings.Cut(packet, "<")
-				if !found {
-					break
-				}
-				tag, remaining, found := strings.Cut(remaining, ">")
-				if !found {
-					break
-				}
-				packet = remaining
-				parts := strings.Fields(tag)
-				if len(parts) == 0 {
-					continue
-				}
-				switch parts[0] {
-				case "t":
-					size += 4
-				case "b":
-					if len(parts) > 1 {
-						size += len(strings.TrimPrefix(parts[1], "0x")) / 2
-					}
-				case "r", "rc", "rd", "dz":
-					if len(parts) > 1 {
-						length, err := strconv.Atoi(parts[1])
-						if err != nil || length < 0 || length > maxDatagramSize-size {
-							return errors.New("amneziawg: packet template exceeds UDP payload limit")
-						}
-						size += length
-					}
-				}
-				if size > maxDatagramSize {
-					return errors.New("amneziawg: packet template exceeds UDP payload limit")
-				}
+		for _, packet := range []string{wireguard.I1, wireguard.I2, wireguard.I3, wireguard.I4, wireguard.I5} {
+			if err := validatePacketTemplate(packet); err != nil {
+				return err
 			}
 		}
-		if node.WireGuard.PersistentKeepaliveInterval != nil {
-			if _, err := node.WireGuard.PersistentKeepaliveInterval.Spec(); err != nil {
+		if wireguard.PersistentKeepaliveInterval != nil {
+			if _, err := wireguard.PersistentKeepaliveInterval.Spec(); err != nil {
 				return fmt.Errorf("wireguard: invalid keepalive: %w", err)
 			}
 		}
-		for _, address := range node.WireGuard.Address {
+		for _, address := range wireguard.Address {
 			if _, err := netip.ParsePrefix(address); err != nil {
 				return fmt.Errorf("wireguard: invalid address: %w", err)
 			}
@@ -120,4 +85,48 @@ func validateNode(node domain.Node) error {
 		return fmt.Errorf("unsupported protocol %q", node.Protocol)
 	}
 	return outbound.ValidateTransport(node)
+}
+
+const maxDatagramSize = 65507
+
+func validatePacketTemplate(packet string) error {
+	if strings.ContainsAny(packet, "\r\n") {
+		return errors.New("amneziawg: packet templates must not contain line breaks")
+	}
+	size := 0
+	for {
+		_, remaining, found := strings.Cut(packet, "<")
+		if !found {
+			break
+		}
+		tag, remaining, found := strings.Cut(remaining, ">")
+		if !found {
+			break
+		}
+		packet = remaining
+		parts := strings.Fields(tag)
+		if len(parts) == 0 {
+			continue
+		}
+		switch parts[0] {
+		case "t":
+			size += 4
+		case "b":
+			if len(parts) > 1 {
+				size += len(strings.TrimPrefix(parts[1], "0x")) / 2
+			}
+		case "r", "rc", "rd", "dz":
+			if len(parts) > 1 {
+				length, err := strconv.Atoi(parts[1])
+				if err != nil || length < 0 || length > maxDatagramSize-size {
+					return errors.New("amneziawg: packet template exceeds UDP payload limit")
+				}
+				size += length
+			}
+		}
+		if size > maxDatagramSize {
+			return errors.New("amneziawg: packet template exceeds UDP payload limit")
+		}
+	}
+	return nil
 }

@@ -221,30 +221,33 @@ func isDNS(v string) bool {
 // ParseRule canonicalises a network, domain or program rule
 func ParseRule(raw string) (string, error) {
 	rule := strings.TrimSpace(raw)
-	if p, err := parsePrefix(rule); err == nil {
-		return p.String(), nil
+	if prefix, err := parsePrefix(rule); err == nil {
+		return prefix.String(), nil
 	}
 	if host, _, found := strings.Cut(strings.ReplaceAll(rule, `\`, "/"), "/"); found && isAddr(host) {
 		return "", fmt.Errorf("invalid routing rule %q", raw)
 	}
-	isDrive := len(rule) >= 3 && ((rule[0] >= 'a' && rule[0] <= 'z') || (rule[0] >= 'A' && rule[0] <= 'Z')) && rule[1] == ':' && (rule[2] == '\\' || rule[2] == '/')
-	if strings.Contains(rule, ":") && !isDrive {
+	hasDrivePrefix := len(rule) >= 3 &&
+		((rule[0] >= 'a' && rule[0] <= 'z') || (rule[0] >= 'A' && rule[0] <= 'Z')) &&
+		rule[1] == ':' && (rule[2] == '\\' || rule[2] == '/')
+	if strings.Contains(rule, ":") && !hasDrivePrefix {
 		return "", fmt.Errorf("invalid routing rule %q", raw)
 	}
-	star, keyword := strings.HasPrefix(rule, "*"), strings.HasSuffix(rule, "*")
+	leadingWildcard, trailingWildcard := strings.HasPrefix(rule, "*"), strings.HasSuffix(rule, "*")
 	rule = strings.Trim(rule, "*.")
 	if rule == "" || strings.Contains(rule, "://") || strings.ContainsAny(rule, "\t\n\r@?#*") {
 		return "", fmt.Errorf("invalid routing rule %q", raw)
 	}
-	if !strings.ContainsAny(rule, `/\`) && (star || keyword || (!strings.Contains(rule, " ") && !strings.HasSuffix(strings.ToLower(rule), ".exe") && strings.Contains(rule, "."))) {
+	if !strings.ContainsAny(rule, `/\`) && (leadingWildcard || trailingWildcard ||
+		(!strings.Contains(rule, " ") && !strings.HasSuffix(strings.ToLower(rule), ".exe") && strings.Contains(rule, "."))) {
 		rule = strings.ToLower(rule)
 	}
 	switch {
-	case star && keyword:
+	case leadingWildcard && trailingWildcard:
 		return "*" + rule + "*", nil
-	case keyword:
+	case trailingWildcard:
 		return rule + ".*", nil
-	case star:
+	case leadingWildcard:
 		return "*." + rule, nil
 	}
 	return rule, nil

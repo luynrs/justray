@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"syscall"
 
 	sbox "github.com/sagernet/sing-box"
@@ -57,18 +56,13 @@ func (e *box) Apply(ctx context.Context, spec Spec) error {
 		return e.start(ctx, spec)
 	}
 	if nodeChanged {
-		if err := e.swap(spec.Node); err != nil {
-			return err
-		}
+		return e.swap(spec.Node)
 	}
 	if tunChanged {
 		if spec.Tun {
-			if err := e.tunAdd(); err != nil {
-				return err
-			}
-		} else if err := e.tunRemove(); err != nil {
-			return err
+			return e.tunAdd()
 		}
+		return e.tunRemove()
 	}
 	return nil
 }
@@ -122,11 +116,9 @@ func (e *box) swap(n domain.Node) error {
 	if err != nil {
 		return err
 	}
-	for _, stage := range adapter.ListStartStages[1:] {
-		if err := runtime.start(stage); err != nil {
-			_ = runtime.scope.Close()
-			return err
-		}
+	if err := runtime.start(adapter.ListStartStages[1:]...); err != nil {
+		_ = runtime.scope.Close()
+		return err
 	}
 	registrar := e.inst.Outbound().(adapter.InternalOutboundRegistrar)
 	previous := proxy.current.Load()
@@ -218,9 +210,6 @@ func (e *box) Stop() error {
 		err = errors.Join(err, inbound.(*managedTun).stop())
 	}
 	err = errors.Join(err, inst.Close())
-	if errors.Is(err, os.ErrClosed) {
-		err = nil
-	}
 	if tun {
 		link.Delete(domain.Interface)
 	}

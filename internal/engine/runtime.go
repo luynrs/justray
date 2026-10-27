@@ -46,16 +46,14 @@ func newNodeRuntime(ctx context.Context, router adapter.Router, logger log.Conte
 	service.MustRegister[adapter.EndpointManager](ctx, runtime.endpoints)
 	service.MustRegister[adapter.OutboundManager](ctx, runtime.outbounds)
 	if endpoint != nil {
-		err = runtime.endpoints.Create(ctx, router, logger, endpoint.Tag, endpoint.Type, endpoint.Options)
+		if err = runtime.endpoints.Create(ctx, router, logger, endpoint.Tag, endpoint.Type, endpoint.Options); err != nil {
+			return runtime, err
+		}
 	}
 	for _, outbound := range outbounds {
-		if err != nil {
-			break
+		if err = runtime.outbounds.Create(ctx, router, logger, outbound.Tag, outbound.Type, outbound.Options); err != nil {
+			return runtime, err
 		}
-		err = runtime.outbounds.Create(ctx, router, logger, outbound.Tag, outbound.Type, outbound.Options)
-	}
-	if err != nil {
-		return runtime, err
 	}
 	runtime.Outbound, _ = runtime.outbounds.Outbound(tag)
 	err = runtime.start(adapter.StartStateInitialize)
@@ -66,16 +64,21 @@ func newNodeRuntime(ctx context.Context, router adapter.Router, logger log.Conte
 	return runtime, err
 }
 
-func (runtime *nodeRuntime) start(stage adapter.StartStage) error {
-	if stage != adapter.StartStateInitialize {
-		if err := runtime.ctx.Err(); err != nil {
+func (runtime *nodeRuntime) start(stages ...adapter.StartStage) error {
+	for _, stage := range stages {
+		if stage != adapter.StartStateInitialize {
+			if err := runtime.ctx.Err(); err != nil {
+				return err
+			}
+		}
+		if err := runtime.scope.Start("outbound", runtime.outbounds, stage); err != nil {
+			return err
+		}
+		if err := runtime.scope.Start("endpoint", runtime.endpoints, stage); err != nil {
 			return err
 		}
 	}
-	if err := runtime.scope.Start("outbound", runtime.outbounds, stage); err != nil {
-		return err
-	}
-	return runtime.scope.Start("endpoint", runtime.endpoints, stage)
+	return nil
 }
 
 type proxyOutbound struct {
@@ -141,20 +144,18 @@ func (proxy *proxyOutbound) CloneEndpoints() []adapter.Endpoint {
 }
 
 func (proxy *proxyOutbound) SetKeepIdleConnections(keep bool) {
-	if runtime := proxy.current.Load(); runtime != nil {
-		for _, outbound := range runtime.outbounds.Outbounds() {
-			if keeper, ok := outbound.(adapter.IdleConnectionKeeper); ok {
-				keeper.SetKeepIdleConnections(keep)
-			}
-		}
-	}
+	proxy.forKeepers(func(keeper adapter.IdleConnectionKeeper) { keeper.SetKeepIdleConnections(keep) })
 }
 
 func (proxy *proxyOutbound) CloseIdleConnections() {
+	proxy.forKeepers(adapter.IdleConnectionKeeper.CloseIdleConnections)
+}
+
+func (proxy *proxyOutbound) forKeepers(action func(adapter.IdleConnectionKeeper)) {
 	if runtime := proxy.current.Load(); runtime != nil {
 		for _, outbound := range runtime.outbounds.Outbounds() {
 			if keeper, ok := outbound.(adapter.IdleConnectionKeeper); ok {
-				keeper.CloseIdleConnections()
+				action(keeper)
 			}
 		}
 	}

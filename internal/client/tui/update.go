@@ -105,57 +105,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case pushed:
-		initial := m.snapshot.Settings.Port == 0
-		rows := m.rows()
-		selected, selectedOK := tree.At(rows, m.cursor)
-		followSelection := m.selectionVisible(rows)
-		var spinnerCommand tea.Cmd
-		if msg.live {
-			if !initial {
-				for _, sub := range msg.snapshot.Subscriptions {
-					if sub.Warning != "" && !slices.ContainsFunc(m.snapshot.Subscriptions, func(previous ipc.Subscription) bool {
-						return previous.SubscriptionID == sub.SubscriptionID && previous.Warning == sub.Warning && previous.UpdatedAt.Equal(sub.UpdatedAt)
-					}) {
-						m.err, m.errAt = sub.Warning, time.Now()
-					}
-				}
-			}
-			if msg.snapshot.Status.Error != "" && msg.snapshot.Status.Error != m.snapshot.Status.Error {
-				m.err, m.errAt = msg.snapshot.Status.Error, time.Now()
-			}
-			m.snapshot = msg.snapshot
-			spinnerCommand = tea.Batch(m.syncTTY(), m.startSpinner())
-		} else if message := style.ErrorText(msg.err); message != "" && m.startup == nil && !m.busy {
-			m.err, m.errAt = message, time.Now()
-		}
-		m.live = msg.live
-		rows = m.rows()
-		switch {
-		case initial && m.snapshot.Status.Connected:
-			for i, idx := range tree.Selectable(rows) {
-				if r := rows[idx]; r.Kind == tree.Node && r.Node.Ref() == m.snapshot.Status.NodeRef {
-					m.cursor = i
-					break
-				}
-			}
-		case selectedOK:
-			for i, idx := range tree.Selectable(rows) {
-				row := rows[idx]
-				if selected.Kind == tree.Node && row.Kind == tree.Header && row.Sub.SubscriptionID == selected.Sub.SubscriptionID {
-					m.cursor = i
-				}
-				if row.Kind == selected.Kind && row.Sub.SubscriptionID == selected.Sub.SubscriptionID && (row.Kind != tree.Node || row.Node.Ref() == selected.Node.Ref()) {
-					m.cursor = i
-					break
-				}
-			}
-		}
-		if initial || followSelection {
-			m.cursor, m.scroll = tree.Reveal(rows, m.cursor, m.scroll, m.height())
-		} else {
-			m.cursor, m.scroll = tree.Clamp(rows, m.cursor, m.scroll, m.height())
-		}
-		return m, tea.Batch(next(m.watch, m.updates), spinnerCommand)
+		return m.updateSnapshot(msg)
 	}
 	if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "ctrl+c" {
 		return m.quit()
@@ -208,6 +158,60 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+func (model Model) updateSnapshot(message pushed) (tea.Model, tea.Cmd) {
+	initial := model.snapshot.Settings.Port == 0
+	rows := model.rows()
+	selected, selectedOK := tree.At(rows, model.cursor)
+	followSelection := model.selectionVisible(rows)
+	var spinnerCommand tea.Cmd
+	if message.live {
+		if !initial {
+			for _, subscription := range message.snapshot.Subscriptions {
+				if subscription.Warning != "" && !slices.ContainsFunc(model.snapshot.Subscriptions, func(previous ipc.Subscription) bool {
+					return previous.SubscriptionID == subscription.SubscriptionID && previous.Warning == subscription.Warning && previous.UpdatedAt.Equal(subscription.UpdatedAt)
+				}) {
+					model.err, model.errAt = subscription.Warning, time.Now()
+				}
+			}
+		}
+		if message.snapshot.Status.Error != "" && message.snapshot.Status.Error != model.snapshot.Status.Error {
+			model.err, model.errAt = message.snapshot.Status.Error, time.Now()
+		}
+		model.snapshot = message.snapshot
+		spinnerCommand = tea.Batch(model.syncTTY(), model.startSpinner())
+	} else if errorText := style.ErrorText(message.err); errorText != "" && model.startup == nil && !model.busy {
+		model.err, model.errAt = errorText, time.Now()
+	}
+	model.live = message.live
+	rows = model.rows()
+	switch {
+	case initial && model.snapshot.Status.Connected:
+		for index, rowIndex := range tree.Selectable(rows) {
+			if row := rows[rowIndex]; row.Kind == tree.Node && row.Node.Ref() == model.snapshot.Status.NodeRef {
+				model.cursor = index
+				break
+			}
+		}
+	case selectedOK:
+		for index, rowIndex := range tree.Selectable(rows) {
+			row := rows[rowIndex]
+			if selected.Kind == tree.Node && row.Kind == tree.Header && row.Sub.SubscriptionID == selected.Sub.SubscriptionID {
+				model.cursor = index
+			}
+			if row.Kind == selected.Kind && row.Sub.SubscriptionID == selected.Sub.SubscriptionID && (row.Kind != tree.Node || row.Node.Ref() == selected.Node.Ref()) {
+				model.cursor = index
+				break
+			}
+		}
+	}
+	if initial || followSelection {
+		model.cursor, model.scroll = tree.Reveal(rows, model.cursor, model.scroll, model.height())
+	} else {
+		model.cursor, model.scroll = tree.Clamp(rows, model.cursor, model.scroll, model.height())
+	}
+	return model, tea.Batch(next(model.watch, model.updates), spinnerCommand)
 }
 
 func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {

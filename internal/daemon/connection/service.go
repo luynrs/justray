@@ -33,11 +33,11 @@ func New(ctx context.Context, dir string, newEngine func(context.Context, string
 }
 
 func (s *Service) Connect(ctx context.Context, n domain.Node, ref domain.NodeRef, settings domain.Settings, tun bool) error {
-	return elevationError(s.apply(ctx, n, ref, settings, tun, true), tun)
+	return s.apply(ctx, n, ref, settings, tun, true)
 }
 
 func (s *Service) Apply(ctx context.Context, n domain.Node, ref domain.NodeRef, settings domain.Settings, tun bool) error {
-	return elevationError(s.apply(ctx, n, ref, settings, tun, false), tun)
+	return s.apply(ctx, n, ref, settings, tun, false)
 }
 
 func (s *Service) Disconnect(ctx context.Context) error {
@@ -55,7 +55,7 @@ func (s *Service) Disconnect(ctx context.Context) error {
 }
 
 func (s *Service) Restore(n domain.Node, ref domain.NodeRef, settings domain.Settings, tun bool) error {
-	err := elevationError(s.apply(s.ctx, n, ref, settings, tun, true), tun)
+	err := s.apply(s.ctx, n, ref, settings, tun, true)
 	if errors.Is(err, ipc.ErrElevate) {
 		log.Info("restoring TUN requires elevation")
 		return err
@@ -124,6 +124,9 @@ func (s *Service) apply(ctx context.Context, n domain.Node, ref domain.NodeRef, 
 			s.eng = nil
 			s.status.Store(nil)
 		}
+		if tun && elevate.Needed(err) {
+			return ipc.ErrElevate
+		}
 		return err
 	}
 
@@ -146,11 +149,4 @@ func (s *Service) stop() error {
 		return eng.Stop()
 	}
 	return nil
-}
-
-func elevationError(err error, tun bool) error {
-	if tun && elevate.Needed(err) {
-		return ipc.ErrElevate
-	}
-	return err
 }
