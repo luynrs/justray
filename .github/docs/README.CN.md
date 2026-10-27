@@ -24,7 +24,7 @@
 
 - **协议支持：** VMess、VLESS、Trojan、WireGuard/AmneziaWG、Shadowsocks、Hysteria 1/2、TUIC、AnyTLS、SOCKS5 等
 - **导入与设置：** 可导入节点链接，以及 Clash/Mihomo YAML、sing-box 或 Xray JSON 格式的订阅，支持自动更新和多种设置
-- **基于规则的路由：** 支持应用、域名、通配符和 GeoIP/Geosite 规则
+<!-- - **基于规则的路由：** 支持应用、域名、通配符和 GeoIP/Geosite 规则 -->
 - **后台运行：** 后台服务和内嵌的 sing-box 核心独立于 TUI 运行，关闭界面后仍保持连接
 - **内存占用：** Linux / MacOS 上约 50 MB，Windows 上约 100 MB
 - **平台支持：** 可在 Linux、MacOS 13+ 和 Windows 1803+ 的现代终端中运行
