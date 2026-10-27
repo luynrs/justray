@@ -14,7 +14,7 @@ import (
 
 func New(n domain.Node, tag string) (*option.Endpoint, []option.Outbound, error) {
 	if !domain.ValidPort(n.Port) {
-		return nil, nil, fmt.Errorf("%s: port %d out of range", n.Protocol, n.Port)
+		return nil, nil, fmt.Errorf("%s: port out of range: %d", n.Protocol, n.Port)
 	}
 	transportOptions, err := transport(n)
 	if err != nil {
@@ -147,7 +147,7 @@ func proxy(n domain.Node, tag string, transportOptions *option.V2RayTransportOpt
 			OutboundTLSOptionsContainer: option.OutboundTLSOptionsContainer{TLS: tls},
 		}}, nil
 	}
-	return nil, fmt.Errorf("unsupported protocol %q", n.Protocol)
+	return nil, fmt.Errorf("unsupported protocol: %s", n.Protocol)
 }
 
 func shadowTLS(n domain.Node, tag string) option.Outbound {

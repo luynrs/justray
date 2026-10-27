@@ -50,7 +50,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		rows := m.rows()
 		followSelection := m.selectionVisible(rows)
 		m.w, m.h = msg.Width, msg.Height
-		style.ResizeInput(&m.filter, m.w-lipgloss.Width(m.filter.Prompt)-segW(modeProxy)-segW(modeTun)-3)
+		style.ResizeInput(&m.filter, m.w-lipgloss.Width(m.filter.Prompt)-1)
 		if m.dialog != nil {
 			m.dialog.Resize(m.w, m.height())
 		}
@@ -118,7 +118,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		showHelp = m.activeModal == modalNone && msg.String() == "?" && !m.editing()
 	case tea.MouseClickMsg:
-		showHelp = m.activeModal == modalNone && !m.editing() && msg.Button == tea.MouseLeft && m.h >= topLines+footerLines+1 && msg.Y == m.h-1 && msg.X >= m.w-lipgloss.Width(m.helpHint()) && msg.X < m.w && strings.HasSuffix(m.footerHint(), m.helpHint())
+		showHelp = m.activeModal == modalNone && !m.editing() && msg.Button == tea.MouseLeft && m.h >= topLines+footerLines+1 && msg.Y == m.h-2 && msg.X >= m.w-lipgloss.Width(m.helpHint()) && msg.X < m.w && strings.HasSuffix(m.footerHint(), m.helpHint())
 	}
 	if showHelp {
 		m.navigation.Reset()
@@ -324,7 +324,7 @@ func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) click(x, y int) (tea.Model, tea.Cmd) {
 	if y == 0 {
-		if tun, ok := modeAt(x, m.w, lipgloss.Width(m.titleLeft())); ok && x < m.w {
+		if tun, ok := modeAt(x, m.w, lipgloss.Width(style.Title())); ok && x < m.w {
 			return m.setTun(tun)
 		}
 		return m, nil

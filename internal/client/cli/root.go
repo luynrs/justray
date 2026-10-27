@@ -356,10 +356,10 @@ func match[T any](key, noun string, items []T, idName func(T) (id, name string))
 		return hits[0], nil
 	case 0:
 		var zero T
-		return zero, fmt.Errorf("%s %q %w", noun, key, errNotFound)
+		return zero, fmt.Errorf("%s %w: %s", noun, errNotFound, key)
 	default:
 		var zero T
-		return zero, fmt.Errorf("ambiguous %s %q: %s", noun, key, strings.Join(names, ", "))
+		return zero, fmt.Errorf("ambiguous %s: %s (%s)", noun, key, strings.Join(names, ", "))
 	}
 }
 

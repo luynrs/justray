@@ -198,10 +198,10 @@ func TestFind(t *testing.T) {
 		{ID: "a", Nodes: []domain.Node{{ID: "0123456789abcdef"}}},
 		{ID: "b", Nodes: []domain.Node{{ID: "0123fedcba987654"}}},
 	}
-	if _, _, err := find(subs, domain.NodeRef{NodeID: "ffff"}); err == nil || err.Error() != `node "ffff" not found` {
+	if _, _, err := find(subs, domain.NodeRef{NodeID: "ffff"}); err == nil || err.Error() != `node not found: ffff` {
 		t.Fatalf("missing node: %v", err)
 	}
-	if _, _, err := find(subs, domain.NodeRef{NodeID: "0123"}); err == nil || err.Error() != `ambiguous node ID "0123"` {
+	if _, _, err := find(subs, domain.NodeRef{NodeID: "0123"}); err == nil || err.Error() != `ambiguous node ID: 0123` {
 		t.Fatalf("ambiguous node: %v", err)
 	}
 	_, ref, err := find(subs, domain.NodeRef{NodeID: "01234567"})

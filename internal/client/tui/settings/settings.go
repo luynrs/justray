@@ -122,7 +122,7 @@ func number(name string, def int, at func(*domain.Settings) *int) field {
 			}
 			value, err := strconv.Atoi(in)
 			if err != nil {
-				return fmt.Errorf("%q is not a number", in)
+				return fmt.Errorf("not an integer: %s", in)
 			}
 			*at(settings) = value
 			return nil
@@ -165,7 +165,7 @@ func (s *Model) Result() (domain.Settings, domain.Settings, error) {
 	}
 	next, err := s.cur.Normalize()
 	if err != nil {
-		s.err = err.Error()
+		s.err = style.ErrorText(err)
 	}
 	return next, s.orig, err
 }
@@ -339,7 +339,7 @@ func (s *Model) editKey(msg tea.KeyPressMsg) tea.Cmd {
 
 	case "enter":
 		if err := s.at().apply(&s.cur, s.input.Value()); err != nil {
-			s.err = err.Error()
+			s.err = style.ErrorText(err)
 			return nil
 		}
 		s.err = ""
@@ -379,7 +379,7 @@ func (s *Model) focus(cursor int) {
 func (s *Model) assign(f field, v string) {
 	s.err = ""
 	if err := f.apply(&s.cur, v); err != nil {
-		s.err = err.Error()
+		s.err = style.ErrorText(err)
 	}
 }
 
@@ -445,10 +445,10 @@ func (f field) apply(s *domain.Settings, in string) error {
 		return err
 	}
 	if at == &s.Direct && slices.Contains(s.Proxy, rule) {
-		return fmt.Errorf("rule %q already exists in proxy", rule)
+		return fmt.Errorf("rule already exists in proxy: %s", rule)
 	}
 	if at == &s.Proxy && slices.Contains(s.Direct, rule) {
-		return fmt.Errorf("rule %q already exists in direct", rule)
+		return fmt.Errorf("rule already exists in direct: %s", rule)
 	}
 	if f.index >= 0 {
 		(*at)[f.index] = rule
@@ -496,12 +496,12 @@ func hours(v int) string {
 
 func parseHours(in string) (int, error) {
 	in = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(in), "h"))
-	if in == "" {
-		return 0, nil
+	v, err := strconv.Atoi(cmp.Or(in, "0"))
+	if err != nil {
+		return 0, fmt.Errorf("not an integer: %s", in)
 	}
-	v, err := strconv.Atoi(in)
-	if err != nil || v < 0 {
-		return 0, fmt.Errorf("expected integer hours, got %q", in)
+	if v < 0 {
+		return 0, fmt.Errorf("invalid refresh interval: %s", in)
 	}
 	return v, nil
 }

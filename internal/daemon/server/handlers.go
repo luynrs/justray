@@ -104,7 +104,7 @@ func (s *Server) dispatch(ctx context.Context, req ipc.Request) (any, error) {
 		return nil, s.core.Disconnect(ctx)
 	case "SetTun":
 		if a.Tun == nil {
-			return nil, errors.New("tun is required")
+			return nil, errors.New("missing TUN mode")
 		}
 		return nil, s.core.SetTun(ctx, *a.Tun)
 	case "SetSettings":
@@ -112,7 +112,7 @@ func (s *Server) dispatch(ctx context.Context, req ipc.Request) (any, error) {
 	case "SetCollapsed":
 		return nil, s.core.SetCollapsed(ctx, a.SubscriptionID, a.Collapsed)
 	}
-	return nil, fmt.Errorf("unknown method %q", req.Method)
+	return nil, fmt.Errorf("unknown method: %s", req.Method)
 }
 
 func (s *Server) watch(ctx context.Context, conn net.Conn) {

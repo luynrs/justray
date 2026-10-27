@@ -155,10 +155,10 @@ func TestStartup(t *testing.T) {
 		}
 	}
 	refreshFails.Store(true)
-	if output, err := exec.Command(filepath.Join(bin, "justray"), "sub", "refresh").CombinedOutput(); err == nil || strings.Count(string(output), "http 503") != 2 {
+	if output, err := exec.Command(filepath.Join(bin, "justray"), "sub", "refresh").CombinedOutput(); err == nil || strings.Count(string(output), "HTTP 503") != 2 {
 		t.Fatalf("subscription failures: %s, %v", output, err)
 	}
-	if output := run("logs", "daemon"); strings.Count(output, "http 503") != 2 || strings.Count(output, "ERROR daemon: cannot refresh subscription ") != 2 {
+	if output := run("logs", "daemon"); strings.Count(output, "HTTP 503") != 2 || strings.Count(output, "ERROR daemon: cannot refresh subscription ") != 2 {
 		t.Fatalf("subscription failures must have separate log records: %s", output)
 	}
 	logFormat := regexp.MustCompile(`\A(?:[+-]\d{4} \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} (?:TRACE|DEBUG|INFO|WARN|ERROR|FATAL|PANIC) [^\x1b\n]*\n)+\z`)
@@ -484,7 +484,7 @@ func TestStartup(t *testing.T) {
 	default:
 	}
 	requireNoError(t, os.WriteFile(auth+".release", nil, 0o600))
-	if result := <-statusResult; !strings.Contains(result, "could not grant permissions") {
+	if result := <-statusResult; !strings.Contains(result, "Error: could not grant permissions") {
 		t.Fatalf("waiting client: %s", result)
 	}
 	ready(false)
@@ -502,7 +502,7 @@ func TestStartup(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 		output, err := exec.CommandContext(ctx, filepath.Join(bin, "justray"), "up", "--tun").CombinedOutput()
 		cancel()
-		if err == nil || !strings.Contains(string(output), "could not grant permissions") {
+		if err == nil || !strings.Contains(string(output), "Error: could not grant permissions") {
 			t.Fatalf("runtime elevation failure: %s, %v", output, err)
 		}
 		ready(true)

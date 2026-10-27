@@ -95,7 +95,7 @@ func (c *Core) SetCollapsed(ctx context.Context, id string, collapsed *bool) err
 	}
 	next := c.current()
 	if !slices.ContainsFunc(next.Subscriptions, func(subscription store.Subscription) bool { return subscription.ID == id }) {
-		return fmt.Errorf("subscription %q not found", id)
+		return fmt.Errorf("subscription not found: %s", id)
 	}
 	index := slices.Index(next.Collapsed, id)
 	if collapsed != nil && (index >= 0) == *collapsed {

@@ -19,13 +19,13 @@ func xhttpOptions(transport domain.Transport) (option.V2RayXHTTPOptions, error) 
 	fields := make(map[string]json.RawMessage)
 	if transport.Extra != "" {
 		if err := json.Unmarshal([]byte(transport.Extra), &fields); err != nil {
-			return option.V2RayXHTTPOptions{}, errors.New("xhttp: extra must be a JSON object")
+			return option.V2RayXHTTPOptions{}, errors.New("xhttp: invalid extra: expected JSON object")
 		}
 	}
 	if extra, ok := fields["extra"]; ok {
 		var nested map[string]json.RawMessage
 		if err := json.Unmarshal(extra, &nested); err != nil {
-			return option.V2RayXHTTPOptions{}, errors.New("xhttp: extra must be a JSON object")
+			return option.V2RayXHTTPOptions{}, errors.New("xhttp: invalid extra: expected JSON object")
 		}
 		if nested == nil {
 			nested = make(map[string]json.RawMessage)
@@ -58,7 +58,7 @@ func xhttpOptions(transport domain.Transport) (option.V2RayXHTTPOptions, error) 
 		}
 		var interval option.XmuxRange
 		if err := json.Unmarshal(value, &interval); err != nil {
-			return option.V2RayXHTTPOptions{}, fmt.Errorf("xhttp: %s must be an integer or range", name)
+			return option.V2RayXHTTPOptions{}, fmt.Errorf("xhttp: invalid %s: expected integer or range", name)
 		}
 		if interval != "" {
 			lower, upper, paired := strings.Cut(string(interval), "-")
@@ -73,7 +73,7 @@ func xhttpOptions(transport domain.Transport) (option.V2RayXHTTPOptions, error) 
 			if maximum == 0 && (name == "x_padding_bytes" || name == "sc_max_each_post_bytes" || name == "sc_min_posts_interval_ms") {
 				interval = ""
 			} else if minimum == 0 && (name == "x_padding_bytes" || name == "sc_max_each_post_bytes" || name == "session_length") {
-				return option.V2RayXHTTPOptions{}, fmt.Errorf("xhttp: %s range must be positive", name)
+				return option.V2RayXHTTPOptions{}, fmt.Errorf("xhttp: invalid %s range: expected positive values", name)
 			}
 		}
 		fields[name], _ = json.Marshal(interval)
@@ -81,7 +81,7 @@ func xhttpOptions(transport domain.Transport) (option.V2RayXHTTPOptions, error) 
 	if value, ok := fields["xmux"]; ok && !bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
 		var xmux map[string]json.RawMessage
 		if err := json.Unmarshal(value, &xmux); err != nil {
-			return option.V2RayXHTTPOptions{}, errors.New("xhttp: xmux must be a JSON object")
+			return option.V2RayXHTTPOptions{}, errors.New("xhttp: invalid xmux: expected JSON object")
 		}
 		if err := xhttpNames(xmux); err != nil {
 			return option.V2RayXHTTPOptions{}, err
@@ -109,7 +109,7 @@ func xhttpOptions(transport domain.Transport) (option.V2RayXHTTPOptions, error) 
 	switch options.Mode {
 	case "auto", "packet-up", "stream-up", "stream-one":
 	default:
-		return options, errors.New("xhttp: mode must be auto, packet-up, stream-up or stream-one")
+		return options, errors.New("xhttp: invalid mode: expected auto, packet-up, stream-up or stream-one")
 	}
 	if options.Mode != "packet-up" && (options.UplinkHTTPMethod == "GET" || options.UplinkDataPlacement == "header" || options.UplinkDataPlacement == "cookie") {
 		return options, errors.New("xhttp: GET and header/cookie uploads require packet-up mode")

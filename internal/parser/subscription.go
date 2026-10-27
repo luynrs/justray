@@ -28,7 +28,7 @@ func (result *parseResult) add(node domain.Node, err error) {
 		result.nodes = append(result.nodes, node)
 		return
 	}
-	reason := err.Error()
+	reason := strings.ReplaceAll(err.Error(), "\"", "")
 	if errors.Is(err, errUnsupported) {
 		reason = "unsupported"
 	}

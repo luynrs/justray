@@ -14,17 +14,20 @@ import (
 )
 
 func ErrorText(err error) string {
-	if err == nil {
+	switch kind := ipc.ErrorType(err); {
+	case err == nil || kind == "canceled":
+		return ""
+	case kind == "timeout":
+		return "Error: operation timed out"
+	}
+	message := []rune(strings.ReplaceAll(err.Error(), "\"", ""))
+	if len(message) == 0 {
 		return ""
 	}
-	switch ipc.ErrorType(err) {
-	case "canceled":
-		return ""
-	case "timeout":
-		return "operation timed out"
-	default:
-		return err.Error()
+	if len(message) > 1 && unicode.IsLower(message[1]) {
+		message[0] = unicode.ToLower(message[0])
 	}
+	return "Error: " + string(message)
 }
 
 func Clip(s string, width int) string {

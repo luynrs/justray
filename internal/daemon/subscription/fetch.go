@@ -19,7 +19,7 @@ import (
 
 func (s *Service) Refresh(ctx context.Context, sub store.Subscription) (store.Subscription, error) {
 	if sub.URL == "" {
-		return sub, errors.New("subscription URL or share link is required")
+		return sub, errors.New("missing subscription URL or share link")
 	}
 	if parser.IsLink(sub.URL) {
 		node, err := parser.ParseURI(sub.URL)
@@ -32,10 +32,10 @@ func (s *Service) Refresh(ctx context.Context, sub store.Subscription) (store.Su
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sub.URL, nil)
 	if err != nil || req.URL.Host == "" || (req.URL.Scheme != "https" && req.URL.Scheme != "http") {
-		return sub, errors.New("a valid URL or share link is required")
+		return sub, errors.New("invalid subscription URL or share link")
 	}
 	if s.device.Get("X-Hwid") == "" {
-		return sub, errors.New("device id unavailable")
+		return sub, errors.New("device ID unavailable")
 	}
 	select {
 	case s.slots <- struct{}{}:
@@ -50,13 +50,13 @@ func (s *Service) Refresh(ctx context.Context, sub store.Subscription) (store.Su
 		Timeout: 8 * time.Second,
 		CheckRedirect: func(r *http.Request, via []*http.Request) error {
 			if r.URL.Scheme != "https" && r.URL.Scheme != "http" {
-				return errors.New("subscription redirect must use http or https")
+				return errors.New("invalid subscription redirect: HTTP or HTTPS required")
 			}
 			if via[len(via)-1].URL.Scheme == "https" && r.URL.Scheme == "http" {
 				return errors.New("insecure redirect from HTTPS to HTTP")
 			}
 			if len(via) >= 10 {
-				return errors.New("stopped after 10 redirects")
+				return errors.New("too many subscription redirects: 10")
 			}
 			if r.URL.Host != via[0].URL.Host {
 				for k := range s.device {
@@ -75,11 +75,11 @@ func (s *Service) Refresh(ctx context.Context, sub store.Subscription) (store.Su
 
 	switch {
 	case resp.StatusCode != http.StatusOK:
-		return sub, fmt.Errorf("http %d", resp.StatusCode)
+		return sub, fmt.Errorf("HTTP %d", resp.StatusCode)
 	case resp.Header.Get("X-Hwid-Max-Devices-Reached") == "true":
 		return sub, errors.New("device limit reached")
 	case resp.Header.Get("X-Hwid-Not-Supported") == "true":
-		return sub, errors.New("subscription requires device ID")
+		return sub, errors.New("missing subscription device ID")
 	}
 
 	const maxBody = 10 << 20

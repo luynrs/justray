@@ -35,7 +35,7 @@ func (c *Core) RefreshSubscriptions(ctx context.Context, ids ...string) error {
 	var refreshErr error
 	for _, id := range ids {
 		if !slices.ContainsFunc(subs, func(sub store.Subscription) bool { return sub.ID == id && sub.URL != "" }) {
-			refreshErr = errors.Join(refreshErr, fmt.Errorf("subscription %q not found", id))
+			refreshErr = errors.Join(refreshErr, fmt.Errorf("subscription not found: %s", id))
 		}
 	}
 	subs = slices.DeleteFunc(subs, func(sub store.Subscription) bool {
@@ -109,7 +109,7 @@ func (c *Core) refresh(ctx context.Context, sub store.Subscription) error {
 			index := slices.IndexFunc(c.state.Subscriptions, func(current store.Subscription) bool { return current.ID == sub.ID })
 			if index < 0 {
 				c.stMu.Unlock()
-				return fmt.Errorf("subscription %q not found", sub.ID)
+				return fmt.Errorf("subscription not found: %s", sub.ID)
 			}
 			sub = c.state.Subscriptions[index]
 			jobCtx, cancel := context.WithTimeout(c.ctx, ipc.Timeout)
@@ -163,7 +163,7 @@ func (c *Core) refreshSubscription(call *refreshCall, sub store.Subscription) {
 		next := c.current()
 		index := slices.IndexFunc(next.Subscriptions, func(current store.Subscription) bool { return current.ID == sub.ID })
 		if index < 0 {
-			return fmt.Errorf("subscription %q not found", sub.ID)
+			return fmt.Errorf("subscription not found: %s", sub.ID)
 		}
 		sub.Nodes = assignNodeIDs(sub.Nodes, next.Subscriptions[index].Nodes)
 		next.Subscriptions[index] = sub

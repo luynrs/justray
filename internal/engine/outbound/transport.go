@@ -19,12 +19,12 @@ import (
 func transport(n domain.Node) (*option.V2RayTransportOptions, error) {
 	if n.Transport.Network == "" || n.Transport.Network == "tcp" {
 		if n.Transport.Mode != "" && !strings.EqualFold(n.Transport.Mode, "none") {
-			return nil, fmt.Errorf("tcp: unsupported header type %q", n.Transport.Mode)
+			return nil, fmt.Errorf("tcp: unsupported header type: %s", n.Transport.Mode)
 		}
 		return nil, nil
 	}
 	if n.Protocol != domain.VLESS && n.Protocol != domain.VMess && n.Protocol != domain.Trojan {
-		return nil, fmt.Errorf("%s: unsupported transport %q", n.Protocol, n.Transport.Network)
+		return nil, fmt.Errorf("%s: unsupported transport: %s", n.Protocol, n.Transport.Network)
 	}
 	if n.Transport.Network == "xhttp" || n.Transport.Network == "splithttp" {
 		opts, err := xhttpOptions(n.Transport)
@@ -63,7 +63,7 @@ func transport(n domain.Node) (*option.V2RayTransportOptions, error) {
 		}
 		return &option.V2RayTransportOptions{Type: C.V2RayTransportTypeHTTPUpgrade, HTTPUpgradeOptions: options}, nil
 	}
-	return nil, fmt.Errorf("unsupported transport %q", n.Transport.Network)
+	return nil, fmt.Errorf("unsupported transport: %s", n.Transport.Network)
 }
 
 func ValidateTransport(node domain.Node) error {

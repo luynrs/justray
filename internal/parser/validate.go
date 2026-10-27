@@ -82,7 +82,7 @@ func validateNode(node domain.Node) error {
 		}
 	case domain.HY1, domain.SOCKS, domain.HTTP:
 	default:
-		return fmt.Errorf("unsupported protocol %q", node.Protocol)
+		return fmt.Errorf("unsupported protocol: %s", node.Protocol)
 	}
 	return outbound.ValidateTransport(node)
 }

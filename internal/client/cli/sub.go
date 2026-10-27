@@ -125,7 +125,7 @@ func (a *app) subRefresh(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		if !sub.Refreshable {
-			return fmt.Errorf("subscription %q cannot be refreshed", sub.Name)
+			return fmt.Errorf("subscription cannot be refreshed: %s", sub.Name)
 		}
 		subscriptionID, name = sub.SubscriptionID, a.clean(sub.Name)
 	}

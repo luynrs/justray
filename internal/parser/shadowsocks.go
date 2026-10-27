@@ -99,7 +99,7 @@ func parsePluginQuery(query string) string {
 func parseShadowTLSPlugin(raw, host string) (*domain.ShadowTLS, error) {
 	base, opts, _ := strings.Cut(raw, ";")
 	if base != "shadow-tls" {
-		return nil, fmt.Errorf("unsupported plugin %q", base)
+		return nil, fmt.Errorf("unsupported plugin: %s", base)
 	}
 	stls := &domain.ShadowTLS{Version: 3, SNI: host}
 	for option := range strings.SplitSeq(opts, ";") {

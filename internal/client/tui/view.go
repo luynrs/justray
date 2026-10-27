@@ -54,19 +54,21 @@ func (m Model) content() string {
 			rows = m.rows()
 			body = m.tree(rows)
 		}
-		content = style.Fit(content+"\n\n"+body, m.h-footerLines) + "\n\n" + m.footer(rows)
+		content = style.Fit(content+"\n\n"+body, m.h-footerLines) + "\n\n" + m.footer(rows) + "\n"
+		err := m.err
+		if m.dialog != nil {
+			err = cmp.Or(m.dialog.Err(), err)
+		}
+		if m.dialog == nil && (m.filter.Focused() || m.filter.Value() != "" && err == "") {
+			content += m.clip(m.filter.View())
+		} else if err != "" {
+			content += m.clip(style.Red.Bold(true).Italic(true).Render(style.Sanitize(err, true)))
+		}
 	}
 	if m.activeModal != modalNone {
 		return m.modalView(content)
 	}
 	return content
-}
-
-func (m Model) titleLeft() string {
-	if m.dialog == nil && (m.filter.Focused() || m.filter.Value() != "") {
-		return m.filter.View()
-	}
-	return style.Title()
 }
 
 func (m Model) titleLine() string {
@@ -76,7 +78,7 @@ func (m Model) titleLine() string {
 	} else {
 		right = style.Segment(modeProxy, !m.snapshot.Status.Tun) + style.Segment(modeTun, m.snapshot.Status.Tun)
 	}
-	return m.clip(style.Flush(m.titleLeft(), right, m.w))
+	return m.clip(style.Flush(style.Title(), right, m.w))
 }
 
 func (m Model) tree(rows []tree.Row) string {
@@ -136,13 +138,7 @@ func (m Model) footer(rows []tree.Row) string {
 	default:
 		status = style.Gray.Render(icon) + " " + style.Gray.Render("disconnected")
 	}
-	err := m.err
-	if m.dialog != nil {
-		err = cmp.Or(m.dialog.Err(), err)
-	}
-	if err != "" {
-		status += "  " + style.Red.Render(style.Sanitize(err, true))
-	} else if r, ok := tree.At(rows, m.cursor); m.dialog == nil && ok && r.Sub.Warning != "" {
+	if r, ok := tree.At(rows, m.cursor); m.dialog == nil && ok && r.Sub.Warning != "" {
 		warnLine, _, _ := strings.Cut(r.Sub.Warning, "\n")
 		status += "   " + style.Yellow.Render(style.Sanitize(warnLine, true))
 	}

@@ -164,7 +164,7 @@ func clashNode(p clashProxy) (domain.Node, error) {
 			return domain.Node{}, errors.New("clash: inline plugin options are not supported")
 		}
 		if p.Plugin != "" && p.Plugin != "shadow-tls" {
-			return domain.Node{}, fmt.Errorf("clash: unsupported plugin %q", p.Plugin)
+			return domain.Node{}, fmt.Errorf("clash: unsupported plugin: %s", p.Plugin)
 		}
 		stlsOpts := cmp.Or(p.PluginOpts, p.ShadowTLSOpts)
 		if p.Plugin == "shadow-tls" || p.ShadowTLSOpts != nil {
@@ -300,7 +300,7 @@ func (value *reserved) UnmarshalYAML(node *yaml.Node) error {
 		return err
 	}
 	if len(data) != 3 {
-		return fmt.Errorf("reserved: want 3 bytes, got %d", len(data))
+		return fmt.Errorf("invalid reserved bytes (expected 3): %d", len(data))
 	}
 	*value = data
 	return nil

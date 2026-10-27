@@ -42,11 +42,11 @@ func parseVMess(uri string) (domain.Node, error) {
 
 	data, err := decodeBase64(payload)
 	if err != nil {
-		return domain.Node{}, errors.New("invalid vmess base64")
+		return domain.Node{}, errors.New("invalid VMess base64")
 	}
 	var vm vmessLink
 	if err := json.Unmarshal(data, &vm); err != nil {
-		return domain.Node{}, errors.New("invalid vmess json")
+		return domain.Node{}, errors.New("invalid VMess JSON")
 	}
 	net := strings.ToLower(cmp.Or(vm.Net, "tcp"))
 	if net == "h2" {

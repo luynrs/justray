@@ -51,7 +51,7 @@ func (a *app) probe(cmd *cobra.Command, args []string) error {
 			} else if !errors.Is(nodeErr, errNotFound) {
 				return nodeErr
 			} else {
-				return fmt.Errorf("no subscription or node matching %q", key)
+				return fmt.Errorf("subscription or node not found: %s", key)
 			}
 		}
 	}
@@ -74,7 +74,7 @@ func (a *app) probe(cmd *cobra.Command, args []string) error {
 	if nodeID != "" {
 		n := lookup(domain.NodeRef{SubscriptionID: subID, NodeID: nodeID}, snap.Nodes)
 		if n.NodeID == "" {
-			return fmt.Errorf("node %q not found", nodeID)
+			return fmt.Errorf("node not found: %s", nodeID)
 		}
 		if probeErr == nil {
 			done("Probed " + a.clean(n.Name))

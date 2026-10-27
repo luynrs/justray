@@ -180,7 +180,7 @@ func parseAmneziaWG(values map[string]any) (option.AmneziaWGOptions, error) {
 			case "0", "1", "2", "3":
 				continue
 			default:
-				return option.AmneziaWGOptions{}, fmt.Errorf("amneziawg: unsupported version %v", value)
+				return option.AmneziaWGOptions{}, fmt.Errorf("amneziawg: unsupported version: %v", value)
 			}
 		}
 		if value == nil || value == "" {
@@ -188,10 +188,10 @@ func parseAmneziaWG(values map[string]any) (option.AmneziaWGOptions, error) {
 		}
 		field := amneziaFieldName(name)
 		if field == "" {
-			return option.AmneziaWGOptions{}, fmt.Errorf("amneziawg: unsupported parameter %q", name)
+			return option.AmneziaWGOptions{}, fmt.Errorf("amneziawg: unsupported parameter: %s", name)
 		}
 		if _, exists := fields[field]; exists {
-			return option.AmneziaWGOptions{}, fmt.Errorf("amneziawg: duplicate parameter %q", field)
+			return option.AmneziaWGOptions{}, fmt.Errorf("amneziawg: duplicate parameter: %s", field)
 		}
 		if text, ok := value.(string); ok {
 			switch field {

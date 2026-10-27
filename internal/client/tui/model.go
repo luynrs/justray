@@ -21,7 +21,7 @@ import (
 
 const (
 	topLines    = 2 // title + gap
-	footerLines = 2 // status + help
+	footerLines = 3 // status + help
 )
 
 type Model struct {
@@ -69,7 +69,7 @@ func New(c *ipc.Client, start func(context.Context) error) Model {
 	editor.KeyMap.InsertNewline.SetEnabled(false)
 	editor.SetStyles(style.Editor)
 	filter := textinput.New()
-	filter.Prompt = "~ Search: "
+	filter.Prompt = "/"
 	filter.CharLimit = 128
 	filter.SetStyles(style.Input)
 	m := Model{

@@ -52,12 +52,12 @@ func parseWireGuard(uri string) (domain.Node, error) {
 		field := amneziaFieldName(name)
 		if field == "" {
 			if strings.HasPrefix(strings.ToLower(name), "awg") || slices.Contains([]string{"j1", "j2", "j3", "itime"}, strings.ToLower(name)) {
-				return domain.Node{}, fmt.Errorf("amneziawg: unsupported parameter %q", name)
+				return domain.Node{}, fmt.Errorf("amneziawg: unsupported parameter: %s", name)
 			}
 			continue
 		}
 		if _, exists := fields[field]; exists || len(q[name]) != 1 {
-			return domain.Node{}, fmt.Errorf("amneziawg: duplicate parameter %q", field)
+			return domain.Node{}, fmt.Errorf("amneziawg: duplicate parameter: %s", field)
 		}
 		fields[field] = q.Get(name)
 		if field == "header_protection_key" {

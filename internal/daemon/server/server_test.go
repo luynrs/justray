@@ -352,14 +352,14 @@ func TestSubscriptionRefresh(t *testing.T) {
 	if nodes := partial.Subscriptions[0].Nodes; len(nodes) != 2 || nodes[0].Name != "first" || nodes[1].Protocol != domain.SS || nodes[1].Server != "example.com" || nodes[1].Auth.Password != "pa%2Fss@word" {
 		t.Fatalf("mixed refresh did not save the supported node: %+v", nodes)
 	}
-	if warning := partial.Subscriptions[0].Warning; warning != `skipped nodes: 2 (unsupported transport "quic": 1; unsupported: 1)` {
+	if warning := partial.Subscriptions[0].Warning; warning != `skipped nodes: 2 (unsupported transport: quic: 1; unsupported: 1)` {
 		t.Fatalf("partial refresh did not persist a useful warning: %q", warning)
 	}
 	if snapshot, err := client.Snapshot(t.Context()); err != nil || snapshot.Subscriptions[0].Warning != partial.Subscriptions[0].Warning {
 		t.Fatalf("partial refresh warning is missing from IPC: %+v, %v", snapshot.Subscriptions, err)
 	}
 	body.Store("vless://uuid@example.com:443?type=quic")
-	if err := client.RefreshSubscriptions(t.Context(), added.SubscriptionID); err == nil || !strings.Contains(err.Error(), `skipped nodes: 1 (unsupported transport "quic": 1)`) {
+	if err := client.RefreshSubscriptions(t.Context(), added.SubscriptionID); err == nil || !strings.Contains(err.Error(), `skipped nodes: 1 (unsupported transport: quic: 1)`) {
 		t.Fatalf("unusable-only refresh: %v", err)
 	}
 	unchanged, err := disk.Load()

@@ -132,7 +132,7 @@ func num(name string, v *int, def, lo, hi int) error {
 		*v = def
 	}
 	if *v < lo || *v > hi {
-		return fmt.Errorf("%s %d out of range (%d-%d)", name, *v, lo, hi)
+		return fmt.Errorf("%s out of range (%d-%d): %d", name, lo, hi, *v)
 	}
 	return nil
 }
@@ -142,7 +142,7 @@ func one(name string, v *string, def string, allowed []string) error {
 		*v = def
 	}
 	if !slices.Contains(allowed, *v) {
-		return fmt.Errorf("invalid %s %q (allowed: %s)", name, *v, strings.Join(allowed, ", "))
+		return fmt.Errorf("invalid %s (allowed: %s): %s", name, strings.Join(allowed, ", "), *v)
 	}
 	return nil
 }
@@ -152,7 +152,7 @@ func text(name string, v *string, def, want string, ok func(string) bool) error 
 		*v = def
 	}
 	if !ok(*v) {
-		return fmt.Errorf("invalid %s %q (expected: %s)", name, *v, want)
+		return fmt.Errorf("invalid %s: expected %s", name, want)
 	}
 	return nil
 }
@@ -184,7 +184,7 @@ func disjoint(a, b []string) error {
 	}
 	for _, rule := range a {
 		if _, exists := rules[rule]; exists {
-			return fmt.Errorf("rule %q is defined in both direct and proxy", rule)
+			return fmt.Errorf("rule defined in both direct and proxy: %s", rule)
 		}
 	}
 	return nil
@@ -223,7 +223,7 @@ func ParseRule(raw string) (string, error) {
 	rule := strings.TrimSpace(raw)
 	if kind, name, ok := strings.Cut(strings.ToLower(rule), ":"); ok && (kind == "geoip" || kind == "geosite") {
 		if name == "" {
-			return "", fmt.Errorf("invalid routing rule %q", raw)
+			return "", fmt.Errorf("invalid routing rule: %s", raw)
 		}
 		for index, char := range name {
 			if char >= 'a' && char <= 'z' || char >= '0' && char <= '9' {
@@ -232,7 +232,7 @@ func ParseRule(raw string) (string, error) {
 			if index > 0 && strings.ContainsRune("-_!@", char) {
 				continue
 			}
-			return "", fmt.Errorf("invalid routing rule %q", raw)
+			return "", fmt.Errorf("invalid routing rule: %s", raw)
 		}
 		return kind + ":" + name, nil
 	}
@@ -240,18 +240,18 @@ func ParseRule(raw string) (string, error) {
 		return prefix.String(), nil
 	}
 	if host, _, found := strings.Cut(strings.ReplaceAll(rule, `\`, "/"), "/"); found && isAddr(host) {
-		return "", fmt.Errorf("invalid routing rule %q", raw)
+		return "", fmt.Errorf("invalid routing rule: %s", raw)
 	}
 	hasDrivePrefix := len(rule) >= 3 &&
 		((rule[0] >= 'a' && rule[0] <= 'z') || (rule[0] >= 'A' && rule[0] <= 'Z')) &&
 		rule[1] == ':' && (rule[2] == '\\' || rule[2] == '/')
 	if strings.Contains(rule, ":") && !hasDrivePrefix {
-		return "", fmt.Errorf("invalid routing rule %q", raw)
+		return "", fmt.Errorf("invalid routing rule: %s", raw)
 	}
 	leadingWildcard, trailingWildcard := strings.HasPrefix(rule, "*"), strings.HasSuffix(rule, "*")
 	rule = strings.Trim(rule, "*.")
 	if rule == "" || strings.Contains(rule, "://") || strings.ContainsAny(rule, "\t\n\r@?#*") {
-		return "", fmt.Errorf("invalid routing rule %q", raw)
+		return "", fmt.Errorf("invalid routing rule: %s", raw)
 	}
 	if !strings.ContainsAny(rule, `/\`) && (leadingWildcard || trailingWildcard ||
 		(!strings.Contains(rule, " ") && !strings.HasSuffix(strings.ToLower(rule), ".exe") && strings.Contains(rule, "."))) {
@@ -312,7 +312,7 @@ func parsePrefix(raw string) (netip.Prefix, error) {
 	}
 	a, err := netip.ParseAddr(raw)
 	if err != nil {
-		return netip.Prefix{}, fmt.Errorf("invalid IP or CIDR %q", raw)
+		return netip.Prefix{}, fmt.Errorf("invalid IP or CIDR: %s", raw)
 	}
 	return netip.PrefixFrom(a, a.BitLen()), nil
 }

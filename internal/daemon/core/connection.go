@@ -216,13 +216,13 @@ func find(subs []store.Subscription, query domain.NodeRef) (domain.Node, domain.
 				continue
 			}
 			if ref.NodeID != "" && ref != (domain.NodeRef{SubscriptionID: sub.ID, NodeID: n.ID}) {
-				return domain.Node{}, domain.NodeRef{}, fmt.Errorf("ambiguous node ID %q", query.NodeID)
+				return domain.Node{}, domain.NodeRef{}, fmt.Errorf("ambiguous node ID: %s", query.NodeID)
 			}
 			node, ref = n, domain.NodeRef{SubscriptionID: sub.ID, NodeID: n.ID}
 		}
 	}
 	if ref.NodeID == "" {
-		return domain.Node{}, domain.NodeRef{}, fmt.Errorf("node %q not found", query.NodeID)
+		return domain.Node{}, domain.NodeRef{}, fmt.Errorf("node not found: %s", query.NodeID)
 	}
 	return node, ref, nil
 }

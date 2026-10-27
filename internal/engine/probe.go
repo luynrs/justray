@@ -174,7 +174,7 @@ func delay(ctx context.Context, dialer N.Dialer, probeURL string) (int, error) {
 	}
 	_ = resp.Body.Close()
 	if resp.StatusCode >= http.StatusBadRequest {
-		return ms, fmt.Errorf("http %d", resp.StatusCode)
+		return ms, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 	return ms, nil
 }

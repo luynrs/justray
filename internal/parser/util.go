@@ -210,5 +210,5 @@ func (value *flexString) UnmarshalJSON(data []byte) error {
 		*value = flexString(strconv.FormatBool(boolean))
 		return nil
 	}
-	return errors.New("expected a string, boolean or string array")
+	return errors.New("invalid value: expected string, boolean or string array")
 }

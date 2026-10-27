@@ -87,7 +87,7 @@ func (c *Core) RemoveSubscription(ctx context.Context, id string) error {
 			return s.ID == id
 		})
 		if len(next.Subscriptions) == count {
-			return fmt.Errorf("subscription %q not found", id)
+			return fmt.Errorf("subscription not found: %s", id)
 		}
 		dropConn := c.sanitizeRefs(&next, store.Subscription{ID: id})
 		next.Collapsed = slices.DeleteFunc(next.Collapsed, func(s string) bool {
@@ -105,7 +105,7 @@ func (c *Core) RemoveNode(ctx context.Context, ref domain.NodeRef) error {
 				slices.ContainsFunc(sub.Nodes, func(node domain.Node) bool { return node.ID == ref.NodeID })
 		})
 		if i < 0 {
-			return fmt.Errorf("node %q not found", ref.NodeID)
+			return fmt.Errorf("node not found: %s", ref.NodeID)
 		}
 		next.Subscriptions[i].Nodes = slices.DeleteFunc(slices.Clone(next.Subscriptions[i].Nodes), func(node domain.Node) bool { return node.ID == ref.NodeID })
 		dropConn := c.sanitizeRefs(&next, next.Subscriptions[i])
@@ -128,7 +128,7 @@ func (c *Core) MoveSubscription(ctx context.Context, id string, dir int) error {
 	next := c.current()
 	i := slices.IndexFunc(next.Subscriptions, func(sub store.Subscription) bool { return sub.ID == id })
 	if i < 0 {
-		return fmt.Errorf("subscription %q not found", id)
+		return fmt.Errorf("subscription not found: %s", id)
 	}
 	j := i + dir
 	if j < 0 || j >= len(next.Subscriptions) {
