@@ -2,260 +2,185 @@ package parser
 
 import (
 	"cmp"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"maps"
-	"slices"
-	"strings"
+	"net/netip"
 
 	"github.com/sagernet/sing-box/option"
+	SJSON "github.com/sagernet/sing/common/json"
 
 	"github.com/luynrs/justray/internal/domain"
+	"github.com/luynrs/justray/internal/engine/outbound"
 )
 
+// The envelope only groups subscription entries. sing-box decodes and executes
+// their complete options, rather than a second protocol schema.
 type singboxOutbound struct {
-	option.AmneziaWGOptions
-	Type           string        `json:"type"`
-	Tag            string        `json:"tag"`
-	Server         string        `json:"server"`
-	ServerPort     int           `json:"server_port"`
-	UUID           string        `json:"uuid"`
-	Password       string        `json:"password"`
-	Security       string        `json:"security"`
-	AlterID        int           `json:"alter_id"`
-	Flow           string        `json:"flow"`
-	PacketEncoding string        `json:"packet_encoding"`
-	Method         string        `json:"method"`
-	AuthString     string        `json:"auth_str"`
-	Auth           string        `json:"auth"`
-	UpMbps         int           `json:"up_mbps"`
-	DownMbps       int           `json:"down_mbps"`
-	Congestion     string        `json:"congestion_control"`
-	UDPRelayMode   string        `json:"udp_relay_mode"`
-	Version        flexInt       `json:"version"`
-	Username       string        `json:"username"`
-	Detour         string        `json:"detour"`
-	PrivateKey     string        `json:"private_key"`
-	PeerPublicKey  string        `json:"peer_public_key"`
-	PreSharedKey   string        `json:"pre_shared_key"`
-	LocalAddress   stringOrSlice `json:"local_address"`
-	Address        stringOrSlice `json:"address"`
-	Reserved       []uint8       `json:"reserved"`
-	MTU            uint32        `json:"mtu"`
-
-	PersistentKeepaliveInterval *option.AWGRange `json:"persistent_keepalive_interval"`
-
-	Obfs  json.RawMessage `json:"obfs"`
-	Peers []struct {
-		Server       string  `json:"server"`
-		ServerPort   int     `json:"server_port"`
-		Address      string  `json:"address"`
-		Port         int     `json:"port"`
-		PublicKey    string  `json:"public_key"`
-		PreSharedKey string  `json:"pre_shared_key"`
-		Reserved     []uint8 `json:"reserved"`
-
-		PersistentKeepaliveInterval *option.AWGRange `json:"persistent_keepalive_interval"`
-	} `json:"peers"`
-	TLS       *singboxTLSConfig       `json:"tls"`
-	Transport *singboxTransportConfig `json:"transport"`
+	Type   string `json:"type"`
+	Tag    string `json:"tag"`
+	Detour string `json:"detour"`
+	raw    json.RawMessage
 }
 
-type singboxTLSConfig struct {
-	Enabled    bool          `json:"enabled"`
-	ServerName string        `json:"server_name"`
-	Insecure   bool          `json:"insecure"`
-	ALPN       stringOrSlice `json:"alpn"`
-	UTLS       *struct {
-		Enabled     bool   `json:"enabled"`
-		Fingerprint string `json:"fingerprint"`
-	} `json:"utls"`
-	Reality *struct {
-		Enabled   bool   `json:"enabled"`
-		PublicKey string `json:"public_key"`
-		ShortID   string `json:"short_id"`
-	} `json:"reality"`
+func singboxNode(entry singboxOutbound, companions map[string]singboxOutbound) (domain.Node, error) {
+	if entry.Type == "wireguard" {
+		return singboxWireGuard(entry)
+	}
+	var options option.Outbound
+	err := SJSON.UnmarshalContext(outbound.Context, entry.raw, &options)
+	if err != nil {
+		return domain.Node{}, err
+	}
+	node := domain.Node{Name: entry.Tag, Protocol: domain.Proto(options.Type)}
+	if server, ok := options.Options.(option.ServerOptionsWrapper); ok {
+		address := server.TakeServerOptions()
+		node.Server, node.Port = address.Server, int(address.ServerPort)
+	}
+	node.Name = cmp.Or(node.Name, node.Server)
+	if err := nativeMetadata(&node, options.Options); err != nil {
+		return domain.Node{}, err
+	}
+	options.Tag = "node"
+	if entry.Detour != "" {
+		companion, ok := companions[entry.Detour]
+		if !ok || options.Type != "shadowsocks" {
+			return domain.Node{}, errors.New("unsupported native outbound detour")
+		}
+		var tls option.Outbound
+		err := SJSON.UnmarshalContext(outbound.Context, companion.raw, &tls)
+		if err != nil {
+			return domain.Node{}, err
+		}
+		if companion.Detour != "" {
+			return domain.Node{}, errors.New("unsupported native outbound detour")
+		}
+		tls.Tag = "node-stls"
+		wrapper := options.Options.(option.DialerOptionsWrapper)
+		dialer := wrapper.TakeDialerOptions()
+		dialer.Detour = tls.Tag
+		wrapper.ReplaceDialerOptions(dialer)
+		settings := tls.Options.(*option.ShadowTLSOutboundOptions)
+		node.Server, node.Port = settings.Server, int(settings.ServerPort)
+		raw, err := SJSON.Marshal(&tls)
+		if err != nil {
+			return domain.Node{}, err
+		}
+		node.Native = append(node.Native, raw)
+	}
+	raw, err := SJSON.Marshal(&options)
+	if err != nil {
+		return domain.Node{}, err
+	}
+	node.Native = append([]json.RawMessage{raw}, node.Native...)
+	return node, nil
 }
 
-type singboxTransportConfig struct {
-	Type        string                   `json:"type"`
-	Path        string                   `json:"path"`
-	Headers     map[string]stringOrSlice `json:"headers"`
-	Host        stringOrSlice            `json:"host"`
-	ServiceName string                   `json:"service_name"`
-	Mode        string                   `json:"mode"`
-	Extra       string                   `json:"-"`
+// Keep only display metadata and values needed by resource limits.
+func nativeMetadata(node *domain.Node, options any) error {
+	var transport *option.V2RayTransportOptions
+	switch options := options.(type) {
+	case *option.VLESSOutboundOptions:
+		transport = options.Transport
+	case *option.VMessOutboundOptions:
+		transport = options.Transport
+	case *option.TrojanOutboundOptions:
+		transport = options.Transport
+	case *option.HysteriaOutboundOptions:
+		node.UpMbps, node.DownMbps = options.UpMbps, options.DownMbps
+	case *option.Hysteria2OutboundOptions:
+		node.UpMbps, node.DownMbps = options.UpMbps, options.DownMbps
+	}
+	if transport != nil {
+		node.Transport.Network = transport.Type
+	}
+	return outbound.ValidateTransportOptions(transport)
 }
 
-func (transport *singboxTransportConfig) UnmarshalJSON(data []byte) error {
-	type config singboxTransportConfig
-	if err := json.Unmarshal(data, (*config)(transport)); err != nil {
-		return err
+func singboxWireGuard(entry singboxOutbound) (domain.Node, error) {
+	if entry.Detour != "" {
+		return domain.Node{}, errors.New("unsupported native endpoint detour")
 	}
-	if strings.EqualFold(transport.Type, "xhttp") || strings.EqualFold(transport.Type, "splithttp") {
-		var fields map[string]json.RawMessage
-		if err := json.Unmarshal(data, &fields); err != nil {
-			return err
-		}
-		delete(fields, "type")
-		if len(transport.Host) > 0 {
-			fields["host"], _ = json.Marshal(transport.Host[0])
-		}
-		data, _ = json.Marshal(fields)
-		transport.Extra = string(data)
+	raw, err := legacyWireGuard(entry.raw)
+	if err != nil {
+		return domain.Node{}, err
 	}
-	return nil
+	var endpoint option.Endpoint
+	err = SJSON.UnmarshalContext(outbound.Context, raw, &endpoint)
+	if err != nil {
+		return domain.Node{}, err
+	}
+	settings := endpoint.Options.(*option.WireGuardEndpointOptions)
+	if len(settings.Peers) == 0 {
+		return domain.Node{}, errors.New("wireguard: missing peer")
+	}
+	peer := settings.Peers[0]
+	node := domain.Node{Name: cmp.Or(entry.Tag, peer.Address), Protocol: domain.WG, Server: peer.Address, Port: int(peer.Port), WireGuard: &domain.WireGuard{
+		AmneziaWGOptions: settings.AmneziaWGOptions, PrivateKey: settings.PrivateKey, PeerPublicKey: peer.PublicKey, PreSharedKey: peer.PreSharedKey,
+		Reserved: peer.Reserved, MTU: settings.MTU,
+	}}
+	if peer.PersistentKeepaliveInterval != "" {
+		node.WireGuard.PersistentKeepaliveInterval = &peer.PersistentKeepaliveInterval
+	}
+	for _, address := range settings.Address {
+		node.WireGuard.Address = append(node.WireGuard.Address, address.String())
+	}
+	endpoint.Tag = "node"
+	raw, err = SJSON.Marshal(&endpoint)
+	node.Native = []json.RawMessage{raw}
+	return node, err
 }
 
-func singboxNode(ob singboxOutbound, stlsByTag map[string]singboxOutbound) (domain.Node, error) {
-	proto := domain.Proto(strings.ToLower(ob.Type))
-
-	server, port := ob.Server, ob.ServerPort
-	if proto == domain.WG && len(ob.Peers) > 0 {
-		server = cmp.Or(ob.Peers[0].Address, ob.Peers[0].Server)
-		port = cmp.Or(ob.Peers[0].Port, ob.Peers[0].ServerPort)
+// Translate the removed WireGuard outbound shape before native decoding.
+func legacyWireGuard(raw json.RawMessage) (json.RawMessage, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return nil, err
 	}
-	n := domain.Node{
-		Name: cmp.Or(ob.Tag, server), Protocol: proto, Server: server, Port: port,
-		PacketEncoding: ob.PacketEncoding,
-		Transport:      singboxTransport(ob.Transport),
+	if fields["local_address"] == nil && fields["peer_public_key"] == nil {
+		return raw, nil
 	}
-	n.TLS, n.Reality = singboxTLS(ob.TLS, server)
-
-	switch proto {
-	case domain.VLESS:
-		n.Auth = domain.Auth{UUID: ob.UUID, Flow: ob.Flow}
-	case domain.VMess:
-		n.Auth = domain.Auth{UUID: ob.UUID, AlterID: ob.AlterID, Method: cmp.Or(ob.Security, "auto")}
-	case domain.Trojan:
-		n.Auth = domain.Auth{Password: ob.Password}
-		if ob.TLS == nil {
-			n.TLS = &domain.TLS{SNI: server}
-		}
-	case domain.SS:
-		n.Auth = domain.Auth{Password: ob.Password, Method: ob.Method}
-		if ob.Detour != "" {
-			stls, ok := stlsByTag[ob.Detour]
-			if !ok {
-				return domain.Node{}, errors.New("shadowsocks: missing or invalid shadowtls detour")
-			}
-			n.TLS, n.Reality = singboxTLS(stls.TLS, stls.Server)
-			sni := stls.Server
-			if stls.TLS != nil && stls.TLS.ServerName != "" {
-				sni = stls.TLS.ServerName
-			}
-			n.Server, n.Port = stls.Server, stls.ServerPort
-			n.ShadowTLS = &domain.ShadowTLS{Version: cmp.Or(int(stls.Version), 3), Password: stls.Password, SNI: sni}
-		}
-	case domain.HY1:
-		auth := ob.AuthString
-		if auth == "" && ob.Auth != "" {
-			decoded, err := base64.StdEncoding.DecodeString(ob.Auth)
-			if err != nil {
-				return domain.Node{}, errors.New("hysteria: invalid base64 auth")
-			}
-			auth = string(decoded)
-		}
-		n.Auth = domain.Auth{Password: cmp.Or(auth, ob.Password)}
-		n.UpMbps, n.DownMbps = ob.UpMbps, ob.DownMbps
-		if len(ob.Obfs) > 0 && json.Unmarshal(ob.Obfs, &n.ObfsPassword) != nil {
-			return domain.Node{}, errors.New("sing-box: invalid outbound fields")
-		}
-	case domain.HY2:
-		n.Auth = domain.Auth{Password: cmp.Or(ob.Password, ob.Auth)}
-		var obfs struct {
-			Type     string `json:"type"`
-			Password string `json:"password"`
-		}
-		if len(ob.Obfs) > 0 && json.Unmarshal(ob.Obfs, &obfs) != nil {
-			return domain.Node{}, errors.New("sing-box: invalid outbound fields")
-		}
-		n.UpMbps, n.DownMbps, n.Obfs, n.ObfsPassword = ob.UpMbps, ob.DownMbps, obfs.Type, obfs.Password
-	case domain.TUIC:
-		n.Auth = domain.Auth{UUID: ob.UUID, Password: ob.Password}
-		n.Congestion, n.UDPRelayMode = ob.Congestion, ob.UDPRelayMode
-	case domain.AnyTLS:
-		n.Auth = domain.Auth{Password: ob.Password}
-	case domain.WG:
-		peerPK, psk, res := ob.PeerPublicKey, ob.PreSharedKey, ob.Reserved
-		keepalive := ob.PersistentKeepaliveInterval
-		if len(ob.Peers) > 0 {
-			peerPK, psk = ob.Peers[0].PublicKey, ob.Peers[0].PreSharedKey
-			keepalive = cmp.Or(ob.Peers[0].PersistentKeepaliveInterval, keepalive)
-			if len(ob.Peers[0].Reserved) > 0 {
-				res = ob.Peers[0].Reserved
-			}
-		}
-		addrs := normalizeCIDRs(slices.Concat(ob.LocalAddress, ob.Address))
-		if ob.PrivateKey != "" && len(addrs) > 0 {
-			n.WireGuard = &domain.WireGuard{
-				AmneziaWGOptions:            ob.AmneziaWGOptions,
-				PersistentKeepaliveInterval: keepalive,
-				PrivateKey:                  ob.PrivateKey, PeerPublicKey: peerPK, PreSharedKey: psk,
-				Address: addrs, Reserved: res, MTU: ob.MTU,
-			}
-		}
-	case domain.Shadow:
-		sni := server
-		if ob.TLS != nil && ob.TLS.ServerName != "" {
-			sni = ob.TLS.ServerName
-		}
-		n.ShadowTLS = &domain.ShadowTLS{Version: cmp.Or(int(ob.Version), 3), Password: ob.Password, SNI: sni}
-	case domain.SOCKS, domain.HTTP:
-		if proto == domain.SOCKS && ob.Version != 0 && ob.Version != 5 {
-			return domain.Node{}, errors.New("socks: unsupported version")
-		}
-		n.Auth = domain.Auth{Username: ob.Username, Password: ob.Password}
-	default:
-		return domain.Node{}, errUnsupported
+	address := fields["local_address"]
+	if address == nil {
+		address = fields["address"]
 	}
-
-	return n, nil
-}
-
-func singboxTransport(t *singboxTransportConfig) domain.Transport {
-	if t == nil {
-		return domain.Transport{Network: "tcp"}
+	var addresses stringOrSlice
+	if err := json.Unmarshal(address, &addresses); err != nil {
+		return nil, err
 	}
-	network := cmp.Or(strings.ToLower(t.Type), "tcp")
-	if network == "xhttp" || network == "splithttp" {
-		return domain.Transport{Network: "xhttp", Extra: t.Extra}
-	}
-	var host string
-	if len(t.Host) > 0 {
-		host = t.Host[0]
+	fields["address"], _ = json.Marshal(normalizeCIDRs(addresses))
+	var peers []map[string]json.RawMessage
+	if fields["peers"] != nil {
+		if err := json.Unmarshal(fields["peers"], &peers); err != nil {
+			return nil, err
+		}
 	} else {
-		for name, values := range t.Headers {
-			if strings.EqualFold(name, "Host") && len(values) > 0 {
-				host = values[0]
+		peers = append(peers, map[string]json.RawMessage{
+			"address": fields["server"], "port": fields["server_port"],
+			"public_key": fields["peer_public_key"], "pre_shared_key": fields["pre_shared_key"],
+		})
+	}
+	for _, peer := range peers {
+		if peer == nil {
+			return nil, errors.New("wireguard: invalid peer")
+		}
+		for source, target := range map[string]string{"server": "address", "server_port": "port"} {
+			if peer[target] == nil && peer[source] != nil {
+				peer[target] = peer[source]
+			}
+			delete(peer, source)
+		}
+		for _, key := range []string{"reserved", "persistent_keepalive_interval"} {
+			if peer[key] == nil && fields[key] != nil {
+				peer[key] = fields[key]
 			}
 		}
-	}
-	transport := domain.Transport{Network: network, Path: t.Path, Host: host, ServiceName: t.ServiceName, Mode: t.Mode}
-	if network == "httpupgrade" {
-		headers := maps.Clone(t.Headers)
-		maps.DeleteFunc(headers, func(name string, _ stringOrSlice) bool { return strings.EqualFold(name, "Host") })
-		if len(headers) > 0 {
-			data, _ := json.Marshal(map[string]any{"headers": headers})
-			transport.Extra = string(data)
+		if peer["allowed_ips"] == nil {
+			peer["allowed_ips"], _ = json.Marshal([]netip.Prefix{netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0")})
 		}
 	}
-	return transport
-}
-
-func singboxTLS(t *singboxTLSConfig, server string) (*domain.TLS, *domain.Reality) {
-	if t == nil || !t.Enabled {
-		return nil, nil
+	for _, key := range []string{"server", "server_port", "peer_public_key", "pre_shared_key", "reserved", "persistent_keepalive_interval", "local_address"} {
+		delete(fields, key)
 	}
-	var reality *domain.Reality
-	var fp string
-	if t.UTLS != nil && t.UTLS.Enabled {
-		fp = t.UTLS.Fingerprint
-	}
-	if t.Reality != nil && t.Reality.Enabled {
-		reality = &domain.Reality{PublicKey: t.Reality.PublicKey, ShortID: t.Reality.ShortID}
-	}
-	fp, insecure := cleanFingerprint(fp, t.Insecure)
-	return &domain.TLS{SNI: cmp.Or(t.ServerName, server), ALPN: t.ALPN, Fingerprint: fp, Insecure: insecure}, reality
+	fields["peers"], _ = json.Marshal(peers)
+	return json.Marshal(fields)
 }

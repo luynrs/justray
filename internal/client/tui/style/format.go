@@ -20,14 +20,10 @@ func ErrorText(err error) string {
 	case kind == "timeout":
 		return "Error: operation timed out"
 	}
-	message := []rune(strings.ReplaceAll(err.Error(), "\"", ""))
-	if len(message) == 0 {
-		return ""
+	if message := err.Error(); message != "" {
+		return "Error: " + message
 	}
-	if len(message) > 1 && unicode.IsLower(message[1]) {
-		message[0] = unicode.ToLower(message[0])
-	}
-	return "Error: " + string(message)
+	return ""
 }
 
 func Clip(s string, width int) string {

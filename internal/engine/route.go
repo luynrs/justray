@@ -86,12 +86,6 @@ func rules(s domain.Settings) []option.Rule {
 	out = append(out, match(s.Direct, toDirect)...)
 	out = append(out, match(s.Proxy, toProxy)...)
 
-	// Deprecated: wlbe in 1.7.1 with new port settings
-	out = append(out, option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{
-		RawDefaultRule: option.RawDefaultRule{Inbound: []string{"mixed-in"}},
-		RuleAction:     toProxy,
-	}})
-
 	if s.BypassLocal == "on" {
 		out = append(out, option.Rule{Type: C.RuleTypeDefault, DefaultOptions: option.DefaultRule{
 			RawDefaultRule: option.RawDefaultRule{IPIsPrivate: true},

@@ -7,6 +7,7 @@ import (
 
 	"github.com/luynrs/justray/internal/daemon/store"
 	"github.com/luynrs/justray/internal/domain"
+	"github.com/luynrs/justray/internal/engine/outbound"
 	"github.com/luynrs/justray/internal/ipc"
 	"github.com/luynrs/justray/internal/parser"
 )
@@ -45,13 +46,13 @@ func assignNodeIDs(nodes, previous []domain.Node) []domain.Node {
 	byName := make(map[nodeMatch][]string, len(previous))
 	byConfig := make(map[string][]string, len(previous))
 	for _, node := range previous {
-		key := nodeMatch{node.ConfigKey(), node.Name}
+		key := nodeMatch{outbound.ConfigKey(node), node.Name}
 		byName[key] = append(byName[key], node.ID)
 		byConfig[key.config] = append(byConfig[key.config], node.ID)
 	}
 	used := make(map[string]bool, len(previous))
 	for i := range nodes {
-		key := nodeMatch{nodes[i].ConfigKey(), nodes[i].Name}
+		key := nodeMatch{outbound.ConfigKey(nodes[i]), nodes[i].Name}
 		if ids := byName[key]; len(ids) > 0 {
 			nodes[i].ID = ids[0]
 			byName[key] = ids[1:]
@@ -62,7 +63,7 @@ func assignNodeIDs(nodes, previous []domain.Node) []domain.Node {
 		if nodes[i].ID != "" {
 			continue
 		}
-		key := nodes[i].ConfigKey()
+		key := outbound.ConfigKey(nodes[i])
 		ids := byConfig[key]
 		for len(ids) > 0 && used[ids[0]] {
 			ids = ids[1:]

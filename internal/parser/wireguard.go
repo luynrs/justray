@@ -25,14 +25,16 @@ func parseWireGuard(uri string) (domain.Node, error) {
 		return domain.Node{}, fmt.Errorf("wireguard: %w", err)
 	}
 	q := u.Query()
+	// WireGuard keys often contain unescaped '+' and must retain it as data.
+	raw, _ := url.ParseQuery(strings.ReplaceAll(strings.ReplaceAll(u.RawQuery, "+", "%2B"), ";", "%3B"))
 	privateKey := u.User.Username()
 	if privateKey == "" {
-		privateKey = queryAny(u, q, "privatekey", "private_key", "private-key", "privkey")
+		privateKey = queryAny(raw, q, "privatekey", "private_key", "private-key", "privkey")
 	}
-	peerKey := queryAny(u, q, "publickey", "public_key", "public-key", "peer_public_key", "pubkey", "pbk")
+	peerKey := queryAny(raw, q, "publickey", "public_key", "public-key", "peer_public_key", "pubkey", "pbk")
 
-	address := parseAddresses(queryAny(u, q, "address", "addresses", "ip"), queryAny(u, q, "ipv6"))
-	reservedRaw := queryAny(u, q, "reserved", "reserved_bytes", "reserved-bytes")
+	address := parseAddresses(queryAny(raw, q, "address", "addresses", "ip"), queryAny(raw, q, "ipv6"))
+	reservedRaw := queryAny(raw, q, "reserved", "reserved_bytes", "reserved-bytes")
 	reserved := parseReserved(reservedRaw)
 	if reservedRaw != "" && reserved == nil {
 		return domain.Node{}, errors.New("wireguard: invalid reserved bytes")
@@ -61,7 +63,7 @@ func parseWireGuard(uri string) (domain.Node, error) {
 		}
 		fields[field] = q.Get(name)
 		if field == "header_protection_key" {
-			fields[field] = queryAny(u, q, name)
+			fields[field] = queryAny(raw, q, name)
 		}
 	}
 	amnezia, err := parseAmneziaWG(fields)
@@ -69,7 +71,7 @@ func parseWireGuard(uri string) (domain.Node, error) {
 		return domain.Node{}, err
 	}
 	var keepalive *option.AWGRange
-	if value := option.AWGRange(queryAny(u, q, "persistent_keepalive_interval", "persistent-keepalive", "keepalive")); value != "" {
+	if value := option.AWGRange(queryAny(raw, q, "persistent_keepalive_interval", "persistent-keepalive", "keepalive")); value != "" {
 		keepalive = &value
 	}
 
@@ -83,7 +85,7 @@ func parseWireGuard(uri string) (domain.Node, error) {
 			PersistentKeepaliveInterval: keepalive,
 			PrivateKey:                  privateKey,
 			PeerPublicKey:               peerKey,
-			PreSharedKey:                queryAny(u, q, "presharedkey", "preshared_key", "pre-shared-key", "psk"),
+			PreSharedKey:                queryAny(raw, q, "presharedkey", "preshared_key", "pre-shared-key", "psk"),
 			Address:                     address,
 			Reserved:                    reserved,
 			MTU:                         uint32(mtu),
@@ -91,19 +93,9 @@ func parseWireGuard(uri string) (domain.Node, error) {
 	}, nil
 }
 
-func queryAny(u *url.URL, q url.Values, keys ...string) string {
+func queryAny(raw, q url.Values, keys ...string) string {
 	for _, key := range keys {
-		for pair := range strings.SplitSeq(u.RawQuery, "&") {
-			name, value, found := strings.Cut(pair, "=")
-			if found && name == key {
-				value, _ = url.PathUnescape(value)
-				if value != "" {
-					return value
-				}
-				break
-			}
-		}
-		if value := q.Get(key); value != "" {
+		if value := cmp.Or(raw.Get(key), q.Get(key)); value != "" {
 			return value
 		}
 	}
@@ -111,23 +103,17 @@ func queryAny(u *url.URL, q url.Values, keys ...string) string {
 }
 
 func parseReserved(s string) []uint8 {
-	if s == "" {
-		return nil
-	}
 	s = strings.Trim(s, "[]")
-	if strings.Contains(s, ",") {
-		parts := strings.Split(s, ",")
-		if len(parts) == 3 {
-			res := make([]uint8, 3)
-			for i, p := range parts {
-				n, err := strconv.Atoi(strings.TrimSpace(p))
-				if err != nil || n < 0 || n > 255 {
-					return nil
-				}
-				res[i] = uint8(n)
+	if parts := strings.Split(s, ","); len(parts) == 3 {
+		res := make([]uint8, 3)
+		for i, p := range parts {
+			n, err := strconv.Atoi(strings.TrimSpace(p))
+			if err != nil || n < 0 || n > 255 {
+				return nil
 			}
-			return res
+			res[i] = uint8(n)
 		}
+		return res
 	}
 	if b, err := decodeBase64(s); err == nil && len(b) == 3 {
 		return b

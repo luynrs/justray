@@ -34,6 +34,10 @@ func validateNode(node domain.Node) error {
 	if (node.Protocol == domain.HY1 || node.Protocol == domain.HY2) && (min(node.UpMbps, node.DownMbps) < 0 || max(node.UpMbps, node.DownMbps) > math.MaxInt/hysteria.MbpsToBps) {
 		return fmt.Errorf("%s: bandwidth out of range", node.Protocol)
 	}
+	if len(node.Native) > 0 && node.Protocol != domain.WG {
+		_, _, err := outbound.New(node, "node")
+		return err
+	}
 	switch node.Protocol {
 	case domain.VLESS, domain.VMess, domain.TUIC:
 		if node.Auth.UUID == "" {
@@ -83,6 +87,10 @@ func validateNode(node domain.Node) error {
 	case domain.HY1, domain.SOCKS, domain.HTTP:
 	default:
 		return fmt.Errorf("unsupported protocol: %s", node.Protocol)
+	}
+	if len(node.Native) > 0 {
+		_, _, err := outbound.New(node, "node")
+		return err
 	}
 	return outbound.ValidateTransport(node)
 }

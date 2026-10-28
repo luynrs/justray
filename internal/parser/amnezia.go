@@ -176,12 +176,10 @@ func parseAmneziaWG(values map[string]any) (option.AmneziaWGOptions, error) {
 	fields := make(map[string]any, len(values))
 	for name, value := range values {
 		if name == "version" {
-			switch fmt.Sprint(value) {
-			case "0", "1", "2", "3":
-				continue
-			default:
+			if !slices.Contains([]string{"0", "1", "2", "3"}, fmt.Sprint(value)) {
 				return option.AmneziaWGOptions{}, fmt.Errorf("amneziawg: unsupported version: %v", value)
 			}
+			continue
 		}
 		if value == nil || value == "" {
 			continue
@@ -202,16 +200,11 @@ func parseAmneziaWG(values map[string]any) (option.AmneziaWGOptions, error) {
 				}
 				value = parsed
 			case "random_trailers", "disable_cookies":
-				switch strings.ToLower(text) {
-				case "on", "off":
-					value = strings.EqualFold(text, "on")
-				default:
-					parsed, err := strconv.ParseBool(text)
-					if err != nil {
-						return option.AmneziaWGOptions{}, fmt.Errorf("amneziawg: invalid %s", field)
-					}
-					value = parsed
+				parsed, err := strconv.ParseBool(cmp.Or(map[string]string{"on": "true", "off": "false"}[strings.ToLower(text)], text))
+				if err != nil {
+					return option.AmneziaWGOptions{}, fmt.Errorf("amneziawg: invalid %s", field)
 				}
+				value = parsed
 			}
 		}
 		fields[field] = value

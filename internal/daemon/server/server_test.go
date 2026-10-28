@@ -272,7 +272,7 @@ func TestSubscriptionRefresh(t *testing.T) {
 		"reserved short":       "proxies:\n  - {type: wireguard, server: example.com, port: 51820, private-key: secret, public-key: public, ip: 10.0.0.2, reserved: [0, 255]}",
 		"reserved long":        "proxies:\n  - {type: wireguard, server: example.com, port: 51820, private-key: secret, public-key: public, ip: 10.0.0.2, reserved: [0, 1, 2, 255]}",
 		"sing-box transport":   `{"outbounds":[{"type":"shadowsocks","server":"example.com","server_port":443,"method":"aes-128-gcm","password":"secret","transport":{"type":"ws"}}]}`,
-		"shadowtls detour":     `{"outbounds":[{"type":"shadowtls","tag":"stls","server":"example.com","server_port":443},{"type":"shadowsocks","server":"example.com","server_port":8388,"method":"aes-128-gcm","password":"secret","detour":"stls"}]}`,
+		"shadowtls detour":     `{"outbounds":[{"type":"shadowtls","tag":"stls","server":"example.com","server_port":443,"detour":"missing"},{"type":"shadowsocks","server":"example.com","server_port":8388,"method":"aes-128-gcm","password":"secret","detour":"stls"}]}`,
 		"xray incompatible":    `{"outbounds":[{"protocol":"vless","settings":{"vnext":[{"address":"example.com","port":443,"users":[{"id":"uuid"}]}],"servers":[{"address":"ignored.example","port":443,"password":"secret"}]}}]}`,
 		"truncated json":       `{"outbounds":[{"type":"vless","server":"example.com"`,
 		"xhttp download":       `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]},"streamSettings":{"network":"xhttp","xhttpSettings":{"extra":{"downloadSettings":{"address":"download.example"}}}}}]}`,
@@ -380,7 +380,7 @@ func TestSubscriptionRefresh(t *testing.T) {
 				{"type":"shadowsocks","tag":"ss","server":"ignored.example","server_port":8388,"method":"aes-128-gcm","password":"secret","detour":"stls"},
 				{"type":"selector","tag":"select","outbounds":["ss"]},
 				{"type":"urltest","tag":"auto","outbounds":["ss"]},
-				{"type":"shadowtls","tag":"stls","server":"cover.example","server_port":443,"password":"shadow","tls":{"enabled":true,"server_name":"sni.example"}}
+				{"type":"shadowtls","tag":"stls","version":3,"server":"cover.example","server_port":443,"password":"shadow","tls":{"enabled":true,"server_name":"sni.example"}}
 			]`,
 			nodes: []domain.Node{{Name: "ss", Protocol: domain.SS, Server: "cover.example", Port: 443, Auth: domain.Auth{Method: "aes-128-gcm", Password: "secret"}, ShadowTLS: &domain.ShadowTLS{Version: 3, Password: "shadow", SNI: "sni.example"}}},
 		},
@@ -389,11 +389,11 @@ func TestSubscriptionRefresh(t *testing.T) {
 			content: `[{
 				"outbounds":[
 					{"type":"shadowsocks","tag":"first-ss","server":"ignored.example","server_port":8388,"method":"aes-128-gcm","password":"first-auth","detour":"stls"},
-					{"type":"shadowtls","tag":"stls","server":"first.example","server_port":443,"password":"first-shadow","tls":{"enabled":true,"server_name":"first-cover.example"}}
+					{"type":"shadowtls","tag":"stls","version":3,"server":"first.example","server_port":443,"password":"first-shadow","tls":{"enabled":true,"server_name":"first-cover.example"}}
 				]
 			},{
 				"outbounds":[
-					{"type":"shadowtls","tag":"stls","server":"second.example","server_port":8443,"password":"second-shadow","tls":{"enabled":true,"server_name":"second-cover.example"}},
+					{"type":"shadowtls","tag":"stls","version":3,"server":"second.example","server_port":8443,"password":"second-shadow","tls":{"enabled":true,"server_name":"second-cover.example"}},
 					{"type":"shadowsocks","tag":"second-ss","server":"ignored.example","server_port":8388,"method":"aes-256-gcm","password":"second-auth","detour":"stls"}
 				]
 			}]`,
@@ -445,7 +445,7 @@ func TestSubscriptionRefresh(t *testing.T) {
 		},
 		{
 			name:    "sing-box single outbound",
-			content: `{"type":"trojan","tag":"single","server":"single.example","server_port":443,"password":"single","protocol":{"ignored":true}}`,
+			content: `{"type":"trojan","tag":"single","server":"single.example","server_port":443,"password":"single"}`,
 			nodes:   []domain.Node{{Name: "single", Protocol: domain.Trojan, Server: "single.example", Port: 443, Auth: domain.Auth{Password: "single"}}},
 		},
 		{
@@ -484,7 +484,8 @@ func TestSubscriptionRefresh(t *testing.T) {
 			}
 			for index, expected := range fixture.nodes {
 				node := nodes[index]
-				if node.Name != expected.Name || node.Protocol != expected.Protocol || node.Server != expected.Server || node.Port != expected.Port || node.Auth != expected.Auth || !reflect.DeepEqual(node.ShadowTLS, expected.ShadowTLS) || !reflect.DeepEqual(node.WireGuard, expected.WireGuard) {
+				foreignChanged := len(node.Native) == 0 && (node.Auth != expected.Auth || !reflect.DeepEqual(node.ShadowTLS, expected.ShadowTLS))
+				if node.Name != expected.Name || node.Protocol != expected.Protocol || node.Server != expected.Server || node.Port != expected.Port || foreignChanged || !reflect.DeepEqual(node.WireGuard, expected.WireGuard) {
 					t.Fatalf("node %d: got %+v, want %+v", index, node, expected)
 				}
 			}
@@ -531,7 +532,7 @@ func TestSubscriptionRefresh(t *testing.T) {
 	for name, content := range map[string]string{
 		"clash invalid":           "proxies:\n  - {name: valid, type: trojan, server: example.com, port: 443, password: secret}\n  - {name: bad, type: tuic, server: example.com, port: 443, password: secret}",
 		"xray xhttp defaults":     `{"outbounds":[{"protocol":"trojan","settings":{"servers":[{"address":"example.com","port":443,"password":"secret"}]},"streamSettings":{"network":"xhttp","xhttpSettings":null}},{"protocol":"future-proxy"}]}`,
-		"sing-box xhttp defaults": `{"outbounds":[{"type":"vless","server":"example.com","server_port":443,"uuid":"uuid","transport":{"type":"xhttp","extra":null}},{"type":"future-proxy"}]}`,
+		"sing-box xhttp defaults": `{"outbounds":[{"type":"vless","server":"example.com","server_port":443,"uuid":"uuid","transport":{"type":"xhttp"}},{"type":"future-proxy"}]}`,
 		"vmess xhttp defaults":    "vmess://" + base64.StdEncoding.EncodeToString([]byte(`{"add":"example.com","port":443,"id":"uuid","net":"xhttp","type":"none","extra":null}`)) + "\nfuture://unsupported",
 		"clash fields":            "proxies:\n  - {type: trojan, server: example.com, port: 443, password: secret}\n  - {type: trojan, port: [secret]}",
 		"clash no type":           "proxies:\n  - {type: trojan, server: example.com, port: 443, password: secret}\n  - {name: bad}",

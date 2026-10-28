@@ -268,7 +268,7 @@ func TestStartup(t *testing.T) {
 		fmt.Sprintf(`{"type":"hysteria2","tag":"runtime-hy2","server":%q,"server_port":%d,"password":"test-password","up_mbps":100,"down_mbps":100,"tls":{"enabled":true,"server_name":"example.com"}}`, peerAddress, peerPorts[1]),
 		fmt.Sprintf(`{"type":"wireguard","tag":"runtime-awg2","server":%q,"server_port":%d,"private_key":%q,"peer_public_key":%q,"local_address":["10.0.0.2/32"],%s}`,
 			peerAddress, peerPorts[2], base64.StdEncoding.EncodeToString(clientKey.Bytes()), base64.StdEncoding.EncodeToString(serverKey.PublicKey().Bytes()), awg2),
-		fmt.Sprintf(`{"type":"wireguard","tag":"runtime-awg3","private_key":%q,"address":["10.0.0.2/32"],"peers":[{"address":%q,"port":%d,"public_key":%q,"persistent_keepalive_interval":"25-35"}],%s}`,
+		fmt.Sprintf(`{"type":"wireguard","tag":"runtime-awg3","private_key":%q,"address":["10.0.0.2/32"],"peers":[{"address":%q,"port":%d,"public_key":%q,"allowed_ips":["0.0.0.0/0","::/0"],"persistent_keepalive_interval":"25-35"}],%s}`,
 			base64.StdEncoding.EncodeToString(clientKey.Bytes()), peerAddress, peerPorts[3], base64.StdEncoding.EncodeToString(serverKey.PublicKey().Bytes()), awg3),
 	}
 	peerNodes = append(peerNodes, strings.Replace(peerNodes[0], "runtime-wg", "duplicate-peer", 1))

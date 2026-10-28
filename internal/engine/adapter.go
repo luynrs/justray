@@ -20,6 +20,7 @@ import (
 	"github.com/sagernet/sing/service"
 
 	"github.com/luynrs/justray/internal/domain"
+	"github.com/luynrs/justray/internal/engine/outbound"
 	"github.com/luynrs/justray/internal/platform/elevate"
 	"github.com/luynrs/justray/internal/platform/link"
 )
@@ -51,7 +52,7 @@ func (e *box) Apply(ctx context.Context, spec Spec) error {
 	if e.inst == nil {
 		return e.start(ctx, spec)
 	}
-	nodeChanged := e.node.ID != spec.Node.ID || e.node.ConfigKey() != spec.Node.ConfigKey()
+	nodeChanged := e.node.ID != spec.Node.ID || outbound.ConfigKey(e.node) != outbound.ConfigKey(spec.Node)
 	tunChanged := spec.Tun != e.tun
 
 	if rebuilds(e.settings, spec.Settings, spec.Tun) || nodeChanged && tunChanged ||

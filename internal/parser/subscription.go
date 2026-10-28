@@ -28,7 +28,7 @@ func (result *parseResult) add(node domain.Node, err error) {
 		result.nodes = append(result.nodes, node)
 		return
 	}
-	reason := strings.ReplaceAll(err.Error(), "\"", "")
+	reason := err.Error()
 	if errors.Is(err, errUnsupported) {
 		reason = "unsupported"
 	}
@@ -183,6 +183,7 @@ func (result *parseResult) readJSONOutbounds(entries []json.RawMessage, remarks 
 				result.add(domain.Node{}, errors.New("sing-box: invalid outbound fields"))
 				continue
 			}
+			outbound.raw = raw
 			switch strings.ToLower(outbound.Type) {
 			case "direct", "block", "dns", "selector", "urltest":
 				continue
@@ -194,6 +195,10 @@ func (result *parseResult) readJSONOutbounds(entries []json.RawMessage, remarks 
 				if outbound.Detour != "" {
 					detoured[outbound.Detour] = true
 				}
+			case "vless", "vmess", "trojan", "hysteria", "hysteria2", "tuic", "anytls", "socks", "http", "wireguard":
+			default:
+				result.add(domain.Node{}, errUnsupported)
+				continue
 			}
 			entry.singbox = &outbound
 		} else {

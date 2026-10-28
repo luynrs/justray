@@ -3,9 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
-	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -14,10 +12,10 @@ import (
 
 	sbox "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/adapter"
-	M "github.com/sagernet/sing/common/metadata"
-	N "github.com/sagernet/sing/common/network"
+	"github.com/sagernet/sing-box/common/urltest"
 
 	"github.com/luynrs/justray/internal/domain"
+	"github.com/luynrs/justray/internal/engine/outbound"
 )
 
 func (engine *box) Probe(ctx context.Context, nodes []domain.Node, settings domain.Settings, onResult func(int, Result)) error {
@@ -36,13 +34,13 @@ func (engine *box) Probe(ctx context.Context, nodes []domain.Node, settings doma
 	if engine.inst != nil && engine.node.Protocol == domain.WG {
 		managed, _ := engine.inst.Outbound().Outbound("proxy")
 		current = managed.(*proxyOutbound).current.Load()
-		activeKey = engine.node.ConfigKey()
+		activeKey = outbound.ConfigKey(engine.node)
 	}
 	groups := make(map[string][]int)
 	for i, node := range nodes {
 		key := strconv.Itoa(i)
 		if node.Protocol == domain.WG {
-			key = node.ConfigKey()
+			key = outbound.ConfigKey(node)
 		}
 		groups[key] = append(groups[key], i)
 	}
@@ -92,7 +90,7 @@ func (engine *box) Probe(ctx context.Context, nodes []domain.Node, settings doma
 					}
 					node := nodes[target[0]]
 					var dialer adapter.Outbound
-					if node.Protocol == domain.WG && node.ConfigKey() == activeKey {
+					if node.Protocol == domain.WG && outbound.ConfigKey(node) == activeKey {
 						dialer = current
 					}
 					result, err := probe(runtimeCtx, node, instance, "p"+strconv.Itoa(target[0]), settings.ProbeURL, dialer)
@@ -130,51 +128,22 @@ func probe(ctx context.Context, node domain.Node, instance *sbox.Box, tag, probe
 			dialer = runtime
 		}
 	}
-	var milliseconds int
+	var milliseconds uint16
 	if err == nil {
-		milliseconds, err = delay(requestCtx, dialer, probeURL)
+		milliseconds, err = urltest.URLTest(requestCtx, probeURL, dialer)
+		if errors.Is(err, net.ErrClosed) {
+			milliseconds, err = urltest.URLTest(requestCtx, probeURL, dialer)
+		}
 	}
 	if ctx.Err() != nil {
 		return Result{}, ctx.Err()
 	}
 	if err == nil {
-		return Result{Alive: true, Duration: milliseconds}, nil
+		return Result{Alive: true, Duration: int(milliseconds)}, nil
 	}
 	result := Result{Failure: "failed", Error: err.Error()}
 	if os.IsTimeout(err) || errors.Is(requestCtx.Err(), context.DeadlineExceeded) {
 		result.Failure = "t/o"
 	}
 	return result, nil
-}
-
-func delay(ctx context.Context, dialer N.Dialer, probeURL string) (int, error) {
-	client := &http.Client{
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-		Transport: &http.Transport{
-			DisableKeepAlives: true,
-			DialContext: func(ctx context.Context, _, addr string) (net.Conn, error) {
-				return dialer.DialContext(ctx, N.NetworkTCP, M.ParseSocksaddr(addr).Unwrap())
-			},
-		},
-	}
-	defer client.CloseIdleConnections()
-
-	start := time.Now()
-	req, err := http.NewRequestWithContext(ctx, http.MethodHead, probeURL, nil)
-	if err != nil {
-		return 0, err
-	}
-	resp, err := client.Do(req)
-	if errors.Is(err, net.ErrClosed) {
-		resp, err = client.Do(req)
-	}
-	ms := int(time.Since(start).Milliseconds())
-	if err != nil {
-		return ms, err
-	}
-	_ = resp.Body.Close()
-	if resp.StatusCode >= http.StatusBadRequest {
-		return ms, fmt.Errorf("HTTP %d", resp.StatusCode)
-	}
-	return ms, nil
 }

@@ -2,7 +2,6 @@ package domain
 
 import (
 	"encoding/json"
-	"io"
 	"net"
 	"strconv"
 	"strings"
@@ -36,24 +35,27 @@ const (
 )
 
 type Node struct {
-	ID             string     `json:"id"`
-	Name           string     `json:"name,omitempty"`
-	Protocol       Proto      `json:"protocol"`
-	Server         string     `json:"server"`
-	Port           int        `json:"port"`
-	Auth           Auth       `json:"auth,omitzero"`
-	Transport      Transport  `json:"transport,omitzero"`
-	TLS            *TLS       `json:"tls,omitempty"`
-	Reality        *Reality   `json:"reality,omitempty"`
-	Obfs           string     `json:"obfs,omitempty"`            // hysteria2
-	ObfsPassword   string     `json:"obfs_password,omitempty"`   // hysteria2, hysteria xplus
-	UpMbps         int        `json:"up_mbps,omitempty"`         // hysteria
-	DownMbps       int        `json:"down_mbps,omitempty"`       // hysteria
-	Congestion     string     `json:"congestion,omitempty"`      // tuic
-	UDPRelayMode   string     `json:"udp_relay_mode,omitempty"`  // tuic
-	PacketEncoding string     `json:"packet_encoding,omitempty"` // vless, vmess: xudp, packetaddr; empty = xudp
-	ShadowTLS      *ShadowTLS `json:"shadow_tls,omitempty"`
-	WireGuard      *WireGuard `json:"wireguard,omitempty"`
+	// Native holds complete library options. Other fields are display metadata
+	// and the representation used by links, foreign formats and older saved nodes.
+	Native         []json.RawMessage `json:"native,omitempty"`
+	ID             string            `json:"id"`
+	Name           string            `json:"name,omitempty"`
+	Protocol       Proto             `json:"protocol"`
+	Server         string            `json:"server"`
+	Port           int               `json:"port"`
+	Auth           Auth              `json:"auth,omitzero"`
+	Transport      Transport         `json:"transport,omitzero"`
+	TLS            *TLS              `json:"tls,omitempty"`
+	Reality        *Reality          `json:"reality,omitempty"`
+	Obfs           string            `json:"obfs,omitempty"`            // hysteria2
+	ObfsPassword   string            `json:"obfs_password,omitempty"`   // hysteria2, hysteria xplus
+	UpMbps         int               `json:"up_mbps,omitempty"`         // hysteria
+	DownMbps       int               `json:"down_mbps,omitempty"`       // hysteria
+	Congestion     string            `json:"congestion,omitempty"`      // tuic
+	UDPRelayMode   string            `json:"udp_relay_mode,omitempty"`  // tuic
+	PacketEncoding string            `json:"packet_encoding,omitempty"` // vless, vmess: xudp, packetaddr; empty = xudp
+	ShadowTLS      *ShadowTLS        `json:"shadow_tls,omitempty"`
+	WireGuard      *WireGuard        `json:"wireguard,omitempty"`
 }
 
 type NodeRef struct {
@@ -66,27 +68,6 @@ func (node Node) ProtocolName() string {
 		return "amneziawg"
 	}
 	return string(node.Protocol)
-}
-
-func (node Node) ConfigKey() string {
-	node.ID, node.Name = "", ""
-	if node.Transport.Network == "" {
-		node.Transport.Network = "tcp"
-	}
-	if (node.Protocol == VLESS || node.Protocol == VMess) && node.PacketEncoding == "" {
-		node.PacketEncoding = "xudp"
-	}
-	if node.Transport.Extra != "" {
-		decoder := json.NewDecoder(strings.NewReader(node.Transport.Extra))
-		decoder.UseNumber()
-		var extra any
-		if decoder.Decode(&extra) == nil && decoder.Decode(new(any)) == io.EOF {
-			data, _ := json.Marshal(extra)
-			node.Transport.Extra = string(data)
-		}
-	}
-	data, _ := json.Marshal(node)
-	return string(data)
 }
 
 func ValidPort(port int) bool { return port >= 1 && port <= 65535 }

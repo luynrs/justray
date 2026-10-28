@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/sagernet/sing-box/option"
@@ -48,9 +47,7 @@ func xhttpOptions(transport domain.Transport) (option.V2RayXHTTPOptions, error) 
 		}
 		delete(fields, name)
 	}
-	for _, name := range []string{"sc_max_concurrent_posts", "server_max_header_bytes", "no_sse_header", "sc_max_buffered_posts", "sc_stream_up_server_secs"} {
-		delete(fields, name)
-	}
+	// External subscriptions allow numeric/array ranges; the native fields are strings.
 	for _, name := range []string{"x_padding_bytes", "session_length", "uplink_chunk_size", "sc_max_each_post_bytes", "sc_min_posts_interval_ms"} {
 		value, ok := fields[name]
 		if !ok {
@@ -60,21 +57,9 @@ func xhttpOptions(transport domain.Transport) (option.V2RayXHTTPOptions, error) 
 		if err := json.Unmarshal(value, &interval); err != nil {
 			return option.V2RayXHTTPOptions{}, fmt.Errorf("xhttp: invalid %s: expected integer or range", name)
 		}
-		if interval != "" {
-			lower, upper, paired := strings.Cut(string(interval), "-")
-			if !paired {
-				upper = lower
-			}
-			minimum, err := strconv.ParseInt(strings.TrimSpace(lower), 10, 32)
-			maximum, maximumErr := strconv.ParseInt(strings.TrimSpace(upper), 10, 32)
-			if err != nil || maximumErr != nil || minimum < 0 || maximum < minimum {
-				return option.V2RayXHTTPOptions{}, fmt.Errorf("xhttp: invalid %s range", name)
-			}
-			if maximum == 0 && (name == "x_padding_bytes" || name == "sc_max_each_post_bytes" || name == "sc_min_posts_interval_ms") {
-				interval = ""
-			} else if minimum == 0 && (name == "x_padding_bytes" || name == "sc_max_each_post_bytes" || name == "session_length") {
-				return option.V2RayXHTTPOptions{}, fmt.Errorf("xhttp: invalid %s range: expected positive values", name)
-			}
+		// Xray's zero values select defaults for these fields.
+		if (interval == "0" || interval == "0-0") && (name == "x_padding_bytes" || name == "sc_max_each_post_bytes" || name == "sc_min_posts_interval_ms") {
+			interval = ""
 		}
 		fields[name], _ = json.Marshal(interval)
 	}
@@ -95,24 +80,12 @@ func xhttpOptions(transport domain.Transport) (option.V2RayXHTTPOptions, error) 
 	}
 	options.Path = cmp.Or(transport.Path, options.Path)
 	options.Host = cmp.Or(transport.Host, options.Host)
-	options.Mode = cmp.Or(transport.Mode, options.Mode, "auto")
+	options.Mode = cmp.Or(transport.Mode, options.Mode)
 	for name, values := range options.Headers {
 		if strings.EqualFold(name, "Host") && len(values) > 0 {
 			options.Host = cmp.Or(options.Host, values[0])
 			delete(options.Headers, name)
 		}
-	}
-	options.UplinkHTTPMethod = strings.ToUpper(options.UplinkHTTPMethod)
-	if options.UplinkHTTPMethod == "GET" && options.Mode == "auto" {
-		options.Mode = "packet-up"
-	}
-	switch options.Mode {
-	case "auto", "packet-up", "stream-up", "stream-one":
-	default:
-		return options, errors.New("xhttp: invalid mode: expected auto, packet-up, stream-up or stream-one")
-	}
-	if options.Mode != "packet-up" && (options.UplinkHTTPMethod == "GET" || options.UplinkDataPlacement == "header" || options.UplinkDataPlacement == "cookie") {
-		return options, errors.New("xhttp: GET and header/cookie uploads require packet-up mode")
 	}
 	return options, nil
 }

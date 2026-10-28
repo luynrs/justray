@@ -14,22 +14,11 @@ import (
 	"github.com/sagernet/sing-box/dns/transport"
 	"github.com/sagernet/sing-box/dns/transport/local"
 	"github.com/sagernet/sing-box/option"
-	"github.com/sagernet/sing-box/protocol/anytls"
-	"github.com/sagernet/sing-box/protocol/direct"
-	"github.com/sagernet/sing-box/protocol/http"
-	"github.com/sagernet/sing-box/protocol/hysteria"
-	"github.com/sagernet/sing-box/protocol/hysteria2"
+
 	"github.com/sagernet/sing-box/protocol/mixed"
-	"github.com/sagernet/sing-box/protocol/shadowsocks"
-	"github.com/sagernet/sing-box/protocol/shadowtls"
-	"github.com/sagernet/sing-box/protocol/socks"
-	"github.com/sagernet/sing-box/protocol/trojan"
-	"github.com/sagernet/sing-box/protocol/tuic"
-	"github.com/sagernet/sing-box/protocol/vless"
-	"github.com/sagernet/sing-box/protocol/vmess"
-	"github.com/sagernet/sing-box/protocol/wireguard"
 
 	"github.com/luynrs/justray/internal/domain"
+	nodeoutbound "github.com/luynrs/justray/internal/engine/outbound"
 )
 
 var ( // read-only, built once instead of on every connect/probe
@@ -53,29 +42,12 @@ func inboundRegistry() *inbound.Registry {
 }
 
 func outboundRegistry() *outbound.Registry {
-	registry := outbound.NewRegistry()
+	registry := nodeoutbound.Registry()
 	outbound.Register[domain.Node](registry, "justray-node", newProxyOutbound)
-	direct.RegisterOutbound(registry)
-	vless.RegisterOutbound(registry)
-	vmess.RegisterOutbound(registry)
-	trojan.RegisterOutbound(registry)
-	shadowsocks.RegisterOutbound(registry)
-	shadowtls.RegisterOutbound(registry)
-	hysteria.RegisterOutbound(registry)
-	hysteria2.RegisterOutbound(registry)
-	tuic.RegisterOutbound(registry)
-	anytls.RegisterOutbound(registry)
-	socks.RegisterOutbound(registry)
-	http.RegisterOutbound(registry)
 	return registry
 }
 
-func endpointRegistry() *endpoint.Registry {
-	registry := endpoint.NewRegistry()
-	wireguard.RegisterEndpoint(registry)
-	return registry
-}
-
+func endpointRegistry() *endpoint.Registry { return nodeoutbound.EndpointRegistry() }
 func dnsTransportRegistry() *dns.TransportRegistry {
 	registry := dns.NewTransportRegistry()
 	transport.RegisterUDP(registry)

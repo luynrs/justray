@@ -2,17 +2,39 @@ package outbound
 
 import (
 	"cmp"
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
 
+	boxendpoint "github.com/sagernet/sing-box/adapter/endpoint"
+	boxoutbound "github.com/sagernet/sing-box/adapter/outbound"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing-box/protocol/anytls"
+	"github.com/sagernet/sing-box/protocol/direct"
+	"github.com/sagernet/sing-box/protocol/http"
+	"github.com/sagernet/sing-box/protocol/hysteria"
+	"github.com/sagernet/sing-box/protocol/hysteria2"
+	"github.com/sagernet/sing-box/protocol/shadowsocks"
+	"github.com/sagernet/sing-box/protocol/shadowtls"
+	"github.com/sagernet/sing-box/protocol/socks"
+	"github.com/sagernet/sing-box/protocol/trojan"
+	"github.com/sagernet/sing-box/protocol/tuic"
+	"github.com/sagernet/sing-box/protocol/vless"
+	"github.com/sagernet/sing-box/protocol/vmess"
+	protocolwireguard "github.com/sagernet/sing-box/protocol/wireguard"
+	SJSON "github.com/sagernet/sing/common/json"
+	"github.com/sagernet/sing/service"
 
 	"github.com/luynrs/justray/internal/domain"
 )
 
 func New(n domain.Node, tag string) (*option.Endpoint, []option.Outbound, error) {
+	if len(n.Native) > 0 {
+		return native(n, tag)
+	}
 	if !domain.ValidPort(n.Port) {
 		return nil, nil, fmt.Errorf("%s: port out of range: %d", n.Protocol, n.Port)
 	}
@@ -55,11 +77,15 @@ func proxy(n domain.Node, tag string, transportOptions *option.V2RayTransportOpt
 
 	switch n.Protocol {
 	case domain.VLESS:
+		var packetEncoding *string
+		if n.PacketEncoding != "" {
+			packetEncoding = &n.PacketEncoding
+		}
 		return &option.Outbound{Type: C.TypeVLESS, Tag: tag, Options: &option.VLESSOutboundOptions{
 			ServerOptions:               server(n),
 			UUID:                        n.Auth.UUID,
 			Flow:                        n.Auth.Flow,
-			PacketEncoding:              new(cmp.Or(n.PacketEncoding, "xudp")),
+			PacketEncoding:              packetEncoding,
 			OutboundTLSOptionsContainer: option.OutboundTLSOptionsContainer{TLS: tls},
 			Transport:                   transportOptions,
 		}}, nil
@@ -68,7 +94,7 @@ func proxy(n domain.Node, tag string, transportOptions *option.V2RayTransportOpt
 		return &option.Outbound{Type: C.TypeVMess, Tag: tag, Options: &option.VMessOutboundOptions{
 			ServerOptions:               server(n),
 			UUID:                        n.Auth.UUID,
-			Security:                    cmp.Or(n.Auth.Method, "auto"),
+			Security:                    n.Auth.Method,
 			AlterId:                     n.Auth.AlterID,
 			PacketEncoding:              cmp.Or(n.PacketEncoding, "xudp"),
 			OutboundTLSOptionsContainer: option.OutboundTLSOptionsContainer{TLS: tls},
@@ -134,7 +160,6 @@ func proxy(n domain.Node, tag string, transportOptions *option.V2RayTransportOpt
 	case domain.SOCKS:
 		return &option.Outbound{Type: C.TypeSOCKS, Tag: tag, Options: &option.SOCKSOutboundOptions{
 			ServerOptions: server(n),
-			Version:       "5",
 			Username:      n.Auth.Username,
 			Password:      n.Auth.Password,
 		}}, nil
@@ -178,7 +203,7 @@ func wireguard(n domain.Node, tag string) (*option.Endpoint, error) {
 		}
 		address = append(address, p)
 	}
-	keepalive := option.AWGRange("25")
+	var keepalive option.AWGRange
 	if w.PersistentKeepaliveInterval != nil {
 		keepalive = *w.PersistentKeepaliveInterval
 	}
@@ -201,4 +226,141 @@ func wireguard(n domain.Node, tag string) (*option.Endpoint, error) {
 
 func server(n domain.Node) option.ServerOptions {
 	return option.ServerOptions{Server: n.Server, ServerPort: uint16(n.Port)}
+}
+
+func Registry() *boxoutbound.Registry {
+	registry := boxoutbound.NewRegistry()
+	direct.RegisterOutbound(registry)
+	vless.RegisterOutbound(registry)
+	vmess.RegisterOutbound(registry)
+	trojan.RegisterOutbound(registry)
+	shadowsocks.RegisterOutbound(registry)
+	shadowtls.RegisterOutbound(registry)
+	hysteria.RegisterOutbound(registry)
+	hysteria2.RegisterOutbound(registry)
+	tuic.RegisterOutbound(registry)
+	anytls.RegisterOutbound(registry)
+	socks.RegisterOutbound(registry)
+	http.RegisterOutbound(registry)
+	return registry
+}
+
+func EndpointRegistry() *boxendpoint.Registry {
+	registry := boxendpoint.NewRegistry()
+	protocolwireguard.RegisterEndpoint(registry)
+	return registry
+}
+
+var Context = service.ContextWith[option.EndpointOptionsRegistry](
+	service.ContextWith[option.OutboundOptionsRegistry](context.Background(), Registry()), EndpointRegistry())
+
+func validateNativeOptions(options any) error {
+	if wrapper, ok := options.(option.OutboundTLSOptionsWrapper); ok {
+		if tls := wrapper.TakeOutboundTLSOptions(); tls != nil && tls.Enabled && tls.Insecure {
+			return errors.New("insecure TLS is not supported")
+		}
+	}
+	if wrapper, ok := options.(option.DialerOptionsWrapper); ok {
+		if resolver := wrapper.TakeDialerOptions().DomainResolver; resolver != nil && resolver.Server != "" {
+			return errors.New("unsupported native domain_resolver reference")
+		}
+	}
+	return nil
+}
+
+// ConfigKey compares the options the engine will receive, independently of the
+// subscription format or the representation used by older saved nodes.
+func ConfigKey(node domain.Node) string {
+	endpoint, outbounds, err := New(node, "node")
+	if err == nil {
+		config := option.Options{Outbounds: outbounds}
+		if endpoint != nil {
+			config.Endpoints = []option.Endpoint{*endpoint}
+		}
+		for index := range outbounds {
+			keyDefaults(outbounds[index].Options)
+		}
+		if data, err := SJSON.MarshalContext(Context, config); err == nil {
+			return string(data)
+		}
+	}
+	node.ID, node.Name = "", ""
+	data, _ := json.Marshal(node)
+	return string(data)
+}
+
+// Older saved nodes materialized these constructor defaults. Canonicalize them
+// for identity comparison only; runtime options retain their original values.
+func keyDefaults(options any) {
+	switch settings := options.(type) {
+	case *option.ShadowsocksOutboundOptions:
+		if settings.Detour != "" && settings.Plugin == "" {
+			// The supported ShadowTLS detour ignores the SS destination.
+			settings.ServerOptions = option.ServerOptions{}
+		}
+	case *option.HysteriaOutboundOptions:
+		if settings.AuthString != "" {
+			settings.Auth = []byte(settings.AuthString)
+		}
+		settings.AuthString = ""
+	case *option.VLESSOutboundOptions:
+		if settings.PacketEncoding != nil && *settings.PacketEncoding == "xudp" {
+			settings.PacketEncoding = nil
+		}
+	case *option.VMessOutboundOptions:
+		if settings.Security == "auto" {
+			settings.Security = ""
+		}
+	case *option.SOCKSOutboundOptions:
+		if settings.Version == "5" {
+			settings.Version = ""
+		}
+	}
+	server, hasServer := options.(option.ServerOptionsWrapper)
+	tls, hasTLS := options.(option.OutboundTLSOptionsWrapper)
+	if hasServer && hasTLS {
+		if settings := tls.TakeOutboundTLSOptions(); settings != nil && settings.Enabled && settings.ServerName == server.TakeServerOptions().Server {
+			settings.ServerName = ""
+		}
+	}
+}
+
+func native(node domain.Node, tag string) (*option.Endpoint, []option.Outbound, error) {
+	if node.Protocol == domain.WG {
+		var endpoint option.Endpoint
+		if err := SJSON.UnmarshalContext(Context, node.Native[0], &endpoint); err != nil {
+			return nil, nil, err
+		}
+		endpoint.Tag = tag
+		return &endpoint, nil, validateNativeOptions(endpoint.Options)
+	}
+	var outbounds []option.Outbound
+	for index, raw := range node.Native {
+		var outbound option.Outbound
+		if err := SJSON.UnmarshalContext(Context, raw, &outbound); err != nil {
+			return nil, nil, err
+		}
+		if err := validateNativeOptions(outbound.Options); err != nil {
+			return nil, nil, err
+		}
+		outbound.Tag = tag
+		if index > 0 {
+			outbound.Tag += "-stls"
+		}
+		if wrapper, ok := outbound.Options.(option.DialerOptionsWrapper); ok {
+			dialer := wrapper.TakeDialerOptions()
+			if dialer.Detour != "" {
+				if index != 0 || dialer.Detour != "node-stls" || len(node.Native) != 2 {
+					return nil, nil, errors.New("unsupported native outbound detour")
+				}
+				dialer.Detour = tag + "-stls"
+				wrapper.ReplaceDialerOptions(dialer)
+			}
+		}
+		outbounds = append(outbounds, outbound)
+	}
+	if len(outbounds) == 2 {
+		outbounds[0], outbounds[1] = outbounds[1], outbounds[0]
+	}
+	return nil, outbounds, nil
 }

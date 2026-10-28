@@ -29,7 +29,7 @@ func TestXHTTPOptions(t *testing.T) {
 		"seqKey": "seq", "uplinkDataKey": "data", "uplinkHTTPMethod": "GET",
 		"xPaddingObfsMode": true, "xPaddingKey": "pad", "xPaddingMethod": "tokenish"
 	}`)
-	if got.Path != "/xhttp" || got.Mode != "packet-up" || got.SessionPlacement != "query" || got.SessionKey != "sid" ||
+	if got.Path != "/xhttp" || got.Mode != "" || got.SessionPlacement != "query" || got.SessionKey != "sid" ||
 		got.SeqKey != "seq" || got.UplinkDataKey != "data" || got.UplinkHTTPMethod != "GET" ||
 		!got.XPaddingObfsMode || got.XPaddingKey != "pad" || got.XPaddingMethod != "tokenish" {
 		t.Fatalf("unexpected options: %+v", got)

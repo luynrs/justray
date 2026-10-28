@@ -3,7 +3,8 @@ package outbound
 import (
 	"context"
 	"fmt"
-	"net/netip"
+	"net/http"
+	"strconv"
 	"strings"
 
 	C "github.com/sagernet/sing-box/constant"
@@ -32,9 +33,6 @@ func transport(n domain.Node) (*option.V2RayTransportOptions, error) {
 			return nil, err
 		}
 		return &option.V2RayTransportOptions{Type: C.V2RayTransportTypeXHTTP, XHTTPOptions: opts}, nil
-	}
-	if _, err := netip.ParseAddr(n.Server); err != nil && n.Transport.Host == "" {
-		n.Transport.Host = n.Server
 	}
 	switch n.Transport.Network {
 	case "ws":
@@ -68,8 +66,23 @@ func transport(n domain.Node) (*option.V2RayTransportOptions, error) {
 
 func ValidateTransport(node domain.Node) error {
 	options, err := transport(node)
-	if err != nil || options == nil || options.Type != C.V2RayTransportTypeXHTTP {
+	if err != nil {
 		return err
+	}
+	return ValidateTransportOptions(options)
+}
+
+func ValidateTransportOptions(options *option.V2RayTransportOptions) error {
+	if options == nil || options.Type != C.V2RayTransportTypeXHTTP {
+		return nil
+	}
+	// These two values allocate HTTP metadata; the transport doesn't limit them.
+	for _, raw := range []string{options.XHTTPOptions.XPaddingBytes, options.XHTTPOptions.SessionLength} {
+		for _, part := range strings.Split(raw, "-") {
+			if size, err := strconv.ParseInt(strings.TrimSpace(part), 10, 64); err == nil && size > http.DefaultMaxHeaderBytes {
+				return fmt.Errorf("xhttp: metadata exceeds size limit")
+			}
+		}
 	}
 	// Construction validates the engine's options without opening a connection.
 	client, err := v2rayxhttp.NewClient(context.Background(), nil, M.Socksaddr{}, options.XHTTPOptions, nil)

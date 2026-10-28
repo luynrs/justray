@@ -7,7 +7,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sagernet/sing-box/option"
+
 	"github.com/luynrs/justray/internal/domain"
+	"github.com/luynrs/justray/internal/engine/outbound"
 )
 
 func TestParseURI(t *testing.T) {
@@ -254,13 +257,16 @@ func TestParseSingBox(t *testing.T) {
 	if err != nil || len(nodes) != 4 {
 		t.Fatalf("unexpected nodes len %d, err=%v", len(nodes), err)
 	}
-	if nodes[0].Protocol != domain.VLESS || nodes[0].Reality == nil || nodes[0].Transport.Network != "ws" {
+	_, vless, err := outbound.New(nodes[0], "vless")
+	if err != nil || vless[0].Options.(*option.VLESSOutboundOptions).TLS.Reality.PublicKey != "pub" || nodes[0].Transport.Network != "ws" {
 		t.Fatalf("unexpected vless: %+v", nodes[0])
 	}
-	if nodes[1].Protocol != domain.SS || nodes[1].ShadowTLS == nil || nodes[1].ShadowTLS.Version != 3 {
+	_, shadowsocks, err := outbound.New(nodes[1], "ss")
+	if err != nil || len(shadowsocks) != 2 || shadowsocks[0].Options.(*option.ShadowTLSOutboundOptions).Version != 3 || shadowsocks[1].Options.(*option.ShadowsocksOutboundOptions).Detour != shadowsocks[0].Tag {
 		t.Fatalf("unexpected ss+stls: %+v", nodes[1])
 	}
-	if nodes[2].Protocol != domain.HY2 || nodes[2].Obfs != "salamander" || nodes[2].ObfsPassword != "obfs" {
+	_, hysteria, err := outbound.New(nodes[2], "hy2")
+	if err != nil || hysteria[0].Options.(*option.Hysteria2OutboundOptions).Obfs.Password != "obfs" {
 		t.Fatalf("unexpected hy2: %+v", nodes[2])
 	}
 	if nodes[3].Protocol != domain.WG || nodes[3].WireGuard.PeerPublicKey != "pub" || len(nodes[3].WireGuard.Reserved) != 3 || nodes[3].WireGuard.Reserved[0] != 1 {
