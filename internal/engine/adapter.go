@@ -13,7 +13,6 @@ import (
 
 	sbox "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/adapter"
-	"github.com/sagernet/sing-box/common/httpclient"
 	boxsettings "github.com/sagernet/sing-box/common/settings"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
@@ -131,9 +130,6 @@ func startBox(ctx context.Context, opts option.Options) (*sbox.Box, error) {
 	for attempt := 0; ; attempt++ {
 		inst, err := sbox.New(sbox.Options{Options: opts, Context: ctx})
 		if err == nil {
-			if len(opts.Route.RuleSet) > 0 {
-				service.MustRegister[adapter.HTTPClientManager](ctx, ruleSetHTTPManager{service.FromContext[adapter.HTTPClientManager](ctx).(*httpclient.Manager)})
-			}
 			err = inst.Start()
 		}
 		if err == nil {

@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"cmp"
 	"fmt"
 	"net/netip"
 	"net/url"
@@ -128,9 +129,7 @@ func (s Settings) Normalize() (Settings, error) {
 }
 
 func num(name string, v *int, def, lo, hi int) error {
-	if *v == 0 {
-		*v = def
-	}
+	*v = cmp.Or(*v, def)
 	if *v < lo || *v > hi {
 		return fmt.Errorf("%s out of range (%d-%d): %d", name, lo, hi, *v)
 	}
@@ -138,9 +137,7 @@ func num(name string, v *int, def, lo, hi int) error {
 }
 
 func one(name string, v *string, def string, allowed []string) error {
-	if *v == "" {
-		*v = def
-	}
+	*v = cmp.Or(*v, def)
 	if !slices.Contains(allowed, *v) {
 		return fmt.Errorf("invalid %s (allowed: %s): %s", name, strings.Join(allowed, ", "), *v)
 	}
@@ -148,9 +145,7 @@ func one(name string, v *string, def string, allowed []string) error {
 }
 
 func text(name string, v *string, def, want string, ok func(string) bool) error {
-	if *v = strings.TrimSpace(*v); *v == "" {
-		*v = def
-	}
+	*v = cmp.Or(strings.TrimSpace(*v), def)
 	if !ok(*v) {
 		return fmt.Errorf("invalid %s: expected %s", name, want)
 	}

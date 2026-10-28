@@ -90,15 +90,8 @@ func (m Model) tree(rows []tree.Row) string {
 	switch {
 	case len(rows) > 0:
 		cursor := -1
-		selection := 0
-		for i, row := range rows {
-			if row.Selectable() {
-				if selection == m.cursor {
-					cursor = i
-					break
-				}
-				selection++
-			}
+		if selectable := tree.Selectable(rows); m.cursor >= 0 && m.cursor < len(selectable) {
+			cursor = selectable[m.cursor]
 		}
 		for i, r := range rows[m.scroll:min(m.scroll+h, len(rows))] {
 			idx := m.scroll + i

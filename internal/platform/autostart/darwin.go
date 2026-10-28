@@ -89,7 +89,7 @@ func enable(ctx context.Context) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	if err := ipc.Chown(filepath.Dir(path)); err != nil {
+	if err := ipc.Chown(filepath.Dir(path), nil); err != nil {
 		return err
 	}
 	var command bytes.Buffer
@@ -97,7 +97,7 @@ func enable(ctx context.Context) error {
 	if err := os.WriteFile(path, fmt.Appendf(nil, task, label, command.String()), 0o600); err != nil {
 		return err
 	}
-	if err := ipc.Chown(path); err != nil {
+	if err := ipc.Chown(path, nil); err != nil {
 		return err
 	}
 	if _, err := run(ctx, exec.CommandContext(ctx, "launchctl", "enable", guiDomain()+"/"+label)); err != nil {

@@ -78,6 +78,18 @@ func main() {
 			}
 			log.Fatal("cannot listen: ", err)
 		}
+		for _, path := range []string{ipc.Config(dir) + ".lock", ipc.State(dir) + ".lock"} {
+			info, err := os.Lstat(path)
+			if err == nil {
+				if !info.Mode().IsRegular() {
+					log.Fatal("write lock is not a regular file: ", path)
+				}
+				err = os.Remove(path)
+			}
+			if err != nil && !errors.Is(err, os.ErrNotExist) {
+				log.Fatal("cannot remove stale write lock: ", err)
+			}
+		}
 		for _, path := range []string{ipc.DaemonLog(dir), ipc.EngineLog(dir)} {
 			if err := ipc.ClearLog(path); err != nil {
 				log.Warn("cannot clear log: ", err)

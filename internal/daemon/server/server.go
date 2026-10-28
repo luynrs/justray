@@ -97,7 +97,7 @@ func Listen(socket string) (net.Listener, func(), error) {
 		unlock()
 		return nil, nil, err
 	}
-	if err := ipc.Chown(socket); err != nil {
+	if err := ipc.Chown(socket, nil); err != nil {
 		_ = ln.Close()
 		unlock()
 		return nil, nil, err

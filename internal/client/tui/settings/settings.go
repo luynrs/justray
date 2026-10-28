@@ -495,8 +495,10 @@ func hours(v int) string {
 }
 
 func parseHours(in string) (int, error) {
-	in = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(in), "h"))
-	v, err := strconv.Atoi(cmp.Or(in, "0"))
+	if in = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(in), "h")); in == "" {
+		return 0, nil
+	}
+	v, err := strconv.Atoi(in)
 	if err != nil {
 		return 0, fmt.Errorf("not an integer: %s", in)
 	}

@@ -38,7 +38,7 @@ func ClearLog(path string) error {
 	return nil
 }
 
-func Chown(path string) error {
+func Chown(path string, file *os.File) error {
 	if runtime.GOOS != "darwin" || os.Geteuid() != 0 {
 		return nil
 	}
@@ -46,6 +46,9 @@ func Chown(path string) error {
 	gid, gidErr := strconv.Atoi(os.Getenv("JUSTRAY_GID"))
 	if uidErr != nil || gidErr != nil || uid == 0 {
 		return nil
+	}
+	if file != nil {
+		return file.Chown(uid, gid)
 	}
 	return os.Chown(path, uid, gid)
 }

@@ -88,33 +88,29 @@ func (d Disk) SaveConfig(settings domain.Settings) error {
 	return writeJSON(ipc.Config(d.Dir), settings)
 }
 
-func writeJSON(path string, value any) error {
+func writeJSON(path string, value any) (err error) {
 	data, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
 		return err
 	}
-	return write(path, append(data, '\n'))
-}
-
-func write(path string, data []byte) error {
-	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
+	tmp, err := os.OpenFile(path+".lock", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = os.Remove(tmp.Name()) }() // no-op once the rename below succeeds
+	defer func() {
+		_ = tmp.Close()
+		if err != nil {
+			_ = os.Remove(tmp.Name())
+		}
+	}() // no-op once the rename below succeeds
 
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
+	if _, err := tmp.Write(append(data, '\n')); err != nil {
 		return err
 	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
+	if err := ipc.Chown(tmp.Name(), tmp); err != nil {
 		return err
 	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	if err := ipc.Chown(tmp.Name()); err != nil {
+	if err := errors.Join(tmp.Sync(), tmp.Close()); err != nil {
 		return err
 	}
 	if err := os.Rename(tmp.Name(), path); err != nil {
