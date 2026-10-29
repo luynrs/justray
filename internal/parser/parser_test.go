@@ -272,6 +272,9 @@ func TestParseSingBox(t *testing.T) {
 	if nodes[3].Protocol != domain.WG || nodes[3].WireGuard.PeerPublicKey != "pub" || len(nodes[3].WireGuard.Reserved) != 3 || nodes[3].WireGuard.Reserved[0] != 1 {
 		t.Fatalf("unexpected wg: %+v", nodes[3])
 	}
+	if _, _, err := ParseSubscription([]byte(`{"outbounds":[{"type":"wireguard","server":"example.com","server_port":51820,"private_key":"priv","peer_public_key":"pub","local_address":["10.0.0.2/32"]}]}`)); err == nil {
+		t.Fatal("legacy WireGuard outbound accepted")
+	}
 }
 
 func FuzzParseSubscription(f *testing.F) {

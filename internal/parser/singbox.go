@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"encoding/json"
 	"errors"
-	"net/netip"
 
 	"github.com/sagernet/sing-box/option"
 	SJSON "github.com/sagernet/sing/common/json"
@@ -100,12 +99,8 @@ func singboxWireGuard(entry singboxOutbound) (domain.Node, error) {
 	if entry.Detour != "" {
 		return domain.Node{}, errors.New("unsupported native endpoint detour")
 	}
-	raw, err := legacyWireGuard(entry.raw)
-	if err != nil {
-		return domain.Node{}, err
-	}
 	var endpoint option.Endpoint
-	err = SJSON.UnmarshalContext(outbound.Context, raw, &endpoint)
+	err := SJSON.UnmarshalContext(outbound.Context, entry.raw, &endpoint)
 	if err != nil {
 		return domain.Node{}, err
 	}
@@ -125,62 +120,7 @@ func singboxWireGuard(entry singboxOutbound) (domain.Node, error) {
 		node.WireGuard.Address = append(node.WireGuard.Address, address.String())
 	}
 	endpoint.Tag = "node"
-	raw, err = SJSON.Marshal(&endpoint)
+	raw, err := SJSON.Marshal(&endpoint)
 	node.Native = []json.RawMessage{raw}
 	return node, err
-}
-
-// Translate the removed WireGuard outbound shape before native decoding.
-func legacyWireGuard(raw json.RawMessage) (json.RawMessage, error) {
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &fields); err != nil {
-		return nil, err
-	}
-	if fields["local_address"] == nil && fields["peer_public_key"] == nil {
-		return raw, nil
-	}
-	address := fields["local_address"]
-	if address == nil {
-		address = fields["address"]
-	}
-	var addresses stringOrSlice
-	if err := json.Unmarshal(address, &addresses); err != nil {
-		return nil, err
-	}
-	fields["address"], _ = json.Marshal(normalizeCIDRs(addresses))
-	var peers []map[string]json.RawMessage
-	if fields["peers"] != nil {
-		if err := json.Unmarshal(fields["peers"], &peers); err != nil {
-			return nil, err
-		}
-	} else {
-		peers = append(peers, map[string]json.RawMessage{
-			"address": fields["server"], "port": fields["server_port"],
-			"public_key": fields["peer_public_key"], "pre_shared_key": fields["pre_shared_key"],
-		})
-	}
-	for _, peer := range peers {
-		if peer == nil {
-			return nil, errors.New("wireguard: invalid peer")
-		}
-		for source, target := range map[string]string{"server": "address", "server_port": "port"} {
-			if peer[target] == nil && peer[source] != nil {
-				peer[target] = peer[source]
-			}
-			delete(peer, source)
-		}
-		for _, key := range []string{"reserved", "persistent_keepalive_interval"} {
-			if peer[key] == nil && fields[key] != nil {
-				peer[key] = fields[key]
-			}
-		}
-		if peer["allowed_ips"] == nil {
-			peer["allowed_ips"], _ = json.Marshal([]netip.Prefix{netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0")})
-		}
-	}
-	for _, key := range []string{"server", "server_port", "peer_public_key", "pre_shared_key", "reserved", "persistent_keepalive_interval", "local_address"} {
-		delete(fields, key)
-	}
-	fields["peers"], _ = json.Marshal(peers)
-	return json.Marshal(fields)
 }
