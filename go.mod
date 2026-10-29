@@ -4,7 +4,7 @@ go 1.27.3
 
 require (
 	charm.land/bubbles/v2 v2.2.1
-	charm.land/bubbletea/v2 v2.1.0
+	charm.land/bubbletea/v2 v2.1.1
 	charm.land/lipgloss/v2 v2.0.6
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/charmbracelet/ultraviolet v0.0.0-20261023060817-a45b7c86333f
@@ -13,9 +13,9 @@ require (
 	github.com/go-ole/go-ole v1.3.0
 	github.com/miekg/dns v1.1.73
 	github.com/sagernet/netlink v0.0.0-20260919000536-5d76abd97cf7
-	github.com/sagernet/sing v0.9.7-0.20260929150544-0ad23b637bd4
-	github.com/sagernet/sing-box v1.14.3
-	github.com/sagernet/sing-quic v0.7.2-0.20261002084117-75c3ac4fa12b
+	github.com/sagernet/sing v0.9.7-0.20261023115459-5dc452e537bf
+	github.com/sagernet/sing-box v1.14.4
+	github.com/sagernet/sing-quic v0.7.2-0.20261020082049-7e0a5869a5f4
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/sys v0.49.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -23,7 +23,7 @@ require (
 
 require (
 	github.com/ajg/form v1.9.0 // indirect
-	github.com/andybalholm/brotli v1.2.6 // indirect
+	github.com/andybalholm/brotli v1.2.7 // indirect
 	github.com/anytls/sing-anytls v0.0.13 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/caddyserver/certmagic v0.25.6 // indirect
@@ -80,9 +80,9 @@ require (
 	github.com/sagernet/sing-shadowsocks2 v0.2.2 // indirect
 	github.com/sagernet/sing-shadowtls v0.2.2-0.20260928201441-a9c0127d5c99 // indirect
 	github.com/sagernet/sing-snell v0.0.0-20260904135315-bc5a12ac736f // indirect
-	github.com/sagernet/sing-tun v0.9.7-0.20261009020158-bca4bf029237 // indirect
+	github.com/sagernet/sing-tun v0.9.7-0.20261023115432-040db71fcd33 // indirect
 	github.com/sagernet/sing-usbip v0.0.0-20260817040617-28bd42667eca // indirect
-	github.com/sagernet/sing-vmess v0.2.9-0.20260929152519-9b95ab8c9478 // indirect
+	github.com/sagernet/sing-vmess v0.2.9-0.20261019223527-a0c58542bd9d // indirect
 	github.com/sagernet/smux v1.5.50-sing-box-mod.1 // indirect
 	github.com/sagernet/wireguard-go v0.0.20201121 // indirect
 	github.com/sagernet/ws v0.0.0-20231204124109-acfe8907c854 // indirect
@@ -97,23 +97,23 @@ require (
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/exp v0.0.0-20261014143641-f0251eb4aa3e // indirect
 	golang.org/x/mod v0.42.0 // indirect
-	golang.org/x/net v0.61.0 // indirect
+	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20261019180522-ce908d29299b // indirect
-	google.golang.org/grpc v1.84.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20261026165753-2ffab32bce7e // indirect
+	google.golang.org/grpc v1.85.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
 
-replace github.com/sagernet/sing-box => github.com/Leadaxe/sing-box-lx v1.14.3-lx.23
+replace github.com/sagernet/sing-box => github.com/Leadaxe/sing-box-lx v1.14.4-lx.25
 
-replace github.com/sagernet/wireguard-go => github.com/Leadaxe/wireguard-go-awg2-lx v0.0.0-20261008235258-8a53421edf7e
+replace github.com/sagernet/wireguard-go => github.com/Leadaxe/wireguard-go-awg2-lx v0.0.0-20261028072829-7188e1516995
 
-replace github.com/sagernet/sing-tun => github.com/Leadaxe/sing-tun-lx v0.0.0-20261012122328-f236400f3d29
+replace github.com/sagernet/sing-tun => github.com/Leadaxe/sing-tun-lx v0.0.0-20261028072939-1cb218d05b8d
 
 replace github.com/sagernet/gvisor => github.com/Leadaxe/gvisor-lx v0.0.0-20260805115331-117243aa02fa
 
