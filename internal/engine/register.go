@@ -21,7 +21,7 @@ import (
 	nodeoutbound "github.com/luynrs/justray/internal/engine/outbound"
 )
 
-var ( // read-only, built once instead of on every connect/probe
+var ( // read-only
 	inboundReg  = inboundRegistry()
 	outboundReg = outboundRegistry()
 	endpointReg = endpointRegistry()

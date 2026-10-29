@@ -35,8 +35,7 @@ const (
 )
 
 type Node struct {
-	// Native holds complete library options. Other fields are display metadata
-	// and the representation used by links, foreign formats and older saved nodes.
+	// lib options
 	Native         []json.RawMessage `json:"native,omitempty"`
 	ID             string            `json:"id"`
 	Name           string            `json:"name,omitempty"`

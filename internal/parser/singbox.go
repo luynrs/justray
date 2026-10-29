@@ -12,8 +12,6 @@ import (
 	"github.com/luynrs/justray/internal/engine/outbound"
 )
 
-// The envelope only groups subscription entries. sing-box decodes and executes
-// their complete options, rather than a second protocol schema.
 type singboxOutbound struct {
 	Type   string `json:"type"`
 	Tag    string `json:"tag"`
@@ -74,7 +72,6 @@ func singboxNode(entry singboxOutbound, companions map[string]singboxOutbound) (
 	return node, nil
 }
 
-// Keep only display metadata and values needed by resource limits.
 func nativeMetadata(node *domain.Node, options any) error {
 	var transport *option.V2RayTransportOptions
 	switch options := options.(type) {

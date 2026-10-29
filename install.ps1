@@ -78,10 +78,10 @@ try {
 	$checksums = Join-Path $tmp "checksums.txt"
 	download "$base/checksums.txt" $checksums
 
-	$pattern = "^([0-9A-Fa-f]{64})\s+\*?(justray[-_]([^/\\\s]+)[-_]windows[-_]$arch\.zip)$"
+	$pattern = "^([0-9A-Fa-f]{64})\s+\*?(justray-([^/\\\s]+)-windows-$arch\.zip)$"
 	$releases = @(Select-String -LiteralPath $checksums -Pattern $pattern)
 	if ($releases.Count -ne 1) {
-		throw "Expected exactly one release for windows_$arch"
+		throw "Expected exactly one release for windows/$arch"
 	}
 	$hash, $archive, $version = $releases[0].Matches[0].Groups[1..3].Value
 	# The checksum filename pins the archive to the same release, even if latest changes.

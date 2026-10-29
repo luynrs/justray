@@ -104,25 +104,23 @@ checksums="$tmp/checksums.txt"
 curl -fsSL --retry 3 "$base/checksums.txt" -o "$checksums" 2>/dev/null || fail "Failed to fetch release metadata"
 
 line=$(
-	awk -v platform="${os}[-_]${arch}" '
-		BEGIN { sub(/^macos/, "(macos|darwin)", platform) }
+	awk -v platform="${os}-${arch}" '
 		length($1) == 64 && $1 ~ /^[[:xdigit:]]+$/ {
 			sub(/^\*/, "", $2)
-			if ($2 ~ ("^justray[-_][^/[:space:]]+[-_]" platform "\\.tar\\.gz$")) print tolower($1), $2
+			if ($2 ~ ("^justray-[^/[:space:]]+-" platform "\\.tar\\.gz$")) print tolower($1), $2
 		}
 	' "$checksums"
 )
 
 # shellcheck disable=SC2086
 set -- $line
-[ "$#" -eq 2 ] || fail "Expected exactly one release for ${os}_${arch}"
+[ "$#" -eq 2 ] || fail "Expected exactly one release for ${os}/${arch}"
 
 expected="$1"
 archive="$2"
 
-version=${archive#justray?}
-version=${version%?"${arch}.tar.gz"}
-version=${version%[-_]*}
+version=${archive#justray-}
+version=${version%-"$os-$arch.tar.gz"}
 # The checksum filename pins the archive to the same release, even if latest changes.
 base="$repo/releases/download/v$version"
 log "Found v$version for ${os}/${arch}"

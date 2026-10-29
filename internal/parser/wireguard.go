@@ -25,7 +25,6 @@ func parseWireGuard(uri string) (domain.Node, error) {
 		return domain.Node{}, fmt.Errorf("wireguard: %w", err)
 	}
 	q := u.Query()
-	// WireGuard keys often contain unescaped '+' and must retain it as data.
 	raw, _ := url.ParseQuery(strings.ReplaceAll(strings.ReplaceAll(u.RawQuery, "+", "%2B"), ";", "%3B"))
 	privateKey := u.User.Username()
 	if privateKey == "" {

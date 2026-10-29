@@ -268,8 +268,6 @@ func validateNativeOptions(options any) error {
 	return nil
 }
 
-// ConfigKey compares the options the engine will receive, independently of the
-// subscription format or the representation used by older saved nodes.
 func ConfigKey(node domain.Node) string {
 	endpoint, outbounds, err := New(node, "node")
 	if err == nil {
@@ -289,8 +287,8 @@ func ConfigKey(node domain.Node) string {
 	return string(data)
 }
 
-// Older saved nodes materialized these constructor defaults. Canonicalize them
-// for identity comparison only; runtime options retain their original values.
+// Normalize equivalent options from current import formats for comparison only.
+// Runtime options retain their original values.
 func keyDefaults(options any) {
 	switch settings := options.(type) {
 	case *option.ShadowsocksOutboundOptions:
