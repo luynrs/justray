@@ -35,15 +35,13 @@ dir="${JUSTRAY_DIRECTORY:-$HOME/.local/bin}"
 if [ -z "${JUSTRAY_DIRECTORY:-}" ]; then
 	for candidate in "$HOME/.local/bin" "$HOME/bin" /usr/local/bin; do
 		case ":$PATH:" in
-			*":$candidate:"*)
-				if [ "$candidate" != /usr/local/bin ]; then
-					mkdir -p "$candidate" 2>/dev/null || continue
-				fi
-				[ -d "$candidate" ] && [ -w "$candidate" ] || continue
-				dir="$candidate"
-				break
-				;;
+			*":$candidate:"*) ;;
+			*) continue ;;
 		esac
+		[ "$candidate" = /usr/local/bin ] || mkdir -p "$candidate" 2>/dev/null || continue
+		[ -d "$candidate" ] && [ -w "$candidate" ] || continue
+		dir="$candidate"
+		break
 	done
 fi
 
@@ -53,14 +51,48 @@ dir=$(cd "$dir" && pwd -P)
 
 tmp=$(mktemp -d "$dir/.justray.XXXXXXXX") || fail "Cannot create temporary directory in $dir"
 restart=0
+installed=""
+binaries="justrayd justray jray"
+
+start_daemon() {
+	log "Restarting daemon..."
+	nohup "$dir/justrayd" >/dev/null 2>&1 </dev/null &
+	deadline=$(($(date +%s) + 30))
+	until "$dir/justray" status --json >/dev/null 2>&1; do
+		[ "$(date +%s)" -lt "$deadline" ] || return 1
+		sleep 1
+	done
+}
+
+restore() {
+	if [ "$restart" -eq 1 ] && [ -x "$dir/justray" ]; then
+		"$dir/justray" stop >/dev/null 2>&1 || [ "$?" -eq 2 ] || return 1
+	fi
+	for binary in $installed; do
+		rm -f "$dir/$binary" || return 1
+	done
+	for binary in $binaries; do
+		if [ -e "$tmp/backup/$binary" ] || [ -L "$tmp/backup/$binary" ]; then
+			mv -f "$tmp/backup/$binary" "$dir/$binary" || return 1
+		fi
+	done
+	if [ "$restart" -eq 1 ] && [ -x "$dir/justrayd" ]; then
+		start_daemon || return 1
+	fi
+}
 
 cleanup() {
-	rm -rf "$tmp"
-
-	if [ "$restart" -eq 1 ] && [ -x "$dir/justrayd" ]; then
-		log "Restarting daemon..."
-		nohup "$dir/justrayd" >/dev/null 2>&1 </dev/null &
+	code=$?
+	trap - EXIT HUP INT TERM
+	if [ "$code" -ne 0 ] && [ -d "$tmp/backup" ]; then
+		log "Restoring previous installation..."
+		if ! restore; then
+			printf 'Rollback failed; backups kept in %s\n' "$tmp" >&2
+			exit 1
+		fi
 	fi
+	rm -rf "$tmp"
+	exit "$code"
 }
 
 trap cleanup EXIT
@@ -91,6 +123,8 @@ archive="$2"
 version=${archive#justray?}
 version=${version%?"${arch}.tar.gz"}
 version=${version%[-_]*}
+# The checksum filename pins the archive to the same release, even if latest changes.
+base="$repo/releases/download/v$version"
 log "Found v$version for ${os}/${arch}"
 
 log "Downloading $archive..."
@@ -108,9 +142,6 @@ fi
 
 [ "$actual" = "$expected" ] || fail "Checksum mismatch"
 
-log "Verified checksum"
-
-log "Extracting archive..."
 mkdir -p "$tmp/out"
 tar -xzf "$tmp/$archive" -C "$tmp/out" 2>/dev/null || fail "Failed to extract archive"
 
@@ -120,10 +151,11 @@ done
 chmod 755 "$tmp/out/justray" "$tmp/out/justrayd"
 ln -sf justray "$tmp/out/jray"
 
-for binary in justray justrayd jray; do
+for binary in $binaries; do
 	[ ! -d "$dir/$binary" ] || fail "$dir/$binary is a directory"
 done
 
+mkdir "$tmp/backup"
 if "$tmp/out/justray" stop >/dev/null; then
 	restart=1
 	log "Stopped daemon"
@@ -133,20 +165,16 @@ fi
 
 log "Installing..."
 
-for binary in justrayd justray jray; do
+for binary in $binaries; do
+	if [ -e "$dir/$binary" ] || [ -L "$dir/$binary" ]; then
+		mv "$dir/$binary" "$tmp/backup/$binary" || fail "Failed to back up $binary"
+	fi
 	mv -f "$tmp/out/$binary" "$dir/$binary" || fail "Failed to install $binary"
+	installed="$installed $binary"
 done
 
 if [ "$restart" -eq 1 ]; then
-	restart=0
-	log "Restarting daemon..."
-	nohup "$dir/justrayd" </dev/null >/dev/null 2>&1 &
-	deadline=$(($(date +%s) + 30))
-	until "$dir/justray" status --json >/dev/null 2>&1; do
-		[ "$(date +%s)" -lt "$deadline" ] || fail "Failed to restore daemon"
-		sleep 1
-	done
-	log "Restarted daemon"
+	start_daemon || fail "Failed to restore daemon"
 fi
 
 log "Installed to $dir"

@@ -48,9 +48,27 @@ function download($uri, $out) {
 	}
 }
 
+function startDaemon {
+	# Windows PowerShell treats native stderr as an error even with 2>$null.
+	$ErrorActionPreference = "Continue"
+	Write-Host "Restarting daemon..."
+	Start-Process "$dir\justrayd.exe" -WindowStyle Hidden -ErrorAction Stop
+	$timer = [Diagnostics.Stopwatch]::StartNew()
+	do {
+		& "$dir\justray.exe" status --json > $null 2>$null
+		if ($LASTEXITCODE -eq 0) { return }
+		if ($timer.Elapsed.TotalSeconds -ge 30) { throw "Failed to restore daemon" }
+		Start-Sleep -Milliseconds 250
+	} while ($true)
+}
+
 $dir = (New-Item -ItemType Directory -Force -Path $dir).FullName
 $tmp = Join-Path $dir (".justray." + [guid]::NewGuid().ToString("N"))
+$backup = Join-Path $tmp "backup"
 $restart = $false
+$keepBackup = $false
+$installed = @()
+$binaries = "justrayd.exe", "justray.exe", "jray.exe"
 
 New-Item -ItemType Directory -Path $tmp | Out-Null
 
@@ -60,21 +78,14 @@ try {
 	$checksums = Join-Path $tmp "checksums.txt"
 	download "$base/checksums.txt" $checksums
 
-	$lines = @(
-		Get-Content -LiteralPath $checksums |
-			Where-Object {
-				$_ -match "^[0-9A-Fa-f]{64}\s+\*?justray[-_][^/\\\s]+[-_]windows[-_]$arch\.zip$"
-			}
-	)
-
-	if ($lines.Count -ne 1) {
+	$pattern = "^([0-9A-Fa-f]{64})\s+\*?(justray[-_]([^/\\\s]+)[-_]windows[-_]$arch\.zip)$"
+	$releases = @(Select-String -LiteralPath $checksums -Pattern $pattern)
+	if ($releases.Count -ne 1) {
 		throw "Expected exactly one release for windows_$arch"
 	}
-
-	$hash, $archive = $lines[0].Trim() -split '\s+', 2
-	$archive = $archive.TrimStart("*")
-
-	$version = $archive -replace "^justray[-_](.+)[-_]windows[-_]$arch\.zip$", '$1'
+	$hash, $archive, $version = $releases[0].Matches[0].Groups[1..3].Value
+	# The checksum filename pins the archive to the same release, even if latest changes.
+	$base = "$repo/releases/download/v$version"
 	Write-Host "Found v$version for windows/$arch"
 
 	Write-Host "Downloading $archive..."
@@ -87,9 +98,6 @@ try {
 		throw "Checksum mismatch"
 	}
 
-	Write-Host "Verified checksum"
-
-	Write-Host "Extracting archive..."
 	$out = Join-Path $tmp "out"
 	Expand-Archive -LiteralPath $zip -DestinationPath $out -Force
 
@@ -100,13 +108,13 @@ try {
 	}
 
 	Copy-Item -LiteralPath "$out\justray.exe" -Destination "$out\jray.exe"
-	$binaries = "justrayd.exe", "justray.exe", "jray.exe"
 	foreach ($exe in $binaries) {
 		if (Test-Path -LiteralPath "$dir\$exe" -PathType Container) {
 			throw "$dir\$exe is a directory"
 		}
 	}
 
+	New-Item -ItemType Directory -Path $backup | Out-Null
 	& "$out\justray.exe" stop > $null
 	switch ($LASTEXITCODE) {
 		0 { $restart = $true; Write-Host "Stopped daemon" }
@@ -117,28 +125,13 @@ try {
 	Write-Host "Installing..."
 
 	# Windows allows renaming running binaries away, but forbids overwriting them in place
-	$backup = [guid]::NewGuid().ToString("N")
-	try {
-		foreach ($exe in $binaries) {
-			if (Test-Path -LiteralPath "$dir\$exe") {
-				Move-Item -LiteralPath "$dir\$exe" -Destination "$dir\$exe.old.$backup"
-			}
-			Move-Item -LiteralPath "$out\$exe" -Destination "$dir\$exe"
+	foreach ($exe in $binaries) {
+		if (Test-Path -LiteralPath "$dir\$exe") {
+			Move-Item -LiteralPath "$dir\$exe" -Destination "$backup\$exe"
 		}
-	} catch {
-		foreach ($exe in $binaries) {
-			if (-not (Test-Path -LiteralPath "$out\$exe")) {
-				Remove-Item -LiteralPath "$dir\$exe" -Force -ErrorAction SilentlyContinue
-			}
-			if (Test-Path -LiteralPath "$dir\$exe.old.$backup") {
-				Move-Item -LiteralPath "$dir\$exe.old.$backup" -Destination "$dir\$exe"
-			}
-		}
-		throw
+		Move-Item -LiteralPath "$out\$exe" -Destination "$dir\$exe"
+		$installed += $exe
 	}
-
-	Get-ChildItem -LiteralPath $dir -File -Filter *.exe.old.* -ErrorAction SilentlyContinue | Where-Object Name -Match '^(justray|jray|justrayd)\.exe\.old\.[0-9a-f]{32}$' | Remove-Item -Force -ErrorAction SilentlyContinue
-
 	foreach ($scope in "User", "Process") {
 		$currentPath = [string][Environment]::GetEnvironmentVariable("Path", $scope)
 		if (($currentPath -split ";") -notcontains $dir) {
@@ -146,27 +139,37 @@ try {
 		}
 	}
 
-	if ($restart) {
-		$restart = $false
-		Write-Host "Restarting daemon..."
-		Start-Process "$dir\justrayd.exe" -WindowStyle Hidden
-		$timer = [Diagnostics.Stopwatch]::StartNew()
-		while ($true) {
-			& "$dir\justray.exe" status --json > $null 2>$null
-			if ($LASTEXITCODE -eq 0) { break }
-			if ($timer.Elapsed.TotalSeconds -ge 30) { throw "Failed to restore daemon" }
-			Start-Sleep -Milliseconds 50
-		}
-		Write-Host "Restarted daemon"
-	}
+	if ($restart) { startDaemon }
 	Write-Host "Installed to $dir"
 	Write-Host "`nRun jray in a new terminal window."
 }
+catch {
+	$failure = $_
+	if (Test-Path -LiteralPath $backup) {
+		Write-Host "Restoring previous installation..."
+		try {
+			if ($restart -and (Test-Path -LiteralPath "$dir\justray.exe")) {
+				& "$dir\justray.exe" stop > $null 2>$null
+				if ($LASTEXITCODE -notin 0, 2) { throw "Failed to stop new daemon" }
+			}
+			foreach ($exe in $installed) {
+				Move-Item -LiteralPath "$dir\$exe" -Destination "$out\$exe"
+			}
+			foreach ($exe in $binaries) {
+				if (Test-Path -LiteralPath "$backup\$exe") {
+					Move-Item -LiteralPath "$backup\$exe" -Destination "$dir\$exe"
+				}
+			}
+			if ($restart -and (Test-Path -LiteralPath "$dir\justrayd.exe")) { startDaemon }
+		} catch {
+			$keepBackup = $true
+			throw "Update failed: $failure. Rollback failed: $_. Backups kept in $tmp"
+		}
+	}
+	throw $failure
+}
 finally {
-	Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
-
-	if ($restart -and (Test-Path -LiteralPath "$dir\justrayd.exe")) {
-		Write-Host "Restarting daemon..."
-		Start-Process "$dir\justrayd.exe" -WindowStyle Hidden
+	if (-not $keepBackup) {
+		Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
 	}
 }
