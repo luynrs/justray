@@ -145,7 +145,7 @@ func (s Model) fieldBlock(f field, i int) (lines []string) {
 		var prefix, body string
 		if f.removable() {
 			prefix = style.Sep() + " "
-			body = f.name
+			body = style.Sanitize(f.name, true)
 		} else {
 			prefix = "+ "
 			body = strings.TrimPrefix(f.name, "+ ")

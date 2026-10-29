@@ -32,7 +32,7 @@ func TestDNSResolution(t *testing.T) {
 				Hdr: dns.RR_Header{Name: query.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60},
 				A:   net.IPv4(203, 0, 113, 7),
 			}}
-			if query.Question[0].Name == "proxy.example.test." {
+			if query.Question[0].Name == "proxy.example.test." || query.Question[0].Name == "bootstrap.example.test." {
 				response.Answer[0].(*dns.A).A = net.IPv4(127, 0, 0, 1)
 			}
 		}
@@ -151,10 +151,13 @@ func TestDNSResolution(t *testing.T) {
 	defer dohServer.Close()
 	for name, address := range map[string]string{
 		"DoH":           dohServer.URL + "/dns-query",
-		"DoH bootstrap": strings.Replace(dohServer.URL, "127.0.0.1", "localhost", 1) + "/dns-query",
+		"DoH bootstrap": strings.Replace(dohServer.URL, "127.0.0.1", "bootstrap.example.test", 1) + "/dns-query",
 	} {
 		t.Run(name, func(t *testing.T) {
 			lookup(t, address, func(options *option.Options) {
+				if name == "DoH bootstrap" {
+					options.DNS.Servers[1] = dnsServers(packetConn.LocalAddr().String(), "", "remote-bootstrap")[0]
+				}
 				options.DNS.Servers[0].Options.(*option.RemoteHTTPSDNSServerOptions).TLS = &option.OutboundTLSOptions{
 					ServerName:  "127.0.0.1",
 					Certificate: badoption.Listable[string]{string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: dohServer.Certificate().Raw}))},

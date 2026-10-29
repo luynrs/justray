@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
@@ -90,7 +91,7 @@ func detour(s domain.Settings) string {
 	} else if ap, err := netip.ParseAddrPort(s.DNS); err == nil {
 		host = ap.Addr().String()
 	}
-	if host == "localhost" {
+	if strings.EqualFold(strings.TrimSuffix(host, "."), "localhost") {
 		return ""
 	}
 	if addr, err := netip.ParseAddr(host); err == nil && (addr.IsLoopback() || addr.IsLinkLocalUnicast() || (s.BypassLocal == "on" && addr.IsPrivate())) {

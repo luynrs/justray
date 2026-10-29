@@ -192,7 +192,7 @@ func isAddr(v string) bool {
 
 func isURL(v string) bool {
 	u, err := url.Parse(v)
-	return err == nil && u.Host != "" && (u.Scheme == "http" || u.Scheme == "https")
+	return err == nil && u.Hostname() != "" && (u.Scheme == "http" || u.Scheme == "https")
 }
 
 func isDNS(v string) bool {
