@@ -42,28 +42,37 @@ func New(n domain.Node, tag string) (*option.Endpoint, []option.Outbound, error)
 	if err != nil {
 		return nil, nil, err
 	}
+	if err := ValidateTransportOptions(transportOptions); err != nil {
+		return nil, nil, err
+	}
 	if n.Protocol == domain.WG {
 		ep, err := wireguard(n, tag)
 		return ep, nil, err
 	}
+	var outbounds []option.Outbound
 	if n.Protocol == domain.Shadow {
 		if n.ShadowTLS == nil {
 			return nil, nil, errors.New("shadowtls: missing settings")
 		}
-		return nil, []option.Outbound{shadowTLS(n, tag)}, nil
+		outbounds = []option.Outbound{shadowTLS(n, tag)}
+	} else {
+		out, err := proxy(n, tag, transportOptions)
+		if err != nil {
+			return nil, nil, err
+		}
+		if ss, ok := out.Options.(*option.ShadowsocksOutboundOptions); ok && n.ShadowTLS != nil {
+			ss.Detour = tag + "-stls"
+			outbounds = []option.Outbound{shadowTLS(n, ss.Detour), *out}
+		} else {
+			outbounds = []option.Outbound{*out}
+		}
 	}
-
-	out, err := proxy(n, tag, transportOptions)
-	if err != nil {
-		return nil, nil, err
+	for index := range outbounds {
+		if err := validateOptions(outbounds[index].Options); err != nil {
+			return nil, nil, err
+		}
 	}
-
-	var obs []option.Outbound
-	if ss, ok := out.Options.(*option.ShadowsocksOutboundOptions); ok && n.ShadowTLS != nil {
-		ss.Detour = tag + "-stls"
-		obs = append(obs, shadowTLS(n, ss.Detour))
-	}
-	return nil, append(obs, *out), nil
+	return nil, outbounds, nil
 }
 
 func proxy(n domain.Node, tag string, transportOptions *option.V2RayTransportOptions) (*option.Outbound, error) {
@@ -254,7 +263,29 @@ func EndpointRegistry() *boxendpoint.Registry {
 var Context = service.ContextWith[option.EndpointOptionsRegistry](
 	service.ContextWith[option.OutboundOptionsRegistry](context.Background(), Registry()), EndpointRegistry())
 
-func validateNativeOptions(options any) error {
+func validateOptions(options any) error {
+	valid, message := true, ""
+	switch settings := options.(type) {
+	case *option.VLESSOutboundOptions:
+		valid, message = settings.UUID != "", "vless: missing uuid"
+	case *option.VMessOutboundOptions:
+		valid, message = settings.UUID != "", "vmess: missing uuid"
+	case *option.TUICOutboundOptions:
+		valid, message = settings.UUID != "", "tuic: missing uuid"
+	case *option.TrojanOutboundOptions:
+		valid, message = settings.Password != "", "trojan: missing password"
+	case *option.Hysteria2OutboundOptions:
+		valid, message = settings.Password != "", "hysteria2: missing password"
+	case *option.AnyTLSOutboundOptions:
+		valid, message = settings.Password != "", "anytls: missing password"
+	case *option.ShadowsocksOutboundOptions:
+		valid, message = settings.Method != "" && settings.Password != "", "shadowsocks: missing method or password"
+	case *option.ShadowTLSOutboundOptions:
+		valid, message = settings.Password != "", "shadowtls: missing password"
+	}
+	if !valid {
+		return errors.New(message)
+	}
 	if wrapper, ok := options.(option.OutboundTLSOptionsWrapper); ok {
 		if tls := wrapper.TakeOutboundTLSOptions(); tls != nil && tls.Enabled && tls.Insecure {
 			return errors.New("insecure TLS is not supported")
@@ -330,15 +361,15 @@ func native(node domain.Node, tag string) (*option.Endpoint, []option.Outbound, 
 			return nil, nil, err
 		}
 		endpoint.Tag = tag
-		return &endpoint, nil, validateNativeOptions(endpoint.Options)
+		return &endpoint, nil, validateOptions(endpoint.Options)
 	}
-	var outbounds []option.Outbound
+	outbounds := make([]option.Outbound, len(node.Native))
 	for index, raw := range node.Native {
-		var outbound option.Outbound
-		if err := SJSON.UnmarshalContext(Context, raw, &outbound); err != nil {
+		outbound := &outbounds[index]
+		if err := SJSON.UnmarshalContext(Context, raw, outbound); err != nil {
 			return nil, nil, err
 		}
-		if err := validateNativeOptions(outbound.Options); err != nil {
+		if err := validateOptions(outbound.Options); err != nil {
 			return nil, nil, err
 		}
 		outbound.Tag = tag
@@ -355,7 +386,6 @@ func native(node domain.Node, tag string) (*option.Endpoint, []option.Outbound, 
 				wrapper.ReplaceDialerOptions(dialer)
 			}
 		}
-		outbounds = append(outbounds, outbound)
 	}
 	if len(outbounds) == 2 {
 		outbounds[0], outbounds[1] = outbounds[1], outbounds[0]

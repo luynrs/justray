@@ -34,31 +34,7 @@ func validateNode(node domain.Node) error {
 	if (node.Protocol == domain.HY1 || node.Protocol == domain.HY2) && (min(node.UpMbps, node.DownMbps) < 0 || max(node.UpMbps, node.DownMbps) > math.MaxInt/hysteria.MbpsToBps) {
 		return fmt.Errorf("%s: bandwidth out of range", node.Protocol)
 	}
-	if len(node.Native) > 0 && node.Protocol != domain.WG {
-		_, _, err := outbound.New(node, "node")
-		return err
-	}
-	switch node.Protocol {
-	case domain.VLESS, domain.VMess, domain.TUIC:
-		if node.Auth.UUID == "" {
-			return fmt.Errorf("%s: missing uuid", node.Protocol)
-		}
-	case domain.Trojan, domain.HY2, domain.AnyTLS:
-		if node.Auth.Password == "" {
-			return fmt.Errorf("%s: missing password", node.Protocol)
-		}
-	case domain.SS:
-		if node.Auth.Method == "" || node.Auth.Password == "" {
-			return errors.New("shadowsocks: missing method or password")
-		}
-		if node.ShadowTLS != nil && node.ShadowTLS.Password == "" {
-			return errors.New("shadowtls: missing password")
-		}
-	case domain.Shadow:
-		if node.ShadowTLS == nil || node.ShadowTLS.Password == "" {
-			return errors.New("shadowtls: missing settings or password")
-		}
-	case domain.WG:
+	if node.Protocol == domain.WG {
 		wireguard := node.WireGuard
 		if wireguard == nil || wireguard.PrivateKey == "" || wireguard.PeerPublicKey == "" || len(wireguard.Address) == 0 {
 			return errors.New("wireguard: missing keys or address")
@@ -84,15 +60,9 @@ func validateNode(node domain.Node) error {
 				return fmt.Errorf("wireguard: invalid address: %w", err)
 			}
 		}
-	case domain.HY1, domain.SOCKS, domain.HTTP:
-	default:
-		return fmt.Errorf("unsupported protocol: %s", node.Protocol)
 	}
-	if len(node.Native) > 0 {
-		_, _, err := outbound.New(node, "node")
-		return err
-	}
-	return outbound.ValidateTransport(node)
+	_, _, err := outbound.New(node, "node")
+	return err
 }
 
 const maxDatagramSize = 65507

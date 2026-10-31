@@ -272,6 +272,8 @@ func TestSubscriptionRefresh(t *testing.T) {
 		"reserved short":       "proxies:\n  - {type: wireguard, server: example.com, port: 51820, private-key: secret, public-key: public, ip: 10.0.0.2, reserved: [0, 255]}",
 		"reserved long":        "proxies:\n  - {type: wireguard, server: example.com, port: 51820, private-key: secret, public-key: public, ip: 10.0.0.2, reserved: [0, 1, 2, 255]}",
 		"sing-box transport":   `{"outbounds":[{"type":"shadowsocks","server":"example.com","server_port":443,"method":"aes-128-gcm","password":"secret","transport":{"type":"ws"}}]}`,
+		"sing-box no UUID":     `{"outbounds":[{"type":"vless","server":"example.com","server_port":443}]}`,
+		"sing-box no password": `{"outbounds":[{"type":"trojan","server":"example.com","server_port":443}]}`,
 		"shadowtls detour":     `{"outbounds":[{"type":"shadowtls","tag":"stls","server":"example.com","server_port":443,"detour":"missing"},{"type":"shadowsocks","server":"example.com","server_port":8388,"method":"aes-128-gcm","password":"secret","detour":"stls"}]}`,
 		"xray incompatible":    `{"outbounds":[{"protocol":"vless","settings":{"vnext":[{"address":"example.com","port":443,"users":[{"id":"uuid"}]}],"servers":[{"address":"ignored.example","port":443,"password":"secret"}]}}]}`,
 		"truncated json":       `{"outbounds":[{"type":"vless","server":"example.com"`,

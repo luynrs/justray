@@ -64,14 +64,6 @@ func transport(n domain.Node) (*option.V2RayTransportOptions, error) {
 	return nil, fmt.Errorf("unsupported transport: %s", n.Transport.Network)
 }
 
-func ValidateTransport(node domain.Node) error {
-	options, err := transport(node)
-	if err != nil {
-		return err
-	}
-	return ValidateTransportOptions(options)
-}
-
 func ValidateTransportOptions(options *option.V2RayTransportOptions) error {
 	if options == nil || options.Type != C.V2RayTransportTypeXHTTP {
 		return nil
