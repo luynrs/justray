@@ -58,7 +58,7 @@ start_daemon() {
 	log "Restarting daemon..."
 	nohup "$dir/justrayd" >/dev/null 2>&1 </dev/null &
 	deadline=$(($(date +%s) + 30))
-	until "$dir/justray" status --json >/dev/null 2>&1; do
+	until [ -n "$("$dir/justray" status --json 2>/dev/null)" ]; do
 		[ "$(date +%s)" -lt "$deadline" ] || return 1
 		sleep 1
 	done

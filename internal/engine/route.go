@@ -41,6 +41,10 @@ func match(list []string, action option.RuleAction) []option.Rule {
 
 // #SC .srs
 func ruleSets(s domain.Settings) []option.RuleSet {
+	downloadDetour := final(s)
+	if downloadDetour == "direct" {
+		downloadDetour = ""
+	}
 	var sets []option.RuleSet
 	seen := make(map[string]bool)
 	for _, list := range [][]string{s.Block, s.Direct, s.Proxy} {
@@ -55,7 +59,7 @@ func ruleSets(s domain.Settings) []option.RuleSet {
 				Type: C.RuleSetTypeRemote, Tag: []string{tag}, Format: C.RuleSetFormatBinary,
 				RemoteOptions: option.RemoteRuleSet{
 					URL:        "https://raw.githubusercontent.com/SagerNet/sing-" + kind + "/rule-set/" + tag + ".srs",
-					HTTPClient: &option.HTTPClientOptions{DialerOptions: option.DialerOptions{Detour: "proxy"}},
+					HTTPClient: &option.HTTPClientOptions{DialerOptions: option.DialerOptions{Detour: downloadDetour}},
 				},
 			})
 		}

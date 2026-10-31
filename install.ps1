@@ -55,8 +55,8 @@ function startDaemon {
 	Start-Process "$dir\justrayd.exe" -WindowStyle Hidden -ErrorAction Stop
 	$timer = [Diagnostics.Stopwatch]::StartNew()
 	do {
-		& "$dir\justray.exe" status --json > $null 2>$null
-		if ($LASTEXITCODE -eq 0) { return }
+		$status = & "$dir\justray.exe" status --json 2>$null
+		if ($status) { return }
 		if ($timer.Elapsed.TotalSeconds -ge 30) { throw "Failed to restore daemon" }
 		Start-Sleep -Milliseconds 250
 	} while ($true)
