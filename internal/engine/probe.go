@@ -2,8 +2,11 @@ package engine
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
+	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -12,7 +15,8 @@ import (
 
 	sbox "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/adapter"
-	"github.com/sagernet/sing-box/common/urltest"
+	M "github.com/sagernet/sing/common/metadata"
+	"github.com/sagernet/sing/common/ntp"
 
 	"github.com/luynrs/justray/internal/domain"
 	"github.com/luynrs/justray/internal/engine/outbound"
@@ -128,22 +132,54 @@ func probe(ctx context.Context, node domain.Node, instance *sbox.Box, tag, probe
 			dialer = runtime
 		}
 	}
-	var milliseconds uint16
+	var milliseconds int
 	if err == nil {
-		milliseconds, err = urltest.URLTest(requestCtx, probeURL, dialer)
+		milliseconds, err = delay(requestCtx, dialer, probeURL)
 		if errors.Is(err, net.ErrClosed) {
-			milliseconds, err = urltest.URLTest(requestCtx, probeURL, dialer)
+			milliseconds, err = delay(requestCtx, dialer, probeURL)
 		}
 	}
 	if ctx.Err() != nil {
 		return Result{}, ctx.Err()
 	}
 	if err == nil {
-		return Result{Alive: true, Duration: int(milliseconds)}, nil
+		return Result{Alive: true, Duration: milliseconds}, nil
 	}
 	result := Result{Failure: "failed", Error: err.Error()}
 	if os.IsTimeout(err) || errors.Is(requestCtx.Err(), context.DeadlineExceeded) {
 		result.Failure = "t/o"
 	}
 	return result, nil
+}
+
+func delay(ctx context.Context, dialer adapter.Outbound, probeURL string) (int, error) {
+	client := &http.Client{
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		Transport: &http.Transport{
+			DisableKeepAlives: true,
+			DialContext: func(ctx context.Context, _, address string) (net.Conn, error) {
+				return dialer.DialContext(ctx, "tcp", M.ParseSocksaddr(address).Unwrap())
+			},
+			TLSClientConfig: &tls.Config{
+				Time:    ntp.TimeFuncFromContext(ctx),
+				RootCAs: adapter.RootPoolFromContext(ctx),
+			},
+		},
+	}
+	defer client.CloseIdleConnections()
+
+	request, err := http.NewRequestWithContext(ctx, http.MethodHead, probeURL, nil)
+	if err != nil {
+		return 0, err
+	}
+	started := time.Now()
+	response, err := client.Do(request)
+	if err != nil {
+		return 0, err
+	}
+	_ = response.Body.Close()
+	if response.StatusCode >= http.StatusBadRequest {
+		return 0, fmt.Errorf("HTTP %d", response.StatusCode)
+	}
+	return int(time.Since(started).Milliseconds()), nil
 }

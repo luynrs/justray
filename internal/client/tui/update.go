@@ -63,7 +63,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tick:
-		if m.err != "" && time.Since(m.errAt) > 10*time.Second {
+		if m.err != "" && !m.filter.Focused() && time.Since(m.errAt) > 10*time.Second {
 			m.err = ""
 		}
 		return m, tickCmd()
@@ -224,6 +224,9 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				m.filter.SetValue("")
 			}
 			m.filter.Blur()
+			if m.err != "" {
+				m.errAt = time.Now()
+			}
 			m.clamp()
 			return m, nil
 		}
