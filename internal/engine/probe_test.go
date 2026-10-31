@@ -149,7 +149,9 @@ func TestProbeConcurrencyAndCancellation(t *testing.T) {
 	}()
 	defer func() {
 		cancel()
-		<-finished
+		if err := <-finished; err != nil && !errors.Is(err, context.Canceled) {
+			t.Errorf("probe cleanup: %v", err)
+		}
 	}()
 	for range 8 {
 		select {
