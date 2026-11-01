@@ -24,7 +24,7 @@ type nodeRuntime struct {
 	endpoints *boxendpoint.Manager
 }
 
-func newNodeRuntime(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, node domain.Node) (runtime *nodeRuntime, err error) {
+func newRuntime(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, node domain.Node) (runtime *nodeRuntime, err error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -89,7 +89,7 @@ type proxyOutbound struct {
 	current atomic.Pointer[nodeRuntime]
 }
 
-func newProxyOutbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, node domain.Node) (adapter.Outbound, error) {
+func newProxy(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, node domain.Node) (adapter.Outbound, error) {
 	selector, err := group.NewSelector(ctx, router, logger, tag, option.SelectorOutboundOptions{Outbounds: []string{"proxy-node"}})
 	if err != nil {
 		return nil, err
@@ -103,7 +103,7 @@ func (proxy *proxyOutbound) Dependencies() []string { return nil }
 
 func (proxy *proxyOutbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage == adapter.StartStateInitialize {
-		runtime, err := newNodeRuntime(scope.Context(), proxy.router, proxy.logger, "proxy-node", proxy.node)
+		runtime, err := newRuntime(scope.Context(), proxy.router, proxy.logger, "proxy-node", proxy.node)
 		if err != nil {
 			return err
 		}

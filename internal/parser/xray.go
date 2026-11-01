@@ -94,7 +94,7 @@ type xrayTCPTransport struct {
 	} `json:"header"`
 }
 
-func (result *parseResult) readXray(outbound xrayOutbound, remarks string, count int) {
+func (result *parseResult) xray(outbound xrayOutbound, remarks string, count int) {
 	name := cmp.Or(remarks, outbound.Tag)
 	if count > 1 && remarks != "" && outbound.Tag != "" && !strings.EqualFold(outbound.Tag, "proxy") {
 		name += " (" + outbound.Tag + ")"
@@ -125,7 +125,7 @@ func (result *parseResult) readXray(outbound xrayOutbound, remarks string, count
 		case "shadowsocks", "ss":
 			node.Protocol, node.Auth = domain.SS, domain.Auth{Password: server.Password, Method: server.Method}
 		}
-		result.add(xrayNode(node, outbound.StreamSettings))
+		result.add(xray(node, outbound.StreamSettings))
 	}
 	for _, next := range outbound.Settings.Vnext {
 		if len(next.Users) == 0 {
@@ -142,12 +142,12 @@ func (result *parseResult) readXray(outbound xrayOutbound, remarks string, count
 			case "trojan":
 				node.Protocol, node.Auth = domain.Trojan, domain.Auth{Password: cmp.Or(user.Password, user.ID)}
 			}
-			result.add(xrayNode(node, outbound.StreamSettings))
+			result.add(xray(node, outbound.StreamSettings))
 		}
 	}
 }
 
-func xrayNode(node domain.Node, stream xrayStreamSettings) (domain.Node, error) {
+func xray(node domain.Node, stream xrayStreamSettings) (domain.Node, error) {
 	var err error
 	node.Transport, err = xrayTransport(stream)
 	if err != nil {
@@ -160,7 +160,7 @@ func xrayNode(node domain.Node, stream xrayStreamSettings) (domain.Node, error) 
 			node.Reality = &domain.Reality{PublicKey: stream.RealitySettings.PublicKey, ShortID: stream.RealitySettings.ShortID}
 		}
 	case "tls":
-		fingerprint, insecure := cleanFingerprint(stream.TLSSettings.Fingerprint, stream.TLSSettings.AllowInsecure)
+		fingerprint, insecure := fingerprint(stream.TLSSettings.Fingerprint, stream.TLSSettings.AllowInsecure)
 		node.TLS = &domain.TLS{SNI: stream.TLSSettings.ServerName, Insecure: insecure, ALPN: stream.TLSSettings.ALPN, Fingerprint: fingerprint}
 	case "", "none":
 	default:
@@ -182,7 +182,7 @@ func xrayTransport(s xrayStreamSettings) (domain.Transport, error) {
 	case "ws":
 		return domain.Transport{Network: network, Path: s.WSSettings.Path, Host: cmp.Or(s.WSSettings.Host, s.WSSettings.Headers["Host"])}, nil
 	case "httpupgrade":
-		transport := domain.Transport{Network: network, Path: xrayHTTPUpgradePath(s.HTTPUpgradeSettings.Path), Host: s.HTTPUpgradeSettings.Host}
+		transport := domain.Transport{Network: network, Path: upgradePath(s.HTTPUpgradeSettings.Path), Host: s.HTTPUpgradeSettings.Host}
 		headers := maps.Clone(s.HTTPUpgradeSettings.Headers)
 		for name, value := range headers {
 			if strings.EqualFold(name, "Host") {

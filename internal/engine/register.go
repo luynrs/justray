@@ -25,7 +25,7 @@ var ( // read-only
 	inboundReg  = inboundRegistry()
 	outboundReg = outboundRegistry()
 	endpointReg = endpointRegistry()
-	dnsReg      = dnsTransportRegistry()
+	dnsReg      = dnsRegistry()
 	serviceReg  = boxservice.NewRegistry()
 	certReg     = boxcertificate.NewRegistry()
 )
@@ -37,18 +37,18 @@ func withRegistry(ctx context.Context) context.Context {
 func inboundRegistry() *inbound.Registry {
 	registry := inbound.NewRegistry()
 	mixed.RegisterInbound(registry)
-	inbound.Register[option.TunInboundOptions](registry, C.TypeTun, newManagedTun)
+	inbound.Register[option.TunInboundOptions](registry, C.TypeTun, newTun)
 	return registry
 }
 
 func outboundRegistry() *outbound.Registry {
 	registry := nodeoutbound.Registry()
-	outbound.Register[domain.Node](registry, "justray-node", newProxyOutbound)
+	outbound.Register[domain.Node](registry, "justray-node", newProxy)
 	return registry
 }
 
 func endpointRegistry() *endpoint.Registry { return nodeoutbound.EndpointRegistry() }
-func dnsTransportRegistry() *dns.TransportRegistry {
+func dnsRegistry() *dns.TransportRegistry {
 	registry := dns.NewTransportRegistry()
 	transport.RegisterUDP(registry)
 	transport.RegisterTCP(registry)

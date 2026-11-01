@@ -28,7 +28,7 @@ func fields(pairs ...[2]string) {
 	out(strings.Join(lines, "\n"))
 }
 
-func stateHeadline(st ipc.Status) {
+func headline(st ipc.Status) {
 	if st.Connected {
 		text := "Connected via " + strings.ToUpper(modeWord(st.Tun))
 		if uptime := st.Uptime(); uptime > 0 {
@@ -40,13 +40,13 @@ func stateHeadline(st ipc.Status) {
 	out(style.Gray.Render(style.Sep()) + " Disconnected")
 }
 
-func (a *app) nodeDetails(st ipc.Status, nodes []ipc.Node) {
+func (a *app) details(st ipc.Status, nodes []ipc.Node) {
 	n := lookup(st.NodeRef, nodes)
-	pairs := [][2]string{{"Node", a.nodeName(st.NodeName, st.NodeRef.NodeID)}}
+	pairs := [][2]string{{"Node", a.name(st.NodeName, st.NodeRef.NodeID)}}
 	if !st.Tun && st.Port > 0 {
 		pairs = append(pairs, [2]string{"Proxy", domain.ServerAddress("127.0.0.1", st.Port)})
 	}
-	fields(append(pairs, a.nodeFields(n)...)...)
+	fields(append(pairs, a.fields(n)...)...)
 }
 
 func lookup(ref domain.NodeRef, nodes []ipc.Node) ipc.Node {
@@ -58,7 +58,7 @@ func lookup(ref domain.NodeRef, nodes []ipc.Node) ipc.Node {
 	return ipc.Node{}
 }
 
-func (a *app) nodeFields(n ipc.Node) [][2]string {
+func (a *app) fields(n ipc.Node) [][2]string {
 	if n.Server == "" {
 		return nil
 	}
@@ -68,14 +68,14 @@ func (a *app) nodeFields(n ipc.Node) [][2]string {
 	}
 }
 
-func (a *app) nodeName(name, id string) string {
+func (a *app) name(name, id string) string {
 	if id == "" {
 		return a.clean(name)
 	}
-	return a.clean(name) + " " + style.Gray.Render("("+displayID(id)+")")
+	return a.clean(name) + " " + style.Gray.Render("("+shortID(id)+")")
 }
 
-func displayID(id string) string { return id[:min(8, len(id))] }
+func shortID(id string) string { return id[:min(8, len(id))] }
 
 func modeWord(tun bool) string {
 	if tun {
@@ -92,7 +92,7 @@ func (application *app) fail(err error) {
 
 func (a *app) clean(s string) string { return style.Sanitize(s, a.emoji) }
 
-func (application *app) syncStyle(settings domain.Settings) {
+func (application *app) style(settings domain.Settings) {
 	application.emoji = settings.Emoji == "on"
 	style.TTY = style.DetectTTY(settings.ForceTTY)
 }

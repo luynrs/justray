@@ -28,14 +28,14 @@ func Restart(_ string, _ *os.File) error {
 	if err != nil {
 		return err
 	}
-	command := "HOME=" + shellQuote(home) + " JUSTRAY_UID=" + strconv.Itoa(os.Getuid()) + " JUSTRAY_GID=" + strconv.Itoa(os.Getgid()) + " " + shellQuote(helper)
+	command := "HOME=" + quote(home) + " JUSTRAY_UID=" + strconv.Itoa(os.Getuid()) + " JUSTRAY_GID=" + strconv.Itoa(os.Getgid()) + " " + quote(helper)
 	for _, arg := range os.Args[1:] {
-		command += " " + shellQuote(arg)
+		command += " " + quote(arg)
 	}
 	command += " </dev/null >/dev/null 2>&1 &"
 	if !sameHelper(self) {
 		command = "/usr/bin/install -d -o root -g wheel -m 0755 /Library/PrivilegedHelperTools && " +
-			"/usr/bin/install -o root -g wheel -m 0755 " + shellQuote(self) + " " + helper +
+			"/usr/bin/install -o root -g wheel -m 0755 " + quote(self) + " " + helper +
 			" && { " + command + " }"
 	}
 	script := `do shell script "` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(command) + `" with administrator privileges`
@@ -55,8 +55,8 @@ func Restart(_ string, _ *os.File) error {
 func TakeReservation(string) (*os.File, error) { return nil, nil }
 
 func sameHelper(source string) bool {
-	sourceSum, sourceErr := hashFile(source)
-	helperSum, helperErr := hashFile(helper)
+	sourceSum, sourceErr := hash(source)
+	helperSum, helperErr := hash(helper)
 	info, err := os.Stat(helper)
 	if sourceErr != nil || helperErr != nil || err != nil {
 		return false
@@ -65,4 +65,4 @@ func sameHelper(source string) bool {
 	return ok && stat.Uid == 0 && info.Mode().Perm()&0o111 != 0 && info.Mode().Perm()&0o022 == 0 && sourceSum == helperSum
 }
 
-func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
+func quote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }

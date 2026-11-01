@@ -29,9 +29,9 @@ var subAddCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 }
 
-func (a *app) subAdd(cmd *cobra.Command, args []string) error {
+func (a *app) add(cmd *cobra.Command, args []string) error {
 	if snapshot, err := a.client.Snapshot(cmd.Context()); err == nil {
-		a.syncStyle(snapshot.Settings)
+		a.style(snapshot.Settings)
 	}
 	stop := spin("Fetching subscription")
 	sub, err := a.client.AddSubscription(cmd.Context(), args[0])
@@ -58,12 +58,12 @@ var subRemoveCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 }
 
-func (a *app) subRemove(cmd *cobra.Command, args []string) error {
+func (a *app) remove(cmd *cobra.Command, args []string) error {
 	snapshot, err := a.client.Snapshot(cmd.Context())
 	if err != nil {
 		return err
 	}
-	a.syncStyle(snapshot.Settings)
+	a.style(snapshot.Settings)
 	sub, subErr := match(args[0], "subscription", snapshot.Subscriptions, func(s ipc.Subscription) (string, string) { return s.SubscriptionID, s.Name })
 	if subErr == nil {
 		name := a.clean(sub.Name)
@@ -108,12 +108,12 @@ var subRefreshCmd = &cobra.Command{
 	Args:  cobra.MaximumNArgs(1),
 }
 
-func (a *app) subRefresh(cmd *cobra.Command, args []string) error {
+func (a *app) refresh(cmd *cobra.Command, args []string) error {
 	snapshot, err := a.client.Snapshot(cmd.Context())
 	if err != nil {
 		return err
 	}
-	a.syncStyle(snapshot.Settings)
+	a.style(snapshot.Settings)
 	if len(args) == 0 && len(snapshot.Subscriptions) == 0 {
 		out(style.Gray.Render("No subscriptions yet. Add one: " + cmd.Parent().CommandPath() + " add <url>"))
 		return nil
@@ -167,12 +167,12 @@ var subListCmd = &cobra.Command{
 	Args:  cobra.NoArgs,
 }
 
-func (a *app) subList(cmd *cobra.Command, args []string) error {
+func (a *app) list(cmd *cobra.Command, args []string) error {
 	snapshot, err := a.client.Snapshot(cmd.Context())
 	if err != nil {
 		return err
 	}
-	a.syncStyle(snapshot.Settings)
+	a.style(snapshot.Settings)
 	subs := snapshot.Subscriptions
 	if jsonOut, _ := cmd.Flags().GetBool("json"); jsonOut {
 		type nodeOut struct {
@@ -216,7 +216,7 @@ func (a *app) subList(cmd *cobra.Command, args []string) error {
 		out(style.Gray.Render("No subscriptions yet. Add one: " + cmd.Parent().CommandPath() + " add <url>"))
 		return nil
 	}
-	a.showTree(subs, snapshot.Nodes)
+	a.tree(subs, snapshot.Nodes)
 	return nil
 }
 
@@ -225,7 +225,7 @@ func init() {
 	subListCmd.Flags().Bool("json", false, "Output subscriptions as JSON")
 }
 
-func (a *app) showTree(subs []ipc.Subscription, nodes []ipc.Node) {
+func (a *app) tree(subs []ipc.Subscription, nodes []ipc.Node) {
 	groups := (tree.Data{Subs: subs, Nodes: nodes}).Groups()
 	for i, g := range groups {
 		if i > 0 {
@@ -243,20 +243,20 @@ func (a *app) showTree(subs []ipc.Subscription, nodes []ipc.Node) {
 
 		nameW, infoW := 0, 0
 		for _, n := range g.Nodes {
-			nameW = max(nameW, lipgloss.Width(a.nodeName(n.Name, "")))
-			infoW = max(infoW, lipgloss.Width(a.serverProto(*n)))
+			nameW = max(nameW, lipgloss.Width(a.name(n.Name, "")))
+			infoW = max(infoW, lipgloss.Width(a.info(*n)))
 		}
 		for j, n := range g.Nodes {
 			branch := style.Branch(j == len(g.Nodes)-1)
-			out(a.nodeLine(*n, branch, nameW, infoW))
+			out(a.line(*n, branch, nameW, infoW))
 		}
 	}
 }
 
-func (a *app) nodeLine(n ipc.Node, branch string, nameW, infoW int) string {
-	name := style.Pad(a.nodeName(n.Name, ""), nameW)
-	info := style.Gray.Render(style.Pad(a.serverProto(n), infoW))
-	id := style.Gray.Render(style.Pad(displayID(n.NodeID), 8))
+func (a *app) line(n ipc.Node, branch string, nameW, infoW int) string {
+	name := style.Pad(a.name(n.Name, ""), nameW)
+	info := style.Gray.Render(style.Pad(a.info(n), infoW))
+	id := style.Gray.Render(style.Pad(shortID(n.NodeID), 8))
 	prefix := "  "
 	if branch != "" {
 		prefix = style.Gray.Render(branch) + " "
@@ -272,6 +272,6 @@ func (a *app) nodeLine(n ipc.Node, branch string, nameW, infoW int) string {
 	return line
 }
 
-func (a *app) serverProto(n ipc.Node) string {
+func (a *app) info(n ipc.Node) string {
 	return fmt.Sprintf("%s %s %s", domain.ServerAddress(a.clean(n.Server), n.Port), style.Sep(), n.Protocol)
 }

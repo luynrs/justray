@@ -22,7 +22,7 @@ type parseResult struct {
 
 func (result *parseResult) add(node domain.Node, err error) {
 	if err == nil {
-		err = validateNode(node)
+		err = validate(node)
 	}
 	if err == nil {
 		result.nodes = append(result.nodes, node)
@@ -62,14 +62,14 @@ func (result *parseResult) finish() ([]domain.Node, string, error) {
 func ParseSubscription(raw []byte) ([]domain.Node, string, error) {
 	body := bytes.TrimSpace(bytes.TrimPrefix(bytes.TrimSpace(raw), []byte("\xef\xbb\xbf")))
 	if !bytes.ContainsAny(body, ":{}[]") {
-		if decoded, err := decodeBase64(string(body)); err == nil {
+		if decoded, err := decode(string(body)); err == nil {
 			body = bytes.TrimSpace(bytes.TrimPrefix(bytes.TrimSpace(decoded), []byte("\xef\xbb\xbf")))
 		}
 	}
 	var result parseResult
 	jsonLike := len(body) > 0 && (body[0] == '{' || body[0] == '[')
 	if jsonLike && json.Valid(body) {
-		if err := result.readJSON(body); err != nil {
+		if err := result.json(body); err != nil {
 			return nil, "", err
 		}
 		return result.finish()
@@ -78,7 +78,7 @@ func ParseSubscription(raw []byte) ([]domain.Node, string, error) {
 		Proxies []yaml.Node `yaml:"proxies"`
 	}
 	if err := yaml.Unmarshal(body, &document); err == nil && document.Proxies != nil {
-		result.readClash(document.Proxies)
+		result.clash(document.Proxies)
 		return result.finish()
 	} else if err != nil {
 		for line := range strings.Lines(string(body)) {
@@ -102,12 +102,12 @@ func ParseSubscription(raw []byte) ([]domain.Node, string, error) {
 			}
 			continue
 		}
-		result.add(parseURI(line))
+		result.add(parse(line))
 	}
 	return result.finish()
 }
 
-func (result *parseResult) readJSON(body []byte) error {
+func (result *parseResult) json(body []byte) error {
 	documents := []json.RawMessage{body}
 	if body[0] == '[' {
 		if err := json.Unmarshal(body, &documents); err != nil {
@@ -129,7 +129,7 @@ func (result *parseResult) readJSON(body []byte) error {
 			pending = append(pending, raw)
 			continue
 		}
-		if err := result.readJSONOutbounds(pending, nil); err != nil {
+		if err := result.outbounds(pending, nil); err != nil {
 			return err
 		}
 		pending = nil
@@ -144,7 +144,7 @@ func (result *parseResult) readJSON(body []byte) error {
 			}
 			entries = append(entries, outbounds...)
 		}
-		if err := result.readJSONOutbounds(entries, document.Remarks); err != nil {
+		if err := result.outbounds(entries, document.Remarks); err != nil {
 			return err
 		}
 		if document.Proxies != nil {
@@ -152,13 +152,13 @@ func (result *parseResult) readJSON(body []byte) error {
 			if yaml.Unmarshal(document.Proxies, &proxies) != nil {
 				return errors.New("clash: invalid proxy list")
 			}
-			result.readClash(proxies)
+			result.clash(proxies)
 		}
 	}
-	return result.readJSONOutbounds(pending, nil)
+	return result.outbounds(pending, nil)
 }
 
-func (result *parseResult) readJSONOutbounds(entries []json.RawMessage, remarks json.RawMessage) error {
+func (result *parseResult) outbounds(entries []json.RawMessage, remarks json.RawMessage) error {
 	type record struct {
 		singbox *singboxOutbound
 		xray    *xrayOutbound
@@ -230,9 +230,9 @@ func (result *parseResult) readJSONOutbounds(entries []json.RawMessage, remarks 
 			if strings.EqualFold(outbound.Type, "shadowtls") && detoured[outbound.Tag] {
 				continue
 			}
-			result.add(singboxNode(outbound, shadowTLS))
+			result.add(singbox(outbound, shadowTLS))
 		} else {
-			result.readXray(*entry.xray, name, xrayCount)
+			result.xray(*entry.xray, name, xrayCount)
 		}
 	}
 	return nil

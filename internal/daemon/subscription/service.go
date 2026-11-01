@@ -16,7 +16,7 @@ type Service struct {
 }
 
 func New(ctx context.Context) *Service {
-	device, err := deviceHeaders(ctx)
+	device, err := headers(ctx)
 	if err != nil {
 		log.Warn("cannot read device headers: ", err)
 	}

@@ -17,13 +17,13 @@ import (
 	"github.com/luynrs/justray/internal/domain"
 )
 
-func parseAmnezia(uri string) (domain.Node, error) {
+func amnezia(uri string) (domain.Node, error) {
 	const maxConfigSize = 1 << 20
 	_, encoded, _ := strings.Cut(uri, "://")
 	if len(encoded) > 2*maxConfigSize {
 		return domain.Node{}, errors.New("amnezia: encoded configuration exceeds size limit")
 	}
-	payload, err := decodeBase64(encoded)
+	payload, err := decode(encoded)
 	if err != nil {
 		return domain.Node{}, errors.New("amnezia: invalid base64 payload")
 	}
@@ -118,11 +118,11 @@ func parseAmnezia(uri string) (domain.Node, error) {
 		return domain.Node{}, errors.New("amnezia: invalid last_config JSON")
 	}
 	for name := range fields {
-		if amneziaFieldName(name) == "" && !slices.Contains([]string{"j1", "j2", "j3", "itime"}, strings.ToLower(name)) {
+		if amneziaField(name) == "" && !slices.Contains([]string{"j1", "j2", "j3", "itime"}, strings.ToLower(name)) {
 			delete(fields, name)
 		}
 	}
-	amnezia, err := parseAmneziaWG(fields)
+	amnezia, err := amneziaWG(fields)
 	if err != nil {
 		return domain.Node{}, err
 	}
@@ -139,7 +139,7 @@ func parseAmnezia(uri string) (domain.Node, error) {
 			PrivateKey:       client.PrivateKey,
 			PeerPublicKey:    client.PublicKey,
 			PreSharedKey:     client.PreSharedKey,
-			Address:          parseAddresses(client.Address, ""),
+			Address:          addresses(client.Address, ""),
 			MTU:              uint32(mtu),
 		},
 	}
@@ -167,12 +167,12 @@ var amneziaFields = map[string]string{
 	"randomtrailers":       "random_trailers", "disablecookies": "disable_cookies",
 }
 
-func amneziaFieldName(name string) string {
+func amneziaField(name string) string {
 	name = strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(name, "_", ""), "-", ""))
 	return amneziaFields[strings.TrimPrefix(name, "awg")]
 }
 
-func parseAmneziaWG(values map[string]any) (option.AmneziaWGOptions, error) {
+func amneziaWG(values map[string]any) (option.AmneziaWGOptions, error) {
 	fields := make(map[string]any, len(values))
 	for name, value := range values {
 		if name == "version" {
@@ -184,7 +184,7 @@ func parseAmneziaWG(values map[string]any) (option.AmneziaWGOptions, error) {
 		if value == nil || value == "" {
 			continue
 		}
-		field := amneziaFieldName(name)
+		field := amneziaField(name)
 		if field == "" {
 			return option.AmneziaWGOptions{}, fmt.Errorf("amneziawg: unsupported parameter: %s", name)
 		}

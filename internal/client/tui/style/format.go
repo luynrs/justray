@@ -94,7 +94,7 @@ func Bytes(b int64) string {
 	return fmt.Sprintf("%.1f%ciB", float64(b)/float64(div), "KMGTPE"[exp])
 }
 
-func shortDuration(duration time.Duration) string {
+func duration(duration time.Duration) string {
 	switch {
 	case duration < time.Hour:
 		return fmt.Sprintf("%dm", int(duration.Minutes()))
@@ -104,7 +104,7 @@ func shortDuration(duration time.Duration) string {
 	return fmt.Sprintf("%dd", int(duration.Hours()/24))
 }
 
-func Since(timestamp time.Time) string { return shortDuration(max(0, time.Since(timestamp))) + " ago" }
+func Since(timestamp time.Time) string { return duration(max(0, time.Since(timestamp))) + " ago" }
 
 func Uptime(d time.Duration) string {
 	d = max(0, d.Round(time.Second))
@@ -131,7 +131,7 @@ func Expiry(t time.Time) string {
 	if d > math.MaxInt64/2 {
 		return t.Format("2006-01-02")
 	}
-	return shortDuration(d) + " left"
+	return duration(d) + " left"
 }
 
 func Usage(t domain.Traffic) string {

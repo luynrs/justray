@@ -23,7 +23,7 @@ type refreshCall struct {
 }
 
 func (c *Core) RefreshSubscriptions(ctx context.Context, ids ...string) error {
-	ctx, cancel := c.requestContext(ctx)
+	ctx, cancel := c.context(ctx)
 	defer cancel()
 	if err := c.ctx.Err(); err != nil {
 		return err
@@ -116,7 +116,7 @@ func (c *Core) refresh(ctx context.Context, sub store.Subscription) error {
 			call = &refreshCall{ctx: jobCtx, cancel: cancel, done: make(chan struct{})}
 			c.refreshes[sub.ID] = call
 			c.publishLocked()
-			go c.refreshSubscription(call, sub)
+			go c.runRefresh(call, sub)
 		}
 		call.waiters++
 		c.stMu.Unlock()
@@ -138,7 +138,7 @@ func (c *Core) refresh(ctx context.Context, sub store.Subscription) error {
 	}
 }
 
-func (c *Core) refreshSubscription(call *refreshCall, sub store.Subscription) {
+func (c *Core) runRefresh(call *refreshCall, sub store.Subscription) {
 	var err error
 	defer func() {
 		if err != nil && call.ctx.Err() != nil {
@@ -159,7 +159,7 @@ func (c *Core) refreshSubscription(call *refreshCall, sub store.Subscription) {
 	if err != nil {
 		return
 	}
-	change, err := c.startChange(call.ctx, true, func(ctx context.Context) error {
+	change, err := c.begin(call.ctx, true, func(ctx context.Context) error {
 		next := c.current()
 		index := slices.IndexFunc(next.Subscriptions, func(current store.Subscription) bool { return current.ID == sub.ID })
 		if index < 0 {

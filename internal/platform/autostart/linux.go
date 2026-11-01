@@ -26,7 +26,7 @@ RestartSec=3
 WantedBy=default.target
 `
 
-func unitPath() (string, error) {
+func path() (string, error) {
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		return "", err
@@ -36,7 +36,7 @@ func unitPath() (string, error) {
 
 // Enabled counts foreign units as enabled too
 func enabled(ctx context.Context) (bool, error) {
-	path, err := unitPath()
+	path, err := path()
 	if err != nil {
 		return false, err
 	}
@@ -67,7 +67,7 @@ func symlinked(path string) bool {
 }
 
 func enable(ctx context.Context) error {
-	path, err := unitPath()
+	path, err := path()
 	if err != nil {
 		return err
 	}
@@ -98,7 +98,7 @@ func enable(ctx context.Context) error {
 }
 
 func disable(ctx context.Context) error {
-	path, err := unitPath()
+	path, err := path()
 	if err != nil {
 		return err
 	}

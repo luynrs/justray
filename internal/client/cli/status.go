@@ -23,7 +23,7 @@ func (a *app) status(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	a.syncStyle(snapshot.Settings)
+	a.style(snapshot.Settings)
 	st := snapshot.Status
 
 	if jsonOut, _ := cmd.Flags().GetBool("json"); jsonOut {
@@ -65,17 +65,17 @@ func (a *app) status(cmd *cobra.Command, args []string) error {
 	if st.Error != "" {
 		return errors.New(st.Error)
 	}
-	stateHeadline(st)
+	headline(st)
 
 	if st.Connected {
-		a.nodeDetails(st, snapshot.Nodes)
+		a.details(st, snapshot.Nodes)
 		return nil
 	}
 
 	if ref := snapshot.Selected; ref.NodeID != "" {
 		if node := lookup(ref, snapshot.Nodes); node.NodeID != "" {
-			details := [][2]string{{"Last node", a.nodeName(node.Name, node.NodeID)}}
-			fields(append(details, a.nodeFields(node)...)...)
+			details := [][2]string{{"Last node", a.name(node.Name, node.NodeID)}}
+			fields(append(details, a.fields(node)...)...)
 		}
 	}
 	return nil

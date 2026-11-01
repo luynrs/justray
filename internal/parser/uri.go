@@ -11,7 +11,7 @@ import (
 	"github.com/luynrs/justray/internal/domain"
 )
 
-func parseURL(uri string, protocol domain.Proto) (domain.Node, error) {
+func link(uri string, protocol domain.Proto) (domain.Node, error) {
 	parsedURL, err := url.Parse(uri)
 	if err != nil {
 		return domain.Node{}, fmt.Errorf("%s: %w", protocol, err)
@@ -27,7 +27,7 @@ func parseURL(uri string, protocol domain.Proto) (domain.Node, error) {
 			port, err = strconv.Atoi(value)
 		}
 	} else {
-		host, port, err = parseHostPort(parsedURL.Host)
+		host, port, err = hostPort(parsedURL.Host)
 	}
 	if err != nil {
 		return domain.Node{}, fmt.Errorf("%s: invalid host or port", protocol)
@@ -44,7 +44,7 @@ func parseURL(uri string, protocol domain.Proto) (domain.Node, error) {
 		// vless://uuid@host:port?...#remark
 		node.Auth.UUID = parsedURL.User.Username()
 		node.Auth.Flow = query.Get("flow")
-		node.Transport = parseTransport(query)
+		node.Transport = transport(query)
 		node.PacketEncoding = cmp.Or(query.Get("packetEncoding"), query.Get("packet_encoding"), query.Get("packet-encoding"))
 		publicKey := cmp.Or(query.Get("pbk"), query.Get("publicKey"), query.Get("public_key"), query.Get("pubkey"))
 		security := strings.ToLower(query.Get("security"))
@@ -58,22 +58,22 @@ func parseURL(uri string, protocol domain.Proto) (domain.Node, error) {
 			node.Reality = &domain.Reality{PublicKey: publicKey, ShortID: cmp.Or(query.Get("sid"), query.Get("shortId"), query.Get("short_id"))}
 			fallthrough
 		case "tls", "xtls":
-			node.TLS = parseTLS(query, host)
+			node.TLS = tls(query, host)
 		case "", "none":
 		default:
 			return domain.Node{}, fmt.Errorf("%s: unsupported security", protocol)
 		}
 	case domain.Trojan, domain.AnyTLS:
-		node.Auth.Password = cmp.Or(userPassword(parsedURL), query.Get("password"), query.Get("auth"))
+		node.Auth.Password = cmp.Or(password(parsedURL), query.Get("password"), query.Get("auth"))
 		if protocol == domain.Trojan {
-			node.Transport = parseTransport(query)
+			node.Transport = transport(query)
 		}
 		if protocol == domain.AnyTLS || !strings.EqualFold(query.Get("security"), "none") {
-			node.TLS = parseTLS(query, host)
+			node.TLS = tls(query, host)
 		}
 	case domain.HY1:
-		node.Auth.Password = cmp.Or(userPassword(parsedURL), query.Get("auth"), query.Get("auth_str"), query.Get("password"))
-		node.TLS = parseTLS(query, host)
+		node.Auth.Password = cmp.Or(password(parsedURL), query.Get("auth"), query.Get("auth_str"), query.Get("password"))
+		node.TLS = tls(query, host)
 		node.ObfsPassword = cmp.Or(query.Get("obfsParam"), query.Get("obfs_param"), query.Get("obfs-param"))
 		if node.ObfsPassword == "" && query.Get("obfs") != "xplus" {
 			node.ObfsPassword = query.Get("obfs")
@@ -93,7 +93,7 @@ func parseURL(uri string, protocol domain.Proto) (domain.Node, error) {
 	case domain.HY2:
 		auth, _ := url.PathUnescape(strings.TrimPrefix(parsedURL.User.String(), ":"))
 		node.Auth.Password = cmp.Or(auth, query.Get("auth"), query.Get("password"))
-		node.TLS = parseTLS(query, host)
+		node.TLS = tls(query, host)
 		node.ObfsPassword = cmp.Or(query.Get("obfs-password"), query.Get("obfs_password"), query.Get("obfs-param"), query.Get("obfsparam"))
 		node.Obfs = query.Get("obfs")
 		if node.Obfs == "" && node.ObfsPassword != "" {
@@ -103,17 +103,17 @@ func parseURL(uri string, protocol domain.Proto) (domain.Node, error) {
 		node.Auth.Username = parsedURL.User.Username()
 		node.Auth.Password, _ = parsedURL.User.Password()
 		if protocol == domain.SOCKS && node.Auth.Password == "" && node.Auth.Username != "" {
-			node.Auth.Username, node.Auth.Password = parseCredentials(node.Auth.Username)
+			node.Auth.Username, node.Auth.Password = credentials(node.Auth.Username)
 		}
 		if protocol == domain.HTTP && (strings.EqualFold(parsedURL.Scheme, "https") || truthy(query.Get("tls")) || query.Get("security") == "tls") {
-			node.TLS = parseTLS(query, host)
+			node.TLS = tls(query, host)
 		}
 	case domain.TUIC:
 		// TUIC v5
 		node.Auth.UUID = parsedURL.User.Username()
 		password, _ := parsedURL.User.Password()
 		node.Auth.Password = cmp.Or(password, query.Get("password"))
-		node.TLS = parseTLS(query, host)
+		node.TLS = tls(query, host)
 		if len(node.TLS.ALPN) == 0 {
 			node.TLS.ALPN = []string{"h3"}
 		}
@@ -128,10 +128,10 @@ func parseURL(uri string, protocol domain.Proto) (domain.Node, error) {
 				return domain.Node{}, errors.New("shadowtls: invalid version")
 			}
 		}
-		node.TLS = parseTLS(query, cmp.Or(query.Get("host"), host))
+		node.TLS = tls(query, cmp.Or(query.Get("host"), host))
 		node.ShadowTLS = &domain.ShadowTLS{
 			Version:  cmp.Or(version, 3),
-			Password: cmp.Or(userPassword(parsedURL), query.Get("password"), query.Get("auth")),
+			Password: cmp.Or(password(parsedURL), query.Get("password"), query.Get("auth")),
 			SNI:      node.TLS.SNI,
 		}
 	}

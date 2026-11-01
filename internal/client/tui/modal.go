@@ -28,7 +28,7 @@ type modalLayout struct {
 	body   image.Rectangle
 }
 
-func (m Model) modalLayout() modalLayout {
+func (m Model) layout() modalLayout {
 	width, height := min(max(m.w-4, 1), 60), min(max(m.h, 1), 9)
 	if m.w < 28 {
 		width = max(m.w, 1)
@@ -48,7 +48,7 @@ func (m Model) modalLayout() modalLayout {
 }
 
 func (m *Model) resizeModal() {
-	layout := m.modalLayout()
+	layout := m.layout()
 	m.editor.SetWidth(layout.body.Dx())
 	m.editor.SetHeight(layout.body.Dy())
 	m.help.SetWidth(layout.body.Dx())
@@ -113,7 +113,7 @@ func (m Model) updateModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.MouseMsg:
 		m.navigation.Reset()
-		layout := m.modalLayout()
+		layout := m.layout()
 		mouse := msg.Mouse()
 		if m.activeModal != modalHelp || !image.Pt(mouse.X, mouse.Y).In(layout.body) {
 			return m, nil
@@ -129,8 +129,8 @@ func (m Model) updateModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m Model) modalView(background string) string {
-	layout := m.modalLayout()
+func (m Model) modal(background string) string {
+	layout := m.layout()
 	var title, content string
 	switch m.activeModal {
 	case modalAdd:

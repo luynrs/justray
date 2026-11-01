@@ -48,7 +48,7 @@ func TestDNSResolution(t *testing.T) {
 			configure(options)
 		}
 		ctx := withRegistry(t.Context())
-		box, err := startBox(ctx, *options)
+		box, err := start(ctx, *options)
 		if err != nil {
 			t.Fatal(err)
 		}

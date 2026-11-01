@@ -26,7 +26,7 @@ type managedTun struct {
 	current *tunRuntime
 }
 
-func newManagedTun(_ context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.TunInboundOptions) (adapter.Inbound, error) {
+func newTun(_ context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.TunInboundOptions) (adapter.Inbound, error) {
 	return &managedTun{router: router, logger: logger, tag: tag, options: options}, nil
 }
 

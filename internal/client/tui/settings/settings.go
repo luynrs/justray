@@ -203,7 +203,7 @@ func (s *Model) Update(msg tea.Msg) (closed bool, cmd tea.Cmd) {
 
 func (s *Model) key(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	if s.input.Focused() {
-		return false, s.editKey(msg)
+		return false, s.edit(msg)
 	}
 	if motion, handled := s.navigation.Read(msg.String()); handled {
 		s.navigate(motion)
@@ -330,7 +330,7 @@ func (s *Model) activate() tea.Cmd {
 	return s.input.Focus()
 }
 
-func (s *Model) editKey(msg tea.KeyPressMsg) tea.Cmd {
+func (s *Model) edit(msg tea.KeyPressMsg) tea.Cmd {
 	switch msg.String() {
 	case "esc":
 		s.err = ""
@@ -390,13 +390,13 @@ func (s *Model) rows() []field {
 	}
 	out := slices.Clone(t.fields)
 	for i := range t.lists {
-		out = append(out, s.listRows(&t.lists[i])...)
+		out = append(out, s.list(&t.lists[i])...)
 	}
 	return out
 }
 
-// listRows is a heading, its entries and an add row
-func (s *Model) listRows(l *list) []field {
+// list is a heading, its entries and an add row
+func (s *Model) list(l *list) []field {
 	entries := *l.at(&s.cur)
 	out := make([]field, 0, len(entries)+2)
 	out = append(out, field{name: l.title, hint: fmt.Sprintf("(%d)", len(entries))})

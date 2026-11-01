@@ -33,14 +33,14 @@ type vmessLink struct {
 }
 
 // vmess://<base64 json>
-func parseVMess(uri string) (domain.Node, error) {
+func vmess(uri string) (domain.Node, error) {
 	_, payload, _ := strings.Cut(uri, "://")
 	payload, frag, _ := strings.Cut(payload, "#")
 	if u, err := url.PathUnescape(frag); err == nil {
 		frag = u
 	}
 
-	data, err := decodeBase64(payload)
+	data, err := decode(payload)
 	if err != nil {
 		return domain.Node{}, errors.New("invalid VMess base64")
 	}
@@ -74,7 +74,7 @@ func parseVMess(uri string) (domain.Node, error) {
 		n.Transport.ServiceName = vm.Path // grpc exports reuse "path" as name
 	}
 	if net == "httpupgrade" {
-		n.Transport.Path = xrayHTTPUpgradePath(n.Transport.Path)
+		n.Transport.Path = upgradePath(n.Transport.Path)
 	}
 	if net == "xhttp" || net == "splithttp" {
 		n.Transport.Network, n.Transport.Host, n.Transport.Mode = "xhttp", host0, vm.Mode
@@ -89,10 +89,10 @@ func parseVMess(uri string) (domain.Node, error) {
 	}
 	tlsStr := strings.ToLower(string(vm.TLS))
 	if tlsStr == "tls" || tlsStr == "reality" || tlsStr == "xtls" || truthy(tlsStr) {
-		fp, insecure := cleanFingerprint(vm.FP, truthy(string(vm.Insecure)) || truthy(string(vm.AllowInsecure)))
+		fp, insecure := fingerprint(vm.FP, truthy(string(vm.Insecure)) || truthy(string(vm.AllowInsecure)))
 		n.TLS = &domain.TLS{
 			SNI:         cmp.Or(vm.SNI, host0, vm.Add),
-			ALPN:        splitComma(string(vm.ALPN)),
+			ALPN:        split(string(vm.ALPN)),
 			Fingerprint: fp,
 			Insecure:    insecure,
 		}

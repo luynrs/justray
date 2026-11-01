@@ -14,7 +14,7 @@ import (
 	"github.com/luynrs/justray/internal/domain"
 )
 
-func decodeBase64(encoded string) ([]byte, error) {
+func decode(encoded string) ([]byte, error) {
 	if strings.Contains(encoded, "%") {
 		if unescaped, err := url.PathUnescape(encoded); err == nil {
 			encoded = unescaped
@@ -28,7 +28,7 @@ func decodeBase64(encoded string) ([]byte, error) {
 	return base64.RawStdEncoding.DecodeString(encoded)
 }
 
-func parseHostPort(address string) (string, int, error) {
+func hostPort(address string) (string, int, error) {
 	host, portText, err := net.SplitHostPort(address)
 	if err != nil {
 		return "", 0, errors.New("invalid host or port")
@@ -40,9 +40,9 @@ func parseHostPort(address string) (string, int, error) {
 	return host, port, nil
 }
 
-func parseCredentials(blob string) (method, password string) {
+func credentials(blob string) (method, password string) {
 	if !strings.Contains(blob, ":") {
-		if decoded, err := decodeBase64(blob); err == nil && strings.Contains(string(decoded), ":") {
+		if decoded, err := decode(blob); err == nil && strings.Contains(string(decoded), ":") {
 			blob = string(decoded)
 		}
 	}
@@ -50,14 +50,14 @@ func parseCredentials(blob string) (method, password string) {
 	return method, password
 }
 
-func userPassword(parsedURL *url.URL) string {
+func password(parsedURL *url.URL) string {
 	if password, found := parsedURL.User.Password(); found {
 		return password
 	}
 	return parsedURL.User.Username()
 }
 
-func normalizeCIDRs(list []string) []string {
+func normalize(list []string) []string {
 	var out []string
 	for _, a := range list {
 		if a == "" {
@@ -75,7 +75,7 @@ func normalizeCIDRs(list []string) []string {
 	return out
 }
 
-func parseTransport(q url.Values) domain.Transport {
+func transport(q url.Values) domain.Transport {
 	net := strings.ToLower(cmp.Or(q.Get("type"), q.Get("net"), q.Get("network"), "tcp"))
 	svc := cmp.Or(q.Get("serviceName"), q.Get("service_name"))
 	if net == "grpc" && svc == "" {
@@ -89,7 +89,7 @@ func parseTransport(q url.Values) domain.Transport {
 		Mode:        cmp.Or(q.Get("mode"), q.Get("headerType")),
 	}
 	if net == "httpupgrade" {
-		t.Path = xrayHTTPUpgradePath(t.Path)
+		t.Path = upgradePath(t.Path)
 	}
 	if net == "xhttp" || net == "splithttp" {
 		t.Network, t.Host, t.Mode, t.Extra = "xhttp", q.Get("host"), q.Get("mode"), q.Get("extra")
@@ -103,7 +103,7 @@ func parseTransport(q url.Values) domain.Transport {
 	return t
 }
 
-func xrayHTTPUpgradePath(path string) string {
+func upgradePath(path string) string {
 	if parsed, err := url.Parse(path); err == nil {
 		if query := parsed.Query(); query.Get("ed") != "" {
 			query.Del("ed")
@@ -114,7 +114,7 @@ func xrayHTTPUpgradePath(path string) string {
 	return (&url.URL{Path: path}).EscapedPath()
 }
 
-func splitComma(s string) []string {
+func split(s string) []string {
 	var out []string
 	for p := range strings.SplitSeq(s, ",") {
 		if p = strings.TrimSpace(p); p != "" {
@@ -130,16 +130,16 @@ func truthy(s string) bool {
 	return v || strings.EqualFold(strings.TrimSpace(s), "yes")
 }
 
-func insecureFlag(q url.Values) bool {
+func insecure(q url.Values) bool {
 	return truthy(q.Get("allowInsecure")) || truthy(q.Get("insecure")) || truthy(q.Get("allow_insecure")) ||
 		truthy(q.Get("skip-cert-verify")) || truthy(q.Get("skip_cert_verify")) || truthy(q.Get("skipCertVerify"))
 }
 
-func parseAddresses(v4, v6 string) []string {
-	return normalizeCIDRs(append(splitComma(v4), splitComma(v6)...))
+func addresses(v4, v6 string) []string {
+	return normalize(append(split(v4), split(v6)...))
 }
 
-func cleanFingerprint(fp string, insecure bool) (string, bool) {
+func fingerprint(fp string, insecure bool) (string, bool) {
 	if isCertFingerprint(fp) {
 		return "", true
 	}
@@ -147,11 +147,11 @@ func cleanFingerprint(fp string, insecure bool) (string, bool) {
 }
 
 // TLS block shared by vless/trojan/anytls links
-func parseTLS(q url.Values, host string) *domain.TLS {
-	fp, insecure := cleanFingerprint(cmp.Or(q.Get("fp"), q.Get("fingerprint")), insecureFlag(q) || cmp.Or(q.Get("pinSHA256"), q.Get("pinsha256")) != "")
+func tls(q url.Values, host string) *domain.TLS {
+	fp, insecure := fingerprint(cmp.Or(q.Get("fp"), q.Get("fingerprint")), insecure(q) || cmp.Or(q.Get("pinSHA256"), q.Get("pinsha256")) != "")
 	return &domain.TLS{
 		SNI:         cmp.Or(q.Get("sni"), q.Get("peer"), q.Get("server_name"), q.Get("serverName"), host),
-		ALPN:        splitComma(q.Get("alpn")),
+		ALPN:        split(q.Get("alpn")),
 		Fingerprint: cmp.Or(q.Get("client-fingerprint"), q.Get("clientFingerprint"), fp),
 		Insecure:    insecure,
 	}

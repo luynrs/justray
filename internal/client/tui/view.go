@@ -43,7 +43,7 @@ func (m Model) content() string {
 		return ""
 	}
 
-	content := m.titleLine()
+	content := m.title()
 	if m.h >= topLines+footerLines+1 {
 		var body string
 		var rows []tree.Row
@@ -65,12 +65,12 @@ func (m Model) content() string {
 		}
 	}
 	if m.activeModal != modalNone {
-		return m.modalView(content)
+		return m.modal(content)
 	}
 	return content
 }
 
-func (m Model) titleLine() string {
+func (m Model) title() string {
 	var right string
 	if m.dialog != nil {
 		right = m.dialog.TabBar()

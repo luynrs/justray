@@ -25,7 +25,7 @@ func (a *app) probe(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	a.syncStyle(snapshot.Settings)
+	a.style(snapshot.Settings)
 	if len(snapshot.Nodes) == 0 {
 		out(style.Gray.Render("No nodes to probe. Add a subscription first: " + cmd.Root().CommandPath() + " subscription add <url>"))
 		return nil
@@ -85,7 +85,7 @@ func (a *app) probe(cmd *cobra.Command, args []string) error {
 		} else if n.Probed {
 			lat = style.Green.Render(n.Latency())
 		}
-		pairs := append([][2]string{{"Latency", lat}}, a.nodeFields(n)...)
+		pairs := append([][2]string{{"Latency", lat}}, a.fields(n)...)
 		if n.Error != "" {
 			pairs = append(pairs, [2]string{"Error", a.clean(n.Error)})
 		}
@@ -114,6 +114,6 @@ func (a *app) probe(cmd *cobra.Command, args []string) error {
 			done(fmt.Sprintf("Probed %d %s", len(nodes), noun))
 		}
 	}
-	a.showTree(subs, nodes)
+	a.tree(subs, nodes)
 	return probeErr
 }

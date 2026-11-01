@@ -25,7 +25,7 @@ func (m Model) activate(r tree.Row) (tea.Model, tea.Cmd) {
 	act := func() error { return m.client.Disconnect(m.watch) }
 	if !m.connected() || m.snapshot.Status.NodeRef != r.Node.Ref() {
 		ref := r.Node.Ref()
-		act = func() error { return m.awaitConnection(m.client.Connect(m.watch, ref, nil), ref, true) }
+		act = func() error { return m.await(m.client.Connect(m.watch, ref, nil), ref, true) }
 	}
 	return m, tea.Batch(spinnerCommand, action(true, m.start, act))
 }
@@ -71,7 +71,7 @@ func (m Model) refresh() (tea.Model, tea.Cmd) {
 	return m, action(false, m.start, func() error { return m.client.RefreshSubscriptions(m.watch, row.Sub.SubscriptionID) })
 }
 
-func (m Model) moveSub(dir int) (tea.Model, tea.Cmd) {
+func (m Model) reorder(dir int) (tea.Model, tea.Cmd) {
 	r, ok := m.at()
 	if !ok || r.Kind != tree.Header {
 		return m, nil
@@ -93,11 +93,11 @@ func (m Model) setTun(enable bool) (tea.Model, tea.Cmd) {
 	m.busy = m.connected()
 	spinnerCommand := m.startSpinner()
 	return m, tea.Batch(spinnerCommand, action(m.busy, m.start, func() error {
-		return m.awaitConnection(m.client.SetTun(m.watch, enable), m.snapshot.Selected, enable)
+		return m.await(m.client.SetTun(m.watch, enable), m.snapshot.Selected, enable)
 	}))
 }
 
-func (m Model) awaitConnection(err error, ref domain.NodeRef, tun bool) error {
+func (m Model) await(err error, ref domain.NodeRef, tun bool) error {
 	if errors.Is(err, ipc.ErrElevate) {
 		_, err = m.client.AwaitConnection(m.watch, ref, &tun)
 	}

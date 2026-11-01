@@ -28,7 +28,7 @@ func transport(n domain.Node) (*option.V2RayTransportOptions, error) {
 		return nil, fmt.Errorf("%s: unsupported transport: %s", n.Protocol, n.Transport.Network)
 	}
 	if n.Transport.Network == "xhttp" || n.Transport.Network == "splithttp" {
-		opts, err := xhttpOptions(n.Transport)
+		opts, err := xhttp(n.Transport)
 		if err != nil {
 			return nil, err
 		}

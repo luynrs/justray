@@ -31,7 +31,7 @@ const task = `<?xml version="1.0" encoding="UTF-8"?>
 </plist>
 `
 
-func plistPath() (string, error) {
+func path() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
@@ -40,7 +40,7 @@ func plistPath() (string, error) {
 }
 
 func enabled(ctx context.Context) (bool, error) {
-	path, err := plistPath()
+	path, err := path()
 	if err != nil {
 		return false, err
 	}
@@ -78,7 +78,7 @@ func guiDomain() string {
 }
 
 func enable(ctx context.Context) error {
-	path, err := plistPath()
+	path, err := path()
 	if err != nil {
 		return err
 	}
@@ -112,7 +112,7 @@ func enable(ctx context.Context) error {
 }
 
 func disable(ctx context.Context) error {
-	path, err := plistPath()
+	path, err := path()
 	if err != nil {
 		return err
 	}

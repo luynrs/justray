@@ -11,14 +11,14 @@ import (
 	"github.com/luynrs/justray/internal/domain"
 )
 
-func parseShadowsocks(uri string) (domain.Node, error) {
+func shadowsocks(uri string) (domain.Node, error) {
 	_, rest, _ := strings.Cut(uri, "://")
 
 	rest, remark, _ := strings.Cut(rest, "#")
 	rest, query, hasQuery := strings.Cut(rest, "?")
 	legacy := !strings.Contains(rest, "@")
 	if legacy {
-		if decoded, err := decodeBase64(rest); err == nil {
+		if decoded, err := decode(rest); err == nil {
 			rest = string(decoded)
 			hostStart := -1
 			for index, character := range rest {
@@ -28,7 +28,7 @@ func parseShadowsocks(uri string) (domain.Node, error) {
 				if hostStart < 0 || character != '#' && character != '?' {
 					continue
 				}
-				if _, _, err := parseHostPort(strings.TrimSuffix(rest[hostStart:index], "/")); err != nil {
+				if _, _, err := hostPort(strings.TrimSuffix(rest[hostStart:index], "/")); err != nil {
 					hostStart = -1
 					continue
 				}
@@ -46,7 +46,7 @@ func parseShadowsocks(uri string) (domain.Node, error) {
 	if unescaped, err := url.PathUnescape(remark); err == nil {
 		remark = unescaped
 	}
-	plugin := parsePluginQuery(query)
+	plugin := plugin(query)
 	at := strings.LastIndexByte(rest, '@')
 	if at < 0 {
 		return domain.Node{}, errors.New("ss: missing host")
@@ -57,8 +57,8 @@ func parseShadowsocks(uri string) (domain.Node, error) {
 			userinfo = unescaped
 		}
 	}
-	method, password := parseCredentials(userinfo)
-	host, port, err := parseHostPort(strings.TrimSuffix(rest[at+1:], "/")) // SIP002 allows an empty path
+	method, password := credentials(userinfo)
+	host, port, err := hostPort(strings.TrimSuffix(rest[at+1:], "/")) // SIP002 allows an empty path
 	if err != nil {
 		return domain.Node{}, fmt.Errorf("ss: %w", err)
 	}
@@ -71,7 +71,7 @@ func parseShadowsocks(uri string) (domain.Node, error) {
 		Auth:     domain.Auth{Method: method, Password: password},
 	}
 	if plugin != "" {
-		stls, err := parseShadowTLSPlugin(plugin, host)
+		stls, err := shadowTLS(plugin, host)
 		if err != nil {
 			return domain.Node{}, fmt.Errorf("ss: %w", err)
 		}
@@ -80,7 +80,7 @@ func parseShadowsocks(uri string) (domain.Node, error) {
 	return n, nil
 }
 
-func parsePluginQuery(query string) string {
+func plugin(query string) string {
 	qv, err := url.ParseQuery(query)
 	if err == nil && qv.Get("plugin") != "" {
 		return qv.Get("plugin")
@@ -96,7 +96,7 @@ func parsePluginQuery(query string) string {
 	return ""
 }
 
-func parseShadowTLSPlugin(raw, host string) (*domain.ShadowTLS, error) {
+func shadowTLS(raw, host string) (*domain.ShadowTLS, error) {
 	base, opts, _ := strings.Cut(raw, ";")
 	if base != "shadow-tls" {
 		return nil, fmt.Errorf("unsupported plugin: %s", base)

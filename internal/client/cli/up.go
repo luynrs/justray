@@ -32,7 +32,7 @@ func (a *app) up(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	a.syncStyle(snapshot.Settings)
+	a.style(snapshot.Settings)
 	nodes := snapshot.Nodes
 	var key string
 	if len(args) > 0 {
@@ -40,7 +40,7 @@ func (a *app) up(cmd *cobra.Command, args []string) error {
 	} else {
 		if snapshot.Status.Connected {
 			if mode != nil {
-				snapshot, err = a.runOp(ctx, "Switching to "+strings.ToUpper(modeWord(*mode)), func() error {
+				snapshot, err = a.run(ctx, "Switching to "+strings.ToUpper(modeWord(*mode)), func() error {
 					return a.client.SetTun(ctx, *mode)
 				}, snapshot.Status.NodeRef, mode)
 				if err != nil {
@@ -62,7 +62,7 @@ func (a *app) up(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	snapshot, err = a.runOp(ctx, "Connecting to "+a.clean(node.Name), func() error {
+	snapshot, err = a.run(ctx, "Connecting to "+a.clean(node.Name), func() error {
 		return a.client.Connect(ctx, node.Ref(), mode)
 	}, node.Ref(), mode)
 	if err != nil {
@@ -77,7 +77,7 @@ func init() {
 	upCmd.Flags().Bool("proxy", false, "Connect in proxy mode")
 }
 
-func (a *app) runOp(ctx context.Context, text string, op func() error, ref domain.NodeRef, want *bool) (ipc.Snapshot, error) {
+func (a *app) run(ctx context.Context, text string, op func() error, ref domain.NodeRef, want *bool) (ipc.Snapshot, error) {
 	stop := spin(text)
 	err := op()
 	stop()
@@ -101,6 +101,6 @@ func (a *app) runOp(ctx context.Context, text string, op func() error, ref domai
 }
 
 func (a *app) report(snapshot ipc.Snapshot) {
-	stateHeadline(snapshot.Status)
-	a.nodeDetails(snapshot.Status, snapshot.Nodes)
+	headline(snapshot.Status)
+	a.details(snapshot.Status, snapshot.Nodes)
 }

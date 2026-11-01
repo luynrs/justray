@@ -37,9 +37,9 @@ func ParseURI(uri string) (domain.Node, error) {
 	if !IsLink(uri) {
 		return domain.Node{}, errors.New("unknown URI scheme")
 	}
-	node, err := parseURI(uri)
+	node, err := parse(uri)
 	if err == nil {
-		err = validateNode(node)
+		err = validate(node)
 	}
 	if err != nil {
 		return domain.Node{}, err
@@ -47,7 +47,7 @@ func ParseURI(uri string) (domain.Node, error) {
 	return node, nil
 }
 
-func parseURI(uri string) (domain.Node, error) {
+func parse(uri string) (domain.Node, error) {
 	uri = strings.TrimSpace(uri)
 	scheme, _, _ := strings.Cut(uri, "://")
 	protocol := uriProtocols[strings.ToLower(scheme)]
@@ -55,17 +55,17 @@ func parseURI(uri string) (domain.Node, error) {
 	var err error
 	switch protocol {
 	case domain.SS:
-		node, err = parseShadowsocks(uri)
+		node, err = shadowsocks(uri)
 	case domain.VMess:
-		node, err = parseVMess(uri)
+		node, err = vmess(uri)
 	case domain.WG:
 		if strings.EqualFold(scheme, "vpn") {
-			node, err = parseAmnezia(uri)
+			node, err = amnezia(uri)
 		} else {
-			node, err = parseWireGuard(uri)
+			node, err = wireguard(uri)
 		}
 	default:
-		node, err = parseURL(uri, protocol)
+		node, err = link(uri, protocol)
 	}
 	var urlError *url.Error
 	if errors.As(err, &urlError) {

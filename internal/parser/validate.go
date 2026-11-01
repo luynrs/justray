@@ -15,7 +15,7 @@ import (
 	"github.com/luynrs/justray/internal/engine/outbound"
 )
 
-func validateNode(node domain.Node) error {
+func validate(node domain.Node) error {
 	if !utf8.ValidString(node.Auth.Password) || !utf8.ValidString(node.Auth.Username) || !utf8.ValidString(node.ObfsPassword) || node.ShadowTLS != nil && !utf8.ValidString(node.ShadowTLS.Password) {
 		return errors.New("non-UTF8 credentials are not supported")
 	}
@@ -46,7 +46,7 @@ func validateNode(node domain.Node) error {
 			return errors.New("amneziawg: junk count or packet size exceeds allocation limits")
 		}
 		for _, packet := range []string{wireguard.I1, wireguard.I2, wireguard.I3, wireguard.I4, wireguard.I5} {
-			if err := validatePacketTemplate(packet); err != nil {
+			if err := validatePacket(packet); err != nil {
 				return err
 			}
 		}
@@ -67,7 +67,7 @@ func validateNode(node domain.Node) error {
 
 const maxDatagramSize = 65507
 
-func validatePacketTemplate(packet string) error {
+func validatePacket(packet string) error {
 	if strings.ContainsAny(packet, "\r\n") {
 		return errors.New("amneziawg: packet templates must not contain line breaks")
 	}

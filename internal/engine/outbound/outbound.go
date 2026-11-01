@@ -68,7 +68,7 @@ func New(n domain.Node, tag string) (*option.Endpoint, []option.Outbound, error)
 		}
 	}
 	for index := range outbounds {
-		if err := validateOptions(outbounds[index].Options); err != nil {
+		if err := validate(outbounds[index].Options); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -76,7 +76,7 @@ func New(n domain.Node, tag string) (*option.Endpoint, []option.Outbound, error)
 }
 
 func proxy(n domain.Node, tag string, transportOptions *option.V2RayTransportOptions) (*option.Outbound, error) {
-	tls := tlsOptions(n)
+	tls := tls(n)
 	if tls == nil {
 		switch n.Protocol {
 		case domain.HY1, domain.HY2, domain.TUIC, domain.AnyTLS:
@@ -185,7 +185,7 @@ func proxy(n domain.Node, tag string, transportOptions *option.V2RayTransportOpt
 }
 
 func shadowTLS(n domain.Node, tag string) option.Outbound {
-	tls := tlsOptions(n)
+	tls := tls(n)
 	if tls == nil {
 		tls = &option.OutboundTLSOptions{Enabled: true, ServerName: n.ShadowTLS.SNI}
 	}
@@ -263,7 +263,7 @@ func EndpointRegistry() *boxendpoint.Registry {
 var Context = service.ContextWith[option.EndpointOptionsRegistry](
 	service.ContextWith[option.OutboundOptionsRegistry](context.Background(), Registry()), EndpointRegistry())
 
-func validateOptions(options any) error {
+func validate(options any) error {
 	valid, message := true, ""
 	switch settings := options.(type) {
 	case *option.VLESSOutboundOptions:
@@ -361,7 +361,7 @@ func native(node domain.Node, tag string) (*option.Endpoint, []option.Outbound, 
 			return nil, nil, err
 		}
 		endpoint.Tag = tag
-		return &endpoint, nil, validateOptions(endpoint.Options)
+		return &endpoint, nil, validate(endpoint.Options)
 	}
 	outbounds := make([]option.Outbound, len(node.Native))
 	for index, raw := range node.Native {
@@ -369,7 +369,7 @@ func native(node domain.Node, tag string) (*option.Endpoint, []option.Outbound, 
 		if err := SJSON.UnmarshalContext(Context, raw, outbound); err != nil {
 			return nil, nil, err
 		}
-		if err := validateOptions(outbound.Options); err != nil {
+		if err := validate(outbound.Options); err != nil {
 			return nil, nil, err
 		}
 		outbound.Tag = tag

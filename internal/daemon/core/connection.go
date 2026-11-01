@@ -166,18 +166,18 @@ func (c *Core) finishConnection(ctx context.Context, previous, next store.State,
 	switch {
 	case err == nil:
 		if saveErr := c.commit(next); saveErr != nil {
-			err = errors.Join(saveErr, c.restoreLive(ctx, previous, before))
+			err = errors.Join(saveErr, c.restore(ctx, previous, before))
 		}
 	case errors.Is(err, ipc.ErrElevate):
 		previous.Pending = &store.Pending{Ref: next.Active, Tun: next.Tun}
 		if saveErr := c.commit(previous); saveErr != nil {
-			err = errors.Join(saveErr, c.restoreLive(ctx, previous, before))
+			err = errors.Join(saveErr, c.restore(ctx, previous, before))
 		} else {
 			err = &elevationRequest{previous.Pending}
 		}
 	default:
 		saveErr := c.commit(previous)
-		err = errors.Join(err, saveErr, c.restoreLive(ctx, previous, before))
+		err = errors.Join(err, saveErr, c.restore(ctx, previous, before))
 	}
 	if err == nil || errors.Is(err, ipc.ErrElevate) {
 		c.conn.SetError(nil)
@@ -185,7 +185,7 @@ func (c *Core) finishConnection(ctx context.Context, previous, next store.State,
 	return err
 }
 
-func (c *Core) restoreLive(ctx context.Context, state store.State, before ipc.Status) error {
+func (c *Core) restore(ctx context.Context, state store.State, before ipc.Status) error {
 	status := c.conn.Status()
 	if status.Connected == before.Connected && status.NodeRef == before.NodeRef && status.Tun == before.Tun {
 		return nil

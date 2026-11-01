@@ -104,7 +104,7 @@ func Execute() int {
 			a.client = ipc.New(ipc.Socket(dir))
 			return nil
 		}
-		return a.connectDaemon(cmd.Context(), cmd != statusCmd && cmd != subListCmd && cmd != downCmd)
+		return a.connect(cmd.Context(), cmd != statusCmd && cmd != subListCmd && cmd != downCmd)
 	}
 	rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		return tui.Run(a.client, a.start)
@@ -114,10 +114,10 @@ func Execute() int {
 	stopCmd.RunE = stop
 	probeCmd.RunE = a.probe
 	statusCmd.RunE = a.status
-	subAddCmd.RunE = a.subAdd
-	subRemoveCmd.RunE = a.subRemove
-	subRefreshCmd.RunE = a.subRefresh
-	subListCmd.RunE = a.subList
+	subAddCmd.RunE = a.add
+	subRemoveCmd.RunE = a.remove
+	subRefreshCmd.RunE = a.refresh
+	subListCmd.RunE = a.list
 	logsCmd.RunE = logs
 	upCmd.ValidArgsFunction = a.complete
 	subRemoveCmd.ValidArgsFunction = a.complete
@@ -133,7 +133,7 @@ func Execute() int {
 			c.Short = "Generate shell completion scripts"
 		}
 	}
-	setHelpText(rootCmd)
+	help(rootCmd)
 
 	command, err := rootCmd.ExecuteContextC(ctx)
 	if err != nil {
@@ -149,19 +149,19 @@ func Execute() int {
 	return 0
 }
 
-func setHelpText(c *cobra.Command) {
+func help(c *cobra.Command) {
 	c.InitDefaultHelpFlag()
 	c.Flags().Lookup("help").Usage = "Show help for command"
 	for _, sub := range c.Commands() {
-		setHelpText(sub)
+		help(sub)
 	}
 }
 
 func (a *app) start(ctx context.Context) error {
-	return a.connectDaemon(ctx, true)
+	return a.connect(ctx, true)
 }
 
-func (a *app) connectDaemon(ctx context.Context, startMissing bool) error {
+func (a *app) connect(ctx context.Context, startMissing bool) error {
 	caller := ctx
 	dir, err := ipc.Dir()
 	if err != nil {
@@ -267,7 +267,7 @@ func justrayd(ctx context.Context) (string, error) {
 	if err != nil {
 		path = ""
 	}
-	candidates := []string{nextToSelf("justrayd"), path}
+	candidates := []string{sibling("justrayd"), path}
 	for _, bin := range candidates {
 		if bin == "" {
 			continue
@@ -292,7 +292,7 @@ func exeName(name string) string {
 	return name
 }
 
-func nextToSelf(name string) string {
+func sibling(name string) string {
 	self, err := os.Executable()
 	if err != nil {
 		return ""
@@ -348,7 +348,7 @@ func match[T any](key, noun string, items []T, idName func(T) (id, name string))
 		}
 		if strings.HasPrefix(idLower, key) || strings.Contains(strings.ToLower(name), key) {
 			hits = append(hits, it)
-			names = append(names, fmt.Sprintf("%s (%s)", style.Sanitize(name, true), displayID(id)))
+			names = append(names, fmt.Sprintf("%s (%s)", style.Sanitize(name, true), shortID(id)))
 		}
 	}
 	switch len(hits) {

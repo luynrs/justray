@@ -14,7 +14,7 @@ import (
 	"github.com/luynrs/justray/internal/domain"
 )
 
-func xhttpOptions(transport domain.Transport) (option.V2RayXHTTPOptions, error) {
+func xhttp(transport domain.Transport) (option.V2RayXHTTPOptions, error) {
 	fields := make(map[string]json.RawMessage)
 	if transport.Extra != "" {
 		if err := json.Unmarshal([]byte(transport.Extra), &fields); err != nil {

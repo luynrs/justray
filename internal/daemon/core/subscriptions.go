@@ -13,7 +13,7 @@ import (
 )
 
 func (c *Core) AddSubscription(ctx context.Context, rawURL string) (ipc.Subscription, error) {
-	ctx, cancel := c.requestContext(ctx)
+	ctx, cancel := c.context(ctx)
 	defer cancel()
 	sub, err := c.subs.PrepareAdd(ctx, rawURL)
 	if err != nil {

@@ -160,7 +160,7 @@ func (m Model) rows() []tree.Row { return m.data().Rows() }
 
 func (m Model) at() (tree.Row, bool) { return tree.At(m.rows(), m.cursor) }
 
-func (model Model) selectionVisible(rows []tree.Row) bool {
+func (model Model) visible(rows []tree.Row) bool {
 	selected, ok := tree.At(rows, model.cursor)
 	return ok && slices.Contains(rows[model.scroll:min(model.scroll+model.height(), len(rows))], selected)
 }

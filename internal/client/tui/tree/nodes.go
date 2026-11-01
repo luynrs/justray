@@ -20,14 +20,14 @@ func (d Data) Render(r Row, selected bool, width int) string {
 	case Gap:
 		return ""
 	case Meta:
-		return bar + style.Flush("  "+style.Usage(domain.Traffic(r.Sub.Traffic)), subMeta(r.Sub, d.Spinner), width-2)
+		return bar + style.Flush("  "+style.Usage(domain.Traffic(r.Sub.Traffic)), meta(r.Sub, d.Spinner), width-2)
 	case Header:
-		return bar + subHeader(r.Sub, slices.Contains(d.Collapsed, r.Sub.SubscriptionID), selected, d.Emoji)
+		return bar + header(r.Sub, slices.Contains(d.Collapsed, r.Sub.SubscriptionID), selected, d.Emoji)
 	}
 	return bar + style.Flush(d.node(r.Node, selected), d.info(r.Node), width-2)
 }
 
-func subHeader(s ipc.Subscription, collapsed, selected, emoji bool) string {
+func header(s ipc.Subscription, collapsed, selected, emoji bool) string {
 	arrow := style.Arrow(collapsed)
 	clean := style.Sanitize(s.Name, emoji)
 	if selected {
@@ -36,7 +36,7 @@ func subHeader(s ipc.Subscription, collapsed, selected, emoji bool) string {
 	return arrow + " " + style.Bold.Render(clean)
 }
 
-func subMeta(s ipc.Subscription, spinner string) string {
+func meta(s ipc.Subscription, spinner string) string {
 	age := "never updated"
 	switch {
 	case s.Refreshing:

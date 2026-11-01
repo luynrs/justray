@@ -23,7 +23,7 @@ type probeCall struct {
 }
 
 func (c *Core) Probe(ctx context.Context, sub, id string) error {
-	ctx, cancel := c.requestContext(ctx)
+	ctx, cancel := c.context(ctx)
 	defer cancel()
 	c.stMu.Lock()
 	if err := ctx.Err(); err != nil {

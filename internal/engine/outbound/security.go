@@ -6,7 +6,7 @@ import (
 	"github.com/luynrs/justray/internal/domain"
 )
 
-func tlsOptions(n domain.Node) *option.OutboundTLSOptions {
+func tls(n domain.Node) *option.OutboundTLSOptions {
 	if n.TLS == nil && n.Reality == nil {
 		return nil
 	}

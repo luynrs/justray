@@ -29,7 +29,7 @@ func (s Model) View() string {
 		if i > 0 && !rows[i].bare {
 			offset--
 		}
-		for j, line := range s.fieldBlock(rows[i], i) {
+		for j, line := range s.block(rows[i], i) {
 			position := offset + j - s.scroll
 			if position < 0 || position >= len(lines) {
 				continue
@@ -90,7 +90,7 @@ func (s *Model) scrollBy(delta int) {
 	s.scroll = min(max(s.scroll+delta, 0), max(total-s.height, 0))
 }
 
-func (s Model) compactTabs() bool {
+func (s Model) compact() bool {
 	width := 0
 	for _, tab := range tabs {
 		width += lipgloss.Width(style.Segment(" "+tab.name+" ", false))
@@ -99,7 +99,7 @@ func (s Model) compactTabs() bool {
 }
 
 func (s Model) TabBar() string {
-	if s.compactTabs() {
+	if s.compact() {
 		return style.Segment(" "+tabs[s.tab].name+" ", true)
 	}
 	var b strings.Builder
@@ -111,7 +111,7 @@ func (s Model) TabBar() string {
 
 func (s Model) tabAt(x int) (int, bool) {
 	pos := max(s.width-lipgloss.Width(s.TabBar()), lipgloss.Width(style.Title())+2)
-	if s.compactTabs() {
+	if s.compact() {
 		width := lipgloss.Width(style.Segment(" "+tabs[s.tab].name+" ", true))
 		return s.tab, x >= pos && x < pos+width
 	}
@@ -125,8 +125,7 @@ func (s Model) tabAt(x int) (int, bool) {
 	return 0, false
 }
 
-// fieldBlock renders one row, blank line above non-list rows
-func (s Model) fieldBlock(f field, i int) (lines []string) {
+func (s Model) block(f field, i int) (lines []string) {
 	selected := i == s.cursor
 
 	bar := "  "
@@ -160,7 +159,7 @@ func (s Model) fieldBlock(f field, i int) (lines []string) {
 		lines = []string{bar + text}
 	default:
 		lines = []string{bar + f.name}
-		lines = append(lines, s.valueLines(f, selected, bar)...)
+		lines = append(lines, s.value(f, selected, bar)...)
 	}
 
 	if i > 0 && !f.bare {
@@ -169,7 +168,7 @@ func (s Model) fieldBlock(f field, i int) (lines []string) {
 	return lines
 }
 
-func (s Model) valueLines(f field, selected bool, bar string) (lines []string) {
+func (s Model) value(f field, selected bool, bar string) (lines []string) {
 	if selected && s.input.Focused() {
 		return []string{bar + s.input.View()}
 	}
@@ -183,7 +182,7 @@ func (s Model) valueLines(f field, selected bool, bar string) (lines []string) {
 			} else {
 				name = f.enum[index]
 				checked = name == f.value(&s.cur)
-				name = optionLabel(name)
+				name = label(name)
 			}
 			markerStyle := style.Gray
 			if checked {
@@ -201,12 +200,12 @@ func (s Model) valueLines(f field, selected bool, bar string) (lines []string) {
 
 	value := cmp.Or(f.value(&s.cur), f.hint, "Auto")
 	if len(f.enum) > 0 {
-		value = optionLabel(value)
+		value = label(value)
 	}
 	return []string{bar + style.Gray.Render(value)}
 }
 
-func optionLabel(value string) string {
+func label(value string) string {
 	switch value {
 	case "ipv4":
 		return "IPv4"

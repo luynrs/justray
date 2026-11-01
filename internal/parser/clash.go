@@ -97,24 +97,24 @@ func (settings *xhttpYAML) UnmarshalYAML(node *yaml.Node) error {
 }
 
 // Clash/Mihomo "proxies:" list
-func (result *parseResult) readClash(entries []yaml.Node) {
+func (result *parseResult) clash(entries []yaml.Node) {
 	for _, entry := range entries {
 		var proxy clashProxy
 		if entry.Decode(&proxy) != nil || proxy.Type == "" {
 			result.add(domain.Node{}, errors.New("clash: invalid proxy fields"))
 			continue
 		}
-		result.add(clashNode(proxy))
+		result.add(clash(proxy))
 	}
 }
 
-func clashNode(p clashProxy) (domain.Node, error) {
+func clash(p clashProxy) (domain.Node, error) {
 	n := domain.Node{
 		Name:   cmp.Or(p.Name, p.Server),
 		Server: p.Server,
 		Port:   p.Port,
 	}
-	fp, insecure := cleanFingerprint(p.Fingerprint, p.SkipCertVerify || p.SkipCertVerifySnake)
+	fp, insecure := fingerprint(p.Fingerprint, p.SkipCertVerify || p.SkipCertVerifySnake)
 	clientFP := cmp.Or(p.ClientFingerprint, fp)
 	tls := &domain.TLS{
 		SNI:         cmp.Or(p.SNI, p.ServerName, p.ServerNameKebab, p.ServerNameSnake, p.Server),
@@ -246,14 +246,14 @@ func clashNode(p clashProxy) (domain.Node, error) {
 		}
 
 	case "wireguard", "wg":
-		amnezia, err := parseAmneziaWG(p.AmneziaWG)
+		amnezia, err := amneziaWG(p.AmneziaWG)
 		if err != nil {
 			return domain.Node{}, err
 		}
-		addr := parseAddresses(cmp.Or(p.IP, p.Address), p.IPv6)
+		addr := addresses(cmp.Or(p.IP, p.Address), p.IPv6)
 		if len(addr) == 0 {
 			for _, a := range p.Addresses {
-				addr = append(addr, parseAddresses(a, "")...)
+				addr = append(addr, addresses(a, "")...)
 			}
 		}
 		n.Protocol = domain.WG
@@ -294,7 +294,7 @@ func (value *reserved) UnmarshalYAML(node *yaml.Node) error {
 	if node.Kind == yaml.SequenceNode {
 		err = node.Decode(&data)
 	} else {
-		data, err = decodeBase64(node.Value)
+		data, err = decode(node.Value)
 	}
 	if err != nil {
 		return err

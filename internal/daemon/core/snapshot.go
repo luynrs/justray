@@ -9,7 +9,7 @@ import (
 )
 
 func (c *Core) Snapshot() ipc.Snapshot {
-	return cloneSnapshot(*c.snapshot.Load())
+	return clone(*c.snapshot.Load())
 }
 
 func (c *Core) Watch() (ipc.Snapshot, <-chan ipc.Snapshot, func()) {
@@ -115,7 +115,7 @@ func (c *Core) nodes(subscriptions []store.Subscription) []ipc.Node {
 	return out
 }
 
-func cloneSnapshot(snapshot ipc.Snapshot) ipc.Snapshot {
+func clone(snapshot ipc.Snapshot) ipc.Snapshot {
 	snapshot.Settings = snapshot.Settings.Clone()
 	snapshot.Subscriptions = slices.Clone(snapshot.Subscriptions)
 	snapshot.Nodes = slices.Clone(snapshot.Nodes)

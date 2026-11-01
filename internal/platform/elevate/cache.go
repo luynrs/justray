@@ -10,14 +10,14 @@ import (
 )
 
 func cachedCopy(source, dir string) (string, error) {
-	sum, err := hashFile(source)
+	sum, err := hash(source)
 	if err != nil {
 		return "", err
 	}
 
 	target := filepath.Join(dir, "elevated", "justrayd")
 	if cachedInfo, err := os.Lstat(target); err == nil && cachedInfo.Mode().IsRegular() {
-		if cachedSum, err := hashFile(target); err == nil && cachedSum == sum {
+		if cachedSum, err := hash(target); err == nil && cachedSum == sum {
 			return target, nil
 		}
 	}

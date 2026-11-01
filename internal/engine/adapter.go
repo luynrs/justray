@@ -102,7 +102,7 @@ func (e *box) start(ctx context.Context, spec Spec) error {
 		}
 		opts.Experimental.CacheFile.Path = filepath.Join(directory, fmt.Sprintf("cache-%d.db", userID))
 	}
-	inst, err := startBox(runtimeCtx, *opts)
+	inst, err := start(runtimeCtx, *opts)
 	if err != nil {
 		return errors.Join(err, ctx.Err())
 	}
@@ -127,7 +127,7 @@ func (e *box) start(ctx context.Context, spec Spec) error {
 	return nil
 }
 
-func startBox(ctx context.Context, opts option.Options) (*sbox.Box, error) {
+func start(ctx context.Context, opts option.Options) (*sbox.Box, error) {
 	for attempt := 0; ; attempt++ {
 		inst, err := sbox.New(sbox.Options{Options: opts, Context: ctx})
 		if err == nil {
@@ -146,7 +146,7 @@ func startBox(ctx context.Context, opts option.Options) (*sbox.Box, error) {
 func (e *box) swap(n domain.Node) error {
 	managed, _ := e.inst.Outbound().Outbound("proxy")
 	proxy := managed.(*proxyOutbound)
-	runtime, err := newNodeRuntime(e.runtime, e.inst.Router(), proxy.logger, "proxy-node", n)
+	runtime, err := newRuntime(e.runtime, e.inst.Router(), proxy.logger, "proxy-node", n)
 	if err != nil {
 		return err
 	}

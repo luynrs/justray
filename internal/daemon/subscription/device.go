@@ -11,7 +11,7 @@ import (
 	"github.com/luynrs/justray/internal/version"
 )
 
-func deviceHeaders(ctx context.Context) (http.Header, error) {
+func headers(ctx context.Context) (http.Header, error) {
 	h := http.Header{}
 	set := func(key, val string) {
 		if val != "" {

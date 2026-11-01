@@ -19,7 +19,7 @@ type singboxOutbound struct {
 	raw    json.RawMessage
 }
 
-func singboxNode(entry singboxOutbound, companions map[string]singboxOutbound) (domain.Node, error) {
+func singbox(entry singboxOutbound, companions map[string]singboxOutbound) (domain.Node, error) {
 	if entry.Type == "wireguard" {
 		return singboxWireGuard(entry)
 	}
@@ -34,7 +34,7 @@ func singboxNode(entry singboxOutbound, companions map[string]singboxOutbound) (
 		node.Server, node.Port = address.Server, int(address.ServerPort)
 	}
 	node.Name = cmp.Or(node.Name, node.Server)
-	if err := nativeMetadata(&node, options.Options); err != nil {
+	if err := metadata(&node, options.Options); err != nil {
 		return domain.Node{}, err
 	}
 	options.Tag = "node"
@@ -72,7 +72,7 @@ func singboxNode(entry singboxOutbound, companions map[string]singboxOutbound) (
 	return node, nil
 }
 
-func nativeMetadata(node *domain.Node, options any) error {
+func metadata(node *domain.Node, options any) error {
 	var transport *option.V2RayTransportOptions
 	switch options := options.(type) {
 	case *option.VLESSOutboundOptions:

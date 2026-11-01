@@ -19,9 +19,9 @@ type changeCall struct {
 var errChanging = errors.New("state change in progress")
 
 func (app *Core) change(ctx context.Context, wait bool, action func(context.Context) error) error {
-	ctx, cancel := app.requestContext(ctx)
+	ctx, cancel := app.context(ctx)
 	defer cancel()
-	call, err := app.startChange(ctx, wait, action)
+	call, err := app.begin(ctx, wait, action)
 	if err != nil {
 		return err
 	}
@@ -33,7 +33,7 @@ func (app *Core) change(ctx context.Context, wait bool, action func(context.Cont
 	}
 }
 
-func (app *Core) requestContext(ctx context.Context) (context.Context, context.CancelFunc) {
+func (app *Core) context(ctx context.Context) (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithTimeout(ctx, ipc.Timeout)
 	stop := context.AfterFunc(app.ctx, cancel)
 	if app.ctx.Err() != nil {
@@ -45,7 +45,7 @@ func (app *Core) requestContext(ctx context.Context) (context.Context, context.C
 	}
 }
 
-func (app *Core) startChange(ctx context.Context, wait bool, action func(context.Context) error) (*changeCall, error) {
+func (app *Core) begin(ctx context.Context, wait bool, action func(context.Context) error) (*changeCall, error) {
 	for {
 		app.opMu.Lock()
 		if err := ctx.Err(); err != nil {

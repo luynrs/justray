@@ -15,12 +15,12 @@ import (
 )
 
 // wireguard://private-key@host:port?publickey=...&address=10.0.0.2/32#remark
-func parseWireGuard(uri string) (domain.Node, error) {
-	u, err := url.Parse(encodeUserinfoSlash(uri))
+func wireguard(uri string) (domain.Node, error) {
+	u, err := url.Parse(encodeSlash(uri))
 	if err != nil {
 		return domain.Node{}, err
 	}
-	host, port, err := parseHostPort(u.Host)
+	host, port, err := hostPort(u.Host)
 	if err != nil {
 		return domain.Node{}, fmt.Errorf("wireguard: %w", err)
 	}
@@ -28,12 +28,12 @@ func parseWireGuard(uri string) (domain.Node, error) {
 	raw, _ := url.ParseQuery(strings.ReplaceAll(strings.ReplaceAll(u.RawQuery, "+", "%2B"), ";", "%3B"))
 	privateKey := u.User.Username()
 	if privateKey == "" {
-		privateKey = queryAny(raw, q, "privatekey", "private_key", "private-key", "privkey")
+		privateKey = query(raw, q, "privatekey", "private_key", "private-key", "privkey")
 	}
-	peerKey := queryAny(raw, q, "publickey", "public_key", "public-key", "peer_public_key", "pubkey", "pbk")
+	peerKey := query(raw, q, "publickey", "public_key", "public-key", "peer_public_key", "pubkey", "pbk")
 
-	address := parseAddresses(queryAny(raw, q, "address", "addresses", "ip"), queryAny(raw, q, "ipv6"))
-	reservedRaw := queryAny(raw, q, "reserved", "reserved_bytes", "reserved-bytes")
+	address := addresses(query(raw, q, "address", "addresses", "ip"), query(raw, q, "ipv6"))
+	reservedRaw := query(raw, q, "reserved", "reserved_bytes", "reserved-bytes")
 	reserved := parseReserved(reservedRaw)
 	if reservedRaw != "" && reserved == nil {
 		return domain.Node{}, errors.New("wireguard: invalid reserved bytes")
@@ -50,7 +50,7 @@ func parseWireGuard(uri string) (domain.Node, error) {
 		if strings.EqualFold(name, "ip") {
 			continue
 		}
-		field := amneziaFieldName(name)
+		field := amneziaField(name)
 		if field == "" {
 			if strings.HasPrefix(strings.ToLower(name), "awg") || slices.Contains([]string{"j1", "j2", "j3", "itime"}, strings.ToLower(name)) {
 				return domain.Node{}, fmt.Errorf("amneziawg: unsupported parameter: %s", name)
@@ -62,15 +62,15 @@ func parseWireGuard(uri string) (domain.Node, error) {
 		}
 		fields[field] = q.Get(name)
 		if field == "header_protection_key" {
-			fields[field] = queryAny(raw, q, name)
+			fields[field] = query(raw, q, name)
 		}
 	}
-	amnezia, err := parseAmneziaWG(fields)
+	amnezia, err := amneziaWG(fields)
 	if err != nil {
 		return domain.Node{}, err
 	}
 	var keepalive *option.AWGRange
-	if value := option.AWGRange(queryAny(raw, q, "persistent_keepalive_interval", "persistent-keepalive", "keepalive")); value != "" {
+	if value := option.AWGRange(query(raw, q, "persistent_keepalive_interval", "persistent-keepalive", "keepalive")); value != "" {
 		keepalive = &value
 	}
 
@@ -84,7 +84,7 @@ func parseWireGuard(uri string) (domain.Node, error) {
 			PersistentKeepaliveInterval: keepalive,
 			PrivateKey:                  privateKey,
 			PeerPublicKey:               peerKey,
-			PreSharedKey:                queryAny(raw, q, "presharedkey", "preshared_key", "pre-shared-key", "psk"),
+			PreSharedKey:                query(raw, q, "presharedkey", "preshared_key", "pre-shared-key", "psk"),
 			Address:                     address,
 			Reserved:                    reserved,
 			MTU:                         uint32(mtu),
@@ -92,7 +92,7 @@ func parseWireGuard(uri string) (domain.Node, error) {
 	}, nil
 }
 
-func queryAny(raw, q url.Values, keys ...string) string {
+func query(raw, q url.Values, keys ...string) string {
 	for _, key := range keys {
 		if value := cmp.Or(raw.Get(key), q.Get(key)); value != "" {
 			return value
@@ -114,13 +114,13 @@ func parseReserved(s string) []uint8 {
 		}
 		return res
 	}
-	if b, err := decodeBase64(s); err == nil && len(b) == 3 {
+	if b, err := decode(s); err == nil && len(b) == 3 {
 		return b
 	}
 	return nil
 }
 
-func encodeUserinfoSlash(uri string) string {
+func encodeSlash(uri string) string {
 	start := strings.Index(uri, "://")
 	if start < 0 {
 		return uri

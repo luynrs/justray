@@ -48,7 +48,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.WindowSizeMsg:
 		rows := m.rows()
-		followSelection := m.selectionVisible(rows)
+		followSelection := m.visible(rows)
 		m.w, m.h = msg.Width, msg.Height
 		style.ResizeInput(&m.filter, m.w-lipgloss.Width(m.filter.Prompt)-1)
 		if m.dialog != nil {
@@ -164,7 +164,7 @@ func (model Model) updateSnapshot(message pushed) (tea.Model, tea.Cmd) {
 	initial := model.snapshot.Settings.Port == 0
 	rows := model.rows()
 	selected, selectedOK := tree.At(rows, model.cursor)
-	followSelection := model.selectionVisible(rows)
+	followSelection := model.visible(rows)
 	var spinnerCommand tea.Cmd
 	if message.live {
 		if !initial {
@@ -239,9 +239,9 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	switch k {
 	case "shift+up":
-		return m.moveSub(-1)
+		return m.reorder(-1)
 	case "shift+down":
-		return m.moveSub(1)
+		return m.reorder(1)
 	case "left", "h":
 		return m.collapse()
 	case "right", "l":

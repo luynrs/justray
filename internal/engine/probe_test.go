@@ -75,7 +75,7 @@ func TestProbeFailure(t *testing.T) {
 
 func TestProbeHTTPStatus(t *testing.T) {
 	settings, _ := (domain.Settings{}).Normalize()
-	instance, err := startBox(withRegistry(t.Context()), *probeConfig(settings, ""))
+	instance, err := start(withRegistry(t.Context()), *probeConfig(settings, ""))
 	if err != nil {
 		t.Fatal(err)
 	}
