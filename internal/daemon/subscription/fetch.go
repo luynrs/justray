@@ -79,7 +79,7 @@ func (s *Service) Refresh(ctx context.Context, sub store.Subscription) (store.Su
 	case resp.Header.Get("X-Hwid-Max-Devices-Reached") == "true":
 		return sub, errors.New("device limit reached")
 	case resp.Header.Get("X-Hwid-Not-Supported") == "true":
-		return sub, errors.New("missing subscription device ID")
+		return sub, errors.New("device identification missing")
 	}
 
 	const maxBody = 10 << 20
