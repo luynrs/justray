@@ -2,7 +2,6 @@ package tui
 
 import (
 	"cmp"
-	"fmt"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -99,9 +98,9 @@ func (m Model) tree(rows []tree.Row) string {
 			lines = append(lines, m.clip(data.Render(r, selected, m.w)))
 		}
 	case m.filter.Value() != "":
-		lines = append(lines, m.clip("    "+style.Gray.Render(fmt.Sprintf("No matches for %q", m.filter.Value()))))
+		lines = append(lines, m.clip("    "+style.Gray.Render("No matches: "+m.filter.Value())))
 	default:
-		lines = append(lines, m.clip("    "+style.Gray.Render("No subscriptions yet.")))
+		lines = append(lines, m.clip("    "+style.Gray.Render("No subscriptions. Press ")+style.Bold.Render("a")+style.Gray.Render(" to add one")))
 	}
 
 	return strings.Join(lines, "\n")
@@ -150,7 +149,7 @@ func (m Model) footerHint() string {
 	case m.editing():
 		return style.KeyHints(m.w, [2]string{style.Enter(), "apply"}, [2]string{"esc", "cancel"})
 	case m.dialog != nil && m.dialog.Changed():
-		return style.KeyHints(m.w, [2]string{"esc", "save"}, [2]string{"q", "quit"}, [2]string{"?", "shortcuts"})
+		return style.KeyHints(m.w, [2]string{"esc", "save"}, [2]string{"q", "discard"}, [2]string{"?", "shortcuts"})
 	}
 	return m.helpHint()
 }

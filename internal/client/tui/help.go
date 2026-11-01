@@ -12,7 +12,7 @@ import (
 func (m Model) shortcuts(width int) string {
 	keys := [][2]string{
 		{style.Move(), "Move"}, {style.Fold(), "Fold"}, {style.Enter(), "Toggle"}, {"m", "Proxy / TUN"},
-		{"a/d", "Add / Delete"}, {"t/T", "Ping"}, {"r/R", "Refresh"},
+		{"a/d", "Add / Delete"}, {"t/T", "Ping one/all"}, {"r/R", "Refresh one/all"},
 		{"o", "Settings"}, {"/", "Filter"}, {"q", "Quit"},
 	}
 	lines := make([]string, len(keys))
