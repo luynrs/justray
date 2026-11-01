@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 const (
@@ -213,101 +215,137 @@ func isDNS(v string) bool {
 	return true
 }
 
-// ParseRule canonicalises a network, domain or program rule
+type routingRuleKind uint8
+
+const (
+	ruleCIDR routingRuleKind = iota
+	ruleDomain
+	ruleKeyword
+	ruleProcess
+	rulePath
+	ruleSet
+)
+
 func ParseRule(raw string) (string, error) {
 	rule := strings.TrimSpace(raw)
-	if kind, name, ok := strings.Cut(strings.ToLower(rule), ":"); ok && (kind == "geoip" || kind == "geosite") {
+	if rule == "" || !utf8.ValidString(rule) || strings.IndexFunc(rule, unicode.IsControl) >= 0 || strings.Contains(rule, "://") {
+		return "", fmt.Errorf("invalid routing rule: %s", raw)
+	}
+	kind, rule := classify(rule)
+	switch kind {
+	case ruleSet:
+		_, name, _ := strings.Cut(rule, ":")
 		if name == "" {
 			return "", fmt.Errorf("invalid routing rule: %s", raw)
 		}
 		for index, char := range name {
-			if char >= 'a' && char <= 'z' || char >= '0' && char <= '9' {
-				continue
-			}
-			if index > 0 && strings.ContainsRune("-_!@", char) {
+			if char >= 'a' && char <= 'z' || char >= '0' && char <= '9' || index > 0 && strings.ContainsRune("-_!@", char) {
 				continue
 			}
 			return "", fmt.Errorf("invalid routing rule: %s", raw)
 		}
-		return kind + ":" + name, nil
-	}
-	if prefix, err := parsePrefix(rule); err == nil {
-		return prefix.String(), nil
-	}
-	if host, _, found := strings.Cut(strings.ReplaceAll(rule, `\`, "/"), "/"); found && isAddr(host) {
-		return "", fmt.Errorf("invalid routing rule: %s", raw)
-	}
-	hasDrivePrefix := len(rule) >= 3 &&
-		((rule[0] >= 'a' && rule[0] <= 'z') || (rule[0] >= 'A' && rule[0] <= 'Z')) &&
-		rule[1] == ':' && (rule[2] == '\\' || rule[2] == '/')
-	if strings.Contains(rule, ":") && !hasDrivePrefix {
-		return "", fmt.Errorf("invalid routing rule: %s", raw)
-	}
-	leadingWildcard, trailingWildcard := strings.HasPrefix(rule, "*"), strings.HasSuffix(rule, "*")
-	rule = strings.Trim(rule, "*.")
-	if rule == "" || strings.Contains(rule, "://") || strings.ContainsAny(rule, "\t\n\r@?#*") {
-		return "", fmt.Errorf("invalid routing rule: %s", raw)
-	}
-	if !strings.ContainsAny(rule, `/\`) && (leadingWildcard || trailingWildcard ||
-		(!strings.Contains(rule, " ") && !strings.HasSuffix(strings.ToLower(rule), ".exe") && strings.Contains(rule, "."))) {
-		rule = strings.ToLower(rule)
-	}
-	switch {
-	case leadingWildcard && trailingWildcard:
-		return "*" + rule + "*", nil
-	case trailingWildcard:
-		return rule + ".*", nil
-	case leadingWildcard:
-		return "*." + rule, nil
+	case rulePath:
+		if separator := strings.IndexAny(rule, `/\`); separator > 0 && isAddr(rule[:separator]) {
+			return "", fmt.Errorf("invalid routing rule: %s", raw)
+		}
+	case ruleDomain, ruleKeyword:
+		leading := strings.HasPrefix(rule, "*")
+		body := rule
+		if strings.Contains(rule, "*") {
+			body = strings.Trim(strings.TrimSuffix(strings.TrimPrefix(rule, "*"), "*"), ".")
+			if body == "" || strings.ContainsAny(body, "* :@?#") {
+				return "", fmt.Errorf("invalid routing rule: %s", raw)
+			}
+		}
+		if kind == ruleDomain {
+			domain, ok := normalize(body)
+			if !ok {
+				return "", fmt.Errorf("invalid routing rule: %s", raw)
+			}
+			if leading {
+				return "*." + domain, nil
+			}
+			return domain, nil
+		}
+		return "*" + strings.ToLower(body) + "*", nil
+	case ruleProcess:
+		if strings.Contains(rule, ":") || strings.Trim(rule, ".") == "" {
+			return "", fmt.Errorf("invalid routing rule: %s", raw)
+		}
 	}
 	return rule, nil
 }
 
-// SplitRules splits entries into cidrs, domains, keywords, names and paths
 func SplitRules(list []string) (cidrs, domains, keywords, names, paths, sets []string) {
-	for _, raw := range list {
-		rule := strings.TrimSpace(raw)
-		if rule == "" {
-			continue
-		}
-		lower := strings.ToLower(rule)
-		switch {
-		case strings.HasPrefix(lower, "geoip:"), strings.HasPrefix(lower, "geosite:"):
-			sets = append(sets, strings.Replace(lower, ":", "-", 1))
-		case isPrefix(rule):
+	for _, rule := range list {
+		kind, rule := classify(rule)
+		switch kind {
+		case ruleCIDR:
 			cidrs = append(cidrs, rule)
-		case strings.ContainsAny(rule, `/\`):
+		case rulePath:
 			paths = append(paths, rule)
-		case strings.HasSuffix(lower, "*"):
-			if kw := strings.Trim(lower, "*."); kw != "" {
-				keywords = append(keywords, kw)
-			}
-		case strings.HasPrefix(lower, "*."):
-			domains = append(domains, lower[1:])
-		case strings.Contains(rule, " "), strings.HasSuffix(lower, ".exe"):
-			names = append(names, rule)
-		case strings.Contains(rule, "."):
-			domains = append(domains, lower)
-		default:
+		case ruleSet:
+			sets = append(sets, strings.Replace(rule, ":", "-", 1))
+		case ruleKeyword:
+			keywords = append(keywords, strings.Trim(rule, "*."))
+		case ruleDomain:
+			domains = append(domains, strings.TrimPrefix(rule, "*"))
+		case ruleProcess:
 			names = append(names, rule)
 		}
 	}
 	return cidrs, domains, keywords, names, paths, sets
 }
 
-func isPrefix(rule string) bool {
-	_, err := netip.ParsePrefix(rule)
-	return err == nil
+func classify(rule string) (routingRuleKind, string) {
+	if kind, _, found := strings.Cut(rule, ":"); found && (strings.EqualFold(kind, "geoip") || strings.EqualFold(kind, "geosite")) {
+		return ruleSet, strings.ToLower(rule)
+	}
+	if prefix, ok := prefix(rule); ok {
+		return ruleCIDR, prefix.String()
+	}
+	switch {
+	case strings.ContainsAny(rule, `/\`):
+		return rulePath, rule
+	case strings.Contains(rule, "*"):
+		if strings.HasSuffix(rule, "*") {
+			return ruleKeyword, rule
+		}
+		return ruleDomain, rule
+	case strings.HasPrefix(rule, "."), strings.Contains(rule, " "), len(rule) >= 4 && strings.EqualFold(rule[len(rule)-4:], ".exe"):
+		return ruleProcess, rule
+	case strings.Contains(rule, "."):
+		return ruleDomain, rule
+	}
+	return ruleProcess, rule
 }
 
-// parsePrefix accepts a CIDR or a bare address
-func parsePrefix(raw string) (netip.Prefix, error) {
-	if p, err := netip.ParsePrefix(raw); err == nil {
-		return p.Masked(), nil
+func normalize(rule string) (string, bool) {
+	domain := strings.ToLower(strings.TrimSuffix(rule, "."))
+	if domain == "" || len(domain) > 253 || isAddr(domain) || strings.HasSuffix(domain, ".exe") {
+		return "", false
 	}
-	a, err := netip.ParseAddr(raw)
-	if err != nil {
-		return netip.Prefix{}, fmt.Errorf("invalid IP or CIDR: %s", raw)
+	for label := range strings.SplitSeq(domain, ".") {
+		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return "", false
+		}
+		for _, char := range label {
+			if char >= 'a' && char <= 'z' || char >= '0' && char <= '9' || char == '-' || char == '_' {
+				continue
+			}
+			return "", false
+		}
 	}
-	return netip.PrefixFrom(a, a.BitLen()), nil
+	return domain, true
+}
+
+func prefix(raw string) (netip.Prefix, bool) {
+	if prefix, err := netip.ParsePrefix(raw); err == nil {
+		return prefix.Masked(), true
+	}
+	address, err := netip.ParseAddr(raw)
+	if err != nil || address.Zone() != "" {
+		return netip.Prefix{}, false
+	}
+	return netip.PrefixFrom(address, address.BitLen()), true
 }
