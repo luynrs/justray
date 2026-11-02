@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 
@@ -47,6 +48,11 @@ func transport(n domain.Node) (*option.V2RayTransportOptions, error) {
 			GRPCOptions: option.V2RayGRPCOptions{ServiceName: n.Transport.ServiceName},
 		}, nil
 	case "http":
+		if n.Transport.Host == "" {
+			if _, err := netip.ParseAddr(n.Server); err != nil {
+				n.Transport.Host = n.Server
+			}
+		}
 		h := option.V2RayHTTPOptions{Path: n.Transport.Path}
 		if n.Transport.Host != "" {
 			h.Host = badoption.Listable[string]{n.Transport.Host}
