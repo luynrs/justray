@@ -34,9 +34,6 @@ func (s *Service) Refresh(ctx context.Context, sub store.Subscription) (store.Su
 	if err != nil || req.URL.Host == "" || (req.URL.Scheme != "https" && req.URL.Scheme != "http") {
 		return sub, errors.New("invalid subscription URL or share link")
 	}
-	if s.device.Get("X-Hwid") == "" {
-		return sub, errors.New("device ID unavailable")
-	}
 	select {
 	case s.slots <- struct{}{}:
 		defer func() { <-s.slots }()
@@ -44,7 +41,9 @@ func (s *Service) Refresh(ctx context.Context, sub store.Subscription) (store.Su
 		return sub, ctx.Err()
 	}
 	req.Header = s.device.Clone()
-	req.Header.Set("X-Hwid", hash(s.device.Get("X-Hwid")+req.URL.Hostname()))
+	if hwid := s.device.Get("X-Hwid"); hwid != "" {
+		req.Header.Set("X-Hwid", hash(hwid+req.URL.Hostname()))
+	}
 
 	client := http.Client{
 		Timeout: 8 * time.Second,
@@ -62,7 +61,9 @@ func (s *Service) Refresh(ctx context.Context, sub store.Subscription) (store.Su
 				for k := range s.device {
 					r.Header.Del(k)
 				}
-				r.Header.Set("X-Hwid", hash(s.device.Get("X-Hwid")+r.URL.Hostname()))
+				if hwid := s.device.Get("X-Hwid"); hwid != "" {
+					r.Header.Set("X-Hwid", hash(hwid+r.URL.Hostname()))
+				}
 			}
 			return nil
 		},
