@@ -70,7 +70,10 @@ func (s *Service) Refresh(ctx context.Context, sub store.Subscription) (store.Su
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return sub, fmt.Errorf("fetch subscription: %w", errors.Unwrap(err))
+		if cause := errors.Unwrap(err); cause != nil {
+			err = cause
+		}
+		return sub, fmt.Errorf("fetch subscription: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 

@@ -172,7 +172,8 @@ func (model Model) updateSnapshot(message pushed) (tea.Model, tea.Cmd) {
 				if subscription.Warning != "" && !slices.ContainsFunc(model.snapshot.Subscriptions, func(previous ipc.Subscription) bool {
 					return previous.SubscriptionID == subscription.SubscriptionID && previous.Warning == subscription.Warning && previous.UpdatedAt.Equal(subscription.UpdatedAt)
 				}) {
-					model.err, model.errAt = subscription.Warning, time.Now()
+					warnLine, _, _ := strings.Cut(subscription.Warning, "\n")
+					model.err, model.errAt = "Warning: "+warnLine, time.Now()
 				}
 			}
 		}

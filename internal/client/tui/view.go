@@ -46,14 +46,12 @@ func (m Model) content() string {
 	content := m.title()
 	if m.h >= topLines+footerLines+1 {
 		var body string
-		var rows []tree.Row
 		if m.dialog != nil {
 			body = m.dialog.View()
 		} else {
-			rows = m.rows()
-			body = m.tree(rows)
+			body = m.tree(m.rows())
 		}
-		content = style.Fit(content+"\n\n"+body, m.h-footerLines) + "\n\n" + m.footer(rows) + "\n"
+		content = style.Fit(content+"\n\n"+body, m.h-footerLines) + "\n\n" + m.footer() + "\n"
 		err := m.err
 		if m.dialog != nil {
 			err = cmp.Or(m.dialog.Err(), err)
@@ -61,7 +59,11 @@ func (m Model) content() string {
 		if m.dialog == nil && (m.filter.Focused() || m.filter.Value() != "" && err == "") {
 			content += m.clip(m.filter.View())
 		} else if err != "" {
-			content += m.clip(style.Red.Bold(true).Italic(true).Render(style.Sanitize(err, true)))
+			errStyle := style.Red
+			if strings.HasPrefix(err, "Warning:") {
+				errStyle = style.Yellow
+			}
+			content += m.clip(errStyle.Bold(true).Italic(true).Render(style.Sanitize(err, true)))
 		}
 	}
 	if m.activeModal != modalNone {
@@ -106,7 +108,7 @@ func (m Model) tree(rows []tree.Row) string {
 	return strings.Join(lines, "\n")
 }
 
-func (m Model) footer(rows []tree.Row) string {
+func (m Model) footer() string {
 	icon := style.Dot(false)
 	if m.connected() {
 		icon = style.Dot(true)
@@ -129,10 +131,6 @@ func (m Model) footer(rows []tree.Row) string {
 		status = style.Yellow.Render(icon) + " " + style.Gray.Render("connecting")
 	default:
 		status = style.Gray.Render(icon) + " " + style.Gray.Render("disconnected")
-	}
-	if r, ok := tree.At(rows, m.cursor); m.dialog == nil && ok && r.Sub.Warning != "" {
-		warnLine, _, _ := strings.Cut(r.Sub.Warning, "\n")
-		status += "   " + style.Yellow.Render(style.Sanitize(warnLine, true))
 	}
 
 	hint := m.footerHint()
