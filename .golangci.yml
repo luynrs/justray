@@ -1,0 +1,32 @@
+version: "2"
+
+run:
+  build-tags:
+    - with_quic
+    - with_utls
+    - with_gvisor
+    - with_grpc
+    - with_xhttp
+    - with_awg
+    - badlinkname
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - gocritic
+    - govet
+    - revive
+    - staticcheck
+    - unused
+  settings:
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
+    gocritic:
+      disabled-checks:
+        - ifElseChain
+        - exitAfterDefer
