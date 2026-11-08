@@ -12,6 +12,7 @@ import (
 
 const (
 	Timeout = 30 * time.Second
+	Stop    = 5 * time.Second
 	Retry   = 50 * time.Millisecond
 )
 

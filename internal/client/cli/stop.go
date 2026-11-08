@@ -35,7 +35,7 @@ func stop(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		if errors.Is(err, ipc.ErrNoDaemon) {
-			if err := waitStopped(ctx, socket, 6*time.Second); err != nil {
+			if err := waitStopped(ctx, socket, ipc.Stop); err != nil {
 				return err
 			}
 			done("Daemon is not running")
@@ -44,7 +44,7 @@ func stop(cmd *cobra.Command, args []string) error {
 	}
 	stop := spin("Stopping daemon")
 	shutdownErr := c.Shutdown(ctx)
-	err = waitStopped(ctx, socket, 6*time.Second)
+	err = waitStopped(ctx, socket, ipc.Stop)
 	stop()
 	if err != nil {
 		if errors.Is(err, context.Canceled) {

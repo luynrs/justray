@@ -227,7 +227,7 @@ func (a *app) connect(ctx context.Context, startMissing bool) error {
 			ctx, finish = context.WithDeadline(context.WithoutCancel(ctx), deadline)
 			defer finish()
 			_ = a.client.Shutdown(ctx)
-			if err := waitStopped(ctx, ipc.Socket(dir), 3*time.Second); err != nil {
+			if err := waitStopped(ctx, ipc.Socket(dir), ipc.Stop); err != nil {
 				return fmt.Errorf("cannot restart daemon: %w", err)
 			}
 		}

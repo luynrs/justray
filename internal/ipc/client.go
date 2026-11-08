@@ -18,8 +18,6 @@ type Client struct {
 	socket string
 }
 
-// IdleTimeout bounds how long either side waits on a quiet connection
-const IdleTimeout = 30 * time.Second
 
 func New(socket string) *Client { return &Client{socket: socket} }
 

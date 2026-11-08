@@ -175,7 +175,7 @@ func main() {
 		}()
 		select {
 		case <-cleaned:
-		case <-time.After(2 * time.Second):
+		case <-time.After(3 * time.Second):
 			log.Warn("shutdown timed out")
 		}
 		unlock()

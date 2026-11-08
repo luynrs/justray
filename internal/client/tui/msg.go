@@ -60,12 +60,8 @@ func watch(ctx context.Context, c *ipc.Client, ch chan<- pushed) tea.Cmd {
 			case <-ctx.Done():
 				return nil
 			}
-			delay := ipc.Retry
-			if err != nil {
-				delay = 300 * time.Millisecond
-			}
 			select {
-			case <-time.After(delay):
+			case <-time.After(ipc.Retry):
 			case <-ctx.Done():
 				return nil
 			}

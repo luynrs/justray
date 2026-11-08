@@ -24,7 +24,7 @@ func (s *Server) handle(conn net.Conn) {
 			<-s.sem
 		}
 	}()
-	_ = conn.SetDeadline(time.Now().Add(ipc.IdleTimeout))
+	_ = conn.SetDeadline(time.Now().Add(ipc.Timeout))
 
 	var req ipc.Request
 	if err := json.NewDecoder(io.LimitReader(conn, 32<<20)).Decode(&req); err != nil { // max req size
@@ -71,7 +71,7 @@ func (s *Server) handle(conn net.Conn) {
 	defer finish()
 	_ = conn.SetDeadline(time.Time{})
 	result, err := s.dispatch(ctx, req)
-	_ = conn.SetDeadline(time.Now().Add(ipc.IdleTimeout))
+	_ = conn.SetDeadline(time.Now().Add(ipc.Timeout))
 	if reply(conn, result, err) == nil {
 		s.core.RequestRestart(err)
 	}
@@ -145,7 +145,7 @@ func reply(conn net.Conn, result any, err error) error {
 		resp.Success = false
 		resp.Error = &ipc.Error{Type: ipc.ErrorType(err), Message: err.Error()}
 	}
-	if err := conn.SetWriteDeadline(time.Now().Add(ipc.IdleTimeout)); err != nil {
+	if err := conn.SetWriteDeadline(time.Now().Add(ipc.Timeout)); err != nil {
 		return err
 	}
 	return json.NewEncoder(conn).Encode(resp)
