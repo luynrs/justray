@@ -45,7 +45,7 @@ require (
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/hashicorp/yamux v0.1.2 // indirect
-	github.com/huin/goupnp v1.3.0 // indirect
+	github.com/huin/goupnp v1.3.1 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackpal/go-nat-pmp v1.1.0 // indirect
 	github.com/jsimonetti/rtnetlink v1.4.2 // indirect
@@ -86,7 +86,7 @@ require (
 	github.com/sagernet/smux v1.5.50-sing-box-mod.1 // indirect
 	github.com/sagernet/wireguard-go v0.0.20201121 // indirect
 	github.com/sagernet/ws v0.0.0-20231204124109-acfe8907c854 // indirect
-	github.com/spf13/pflag v1.0.10 // indirect
+	github.com/spf13/pflag v1.1.0 // indirect
 	github.com/vishvananda/netns v0.0.5 // indirect
 	github.com/xo/terminfo v1.3.1 // indirect
 	github.com/zeebo/blake3 v0.2.4 // indirect
@@ -95,7 +95,7 @@ require (
 	go.uber.org/zap/exp v0.3.0 // indirect
 	go4.org/netipx v0.0.0-20260823151212-3075585bcbeb // indirect
 	golang.org/x/crypto v0.58.0 // indirect
-	golang.org/x/exp v0.0.0-20261014143641-f0251eb4aa3e // indirect
+	golang.org/x/exp v0.0.0-20261106192419-47ce03d25ef0 // indirect
 	golang.org/x/mod v0.42.0 // indirect
 	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
@@ -109,7 +109,7 @@ require (
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
 
-replace github.com/sagernet/sing-box => github.com/Leadaxe/sing-box-lx v1.14.4-lx.31
+replace github.com/sagernet/sing-box => github.com/Leadaxe/sing-box-lx v1.14.4-lx.33
 
 replace github.com/sagernet/wireguard-go => github.com/Leadaxe/wireguard-go-awg2-lx v0.0.0-20261104204237-9115d9022cd0
 
