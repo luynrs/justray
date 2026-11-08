@@ -179,7 +179,7 @@ func (a *app) connect(ctx context.Context, startMissing bool) error {
 		return fmt.Errorf("cannot create config directory: %w", err)
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	for {
 		if err := ctx.Err(); err != nil {
@@ -192,6 +192,9 @@ func (a *app) connect(ctx context.Context, startMissing bool) error {
 		}
 		if !errors.Is(err, lock.ErrLocked) {
 			return err
+		}
+		if a.client.Ping(ctx) == nil {
+			return nil
 		}
 		select {
 		case <-ctx.Done():
@@ -211,7 +214,7 @@ func (a *app) connect(ctx context.Context, startMissing bool) error {
 		if !startMissing && !replacing {
 			return nil
 		}
-		bin, err := justrayd(ctx)
+		bin, err := justrayd()
 		if err != nil {
 			return err
 		}
@@ -223,9 +226,9 @@ func (a *app) connect(ctx context.Context, startMissing bool) error {
 			deadline, _ := ctx.Deadline()
 			ctx, finish = context.WithDeadline(context.WithoutCancel(ctx), deadline)
 			defer finish()
-			shutdownErr := a.client.Shutdown(ctx)
-			if err := waitStopped(ctx, ipc.Socket(dir), 6*time.Second); err != nil {
-				return fmt.Errorf("cannot restart daemon: %w", errors.Join(shutdownErr, err))
+			_ = a.client.Shutdown(ctx)
+			if err := waitStopped(ctx, ipc.Socket(dir), 3*time.Second); err != nil {
+				return fmt.Errorf("cannot restart daemon: %w", err)
 			}
 		}
 		if err := ctx.Err(); err != nil {
@@ -262,27 +265,14 @@ func spawn(bin, dir string) error {
 	return nil
 }
 
-func justrayd(ctx context.Context) (string, error) {
-	path, err := exec.LookPath(exeName("justrayd"))
-	if err != nil {
-		path = ""
+func justrayd() (string, error) {
+	if bin := sibling("justrayd"); bin != "" {
+		return bin, nil
 	}
-	candidates := []string{sibling("justrayd"), path}
-	for _, bin := range candidates {
-		if bin == "" {
-			continue
-		}
-		check, cancel := context.WithTimeout(ctx, time.Second)
-		output, err := exec.CommandContext(check, bin, "--version").Output()
-		cancel()
-		if ctx.Err() != nil {
-			return "", ctx.Err()
-		}
-		if err == nil && strings.TrimSpace(string(output)) == "justrayd "+version.String() {
-			return bin, nil
-		}
+	if path, err := exec.LookPath(exeName("justrayd")); err == nil {
+		return path, nil
 	}
-	return "", errors.New("matching daemon not found")
+	return "", errors.New("justrayd not found")
 }
 
 func exeName(name string) string {

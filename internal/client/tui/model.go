@@ -95,7 +95,13 @@ func New(c *ipc.Client, start func(context.Context) error) Model {
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(watch(m.watch, m.client, m.updates), next(m.watch, m.updates), tickCmd(), m.spin.Tick, m.startup)
+	cmds := []tea.Cmd{next(m.watch, m.updates), tickCmd(), m.spin.Tick}
+	if m.startup != nil {
+		cmds = append(cmds, m.startup)
+	} else {
+		cmds = append(cmds, watch(m.watch, m.client, m.updates))
+	}
+	return tea.Batch(cmds...)
 }
 
 func (m Model) needsSpinner() bool {

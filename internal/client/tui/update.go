@@ -98,9 +98,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case started:
 		if m.startup != nil {
 			m.startup = nil
-			if message := style.ErrorText(msg.err); message != "" && m.watch.Err() == nil {
-				m.err, m.errAt = message, time.Now()
+			if msg.err != nil {
+				if message := style.ErrorText(msg.err); message != "" && m.watch.Err() == nil {
+					m.err, m.errAt = message, time.Now()
+				}
+				return m, nil
 			}
+			return m, watch(m.watch, m.client, m.updates)
 		}
 		return m, nil
 
