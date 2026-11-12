@@ -41,7 +41,9 @@ type Data struct {
 	Details   domain.Details
 }
 
-func (d Data) connected() bool { return d.Live && d.Status.Connected }
+func (d Data) active(n ipc.Node) bool {
+	return d.Live && d.Status.Connected && d.Status.NodeRef == n.Ref()
+}
 
 type Group struct {
 	Sub   ipc.Subscription
@@ -81,7 +83,7 @@ func (d Data) Rows() []Row {
 			if filtered && !strings.Contains(strings.ToLower(node.Name+" "+node.Protocol+" "+node.Server), query) {
 				continue
 			}
-			if query != "" || !collapsed || (d.connected() && d.Status.NodeRef == node.Ref()) {
+			if query != "" || !collapsed || d.active(*node) {
 				rows = append(rows, Row{Kind: Node, Sub: group.Sub, Node: *node})
 			}
 		}

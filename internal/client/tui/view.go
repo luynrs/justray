@@ -109,28 +109,21 @@ func (m Model) tree(rows []tree.Row) string {
 }
 
 func (m Model) footer() string {
-	icon := style.Dot(false)
-	if m.connected() {
-		icon = style.Dot(true)
-	}
-	if m.busy || m.snapshot.Status.Busy || m.startup != nil {
-		icon = m.spin.View()
-	}
-
+	busy := m.busy || m.live && m.snapshot.Status.Busy
 	var status string
 	switch {
 	case m.connected():
-		iconStyle := style.Green
-		if m.busy || m.snapshot.Status.Busy {
-			iconStyle = style.Yellow
+		icon, iconStyle := style.Dot(true), style.Green
+		if busy {
+			icon, iconStyle = m.spin.View(), style.Yellow
 		}
 		status = iconStyle.Render(icon) + " " + style.Sanitize(m.snapshot.Status.NodeName, m.emoji()) + " " + style.Gray.Render(style.Sep()) + " " + style.Uptime(m.snapshot.Status.Uptime())
 	case m.startup != nil:
-		status = style.Yellow.Render(icon) + " " + style.Gray.Render("starting daemon")
-	case m.busy:
-		status = style.Yellow.Render(icon) + " " + style.Gray.Render("connecting")
+		status = style.Yellow.Render(m.spin.View()) + " " + style.Gray.Render("starting daemon")
+	case busy:
+		status = style.Yellow.Render(m.spin.View()) + " " + style.Gray.Render("connecting")
 	default:
-		status = style.Gray.Render(icon) + " " + style.Gray.Render("disconnected")
+		status = style.Gray.Render(style.Dot(false) + " disconnected")
 	}
 
 	hint := m.footerHint()

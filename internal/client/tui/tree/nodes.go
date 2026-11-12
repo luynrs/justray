@@ -56,9 +56,14 @@ func (d Data) node(n ipc.Node, selected bool) string {
 	if selected {
 		name = style.Cyan.Render(name)
 	}
-	line := "  " + d.dot(n) + " " + name
+	active := d.active(n)
+	line := "  " + d.dot(n, active) + " " + name
 	if lat := n.Latency(); lat != "" {
-		line += " " + style.Gray.Render(lat)
+		latStyle := style.Gray
+		if active && !n.Alive {
+			latStyle = style.Red
+		}
+		line += " " + latStyle.Render(lat)
 	}
 	return line
 }
@@ -74,15 +79,18 @@ func (d Data) info(node ipc.Node) string {
 	if d.Details.Protocol == "on" && node.Protocol != "" {
 		parts = append(parts, style.Sanitize(node.Protocol, true))
 	}
+	if len(parts) == 0 {
+		return ""
+	}
 	return style.Gray.Render(strings.Join(parts, " "+style.Sep()+" "))
 }
 
-func (d Data) dot(n ipc.Node) string {
+func (d Data) dot(n ipc.Node, active bool) string {
 	switch {
-	case d.connected() && d.Status.NodeRef == n.Ref():
-		return style.Green.Render(style.Dot(true))
 	case n.Probing:
 		return style.Yellow.Render(d.Spinner)
+	case active:
+		return style.Green.Render(style.Dot(true))
 	case !n.Probed:
 		return style.Gray.Render(style.Dot(false))
 	case n.Alive:
