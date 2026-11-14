@@ -1,6 +1,12 @@
 package engine
 
 import (
+	"bufio"
+	"context"
+	"errors"
+	"github.com/luynrs/justray/internal/domain"
+	"github.com/luynrs/justray/internal/parser"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -9,9 +15,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
-
-	"github.com/luynrs/justray/internal/domain"
-	"github.com/luynrs/justray/internal/parser"
+	"time"
 )
 
 func TestRebuilds(t *testing.T) {
@@ -108,6 +112,55 @@ func TestNodeSwitch(t *testing.T) {
 	if box.node.ID != second.ID || secondCalls.Load() != 4 {
 		t.Fatal("failed node switch lost the working proxy")
 	}
+	canceled, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := box.Apply(canceled, Spec{Node: first, Settings: settings}); !errors.Is(err, context.Canceled) || box.node.ID != second.ID {
+		t.Fatalf("canceled switch: err=%v node=%s", err, box.node.ID)
+	}
+
+	holdClosed := make(chan struct{})
+	holdProxy := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		conn, stream, err := writer.(http.Hijacker).Hijack()
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close(); close(holdClosed) }()
+		_, _ = stream.WriteString("HTTP/1.1 200 Connection Established\r\n\r\n")
+		_ = stream.Flush()
+		_, _ = io.Copy(io.Discard, stream.Reader)
+	}))
+	defer holdProxy.Close()
+	holdNodes, _, err := parser.ParseSubscription([]byte(holdProxy.URL + "#hold"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	holdNodes[0].ID = "hold"
+	if err := box.Apply(t.Context(), Spec{Node: holdNodes[0], Settings: settings}); err != nil {
+		t.Fatal(err)
+	}
+	conn, err := net.Dial("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(settings.Port)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	_, _ = io.WriteString(conn, "CONNECT example.test:80 HTTP/1.1\r\nHost: example.test:80\r\n\r\n")
+	if resp, err := http.ReadResponse(bufio.NewReader(conn), nil); err != nil {
+		t.Fatal(err)
+	} else {
+		_ = resp.Body.Close()
+	}
+	if err := box.Apply(t.Context(), Spec{Node: second, Settings: settings}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-holdClosed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("hotswap did not interrupt active connection")
+	}
+	if box.inst != instance {
+		t.Fatal("hotswap rebuilt box instance")
+	}
+	request()
 }
 
 func testHTTPProxy(t *testing.T) (*httptest.Server, *atomic.Int32) {

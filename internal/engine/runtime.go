@@ -1,15 +1,19 @@
 package engine
 
 import (
+	"cmp"
 	"context"
+	"io"
+	"net"
 	"sync/atomic"
 
 	"github.com/sagernet/sing-box/adapter"
 	boxendpoint "github.com/sagernet/sing-box/adapter/endpoint"
 	boxoutbound "github.com/sagernet/sing-box/adapter/outbound"
+	"github.com/sagernet/sing-box/common/interrupt"
+	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
-	"github.com/sagernet/sing-box/option"
-	"github.com/sagernet/sing-box/protocol/group"
+	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/service"
 
 	"github.com/luynrs/justray/internal/domain"
@@ -22,9 +26,10 @@ type nodeRuntime struct {
 	scope     *adapter.Scope
 	outbounds *boxoutbound.Manager
 	endpoints *boxendpoint.Manager
+	interrupt *interrupt.Group
 }
 
-func newRuntime(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, node domain.Node) (runtime *nodeRuntime, err error) {
+func newRuntime(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, node domain.Node) (*nodeRuntime, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -33,35 +38,39 @@ func newRuntime(ctx context.Context, router adapter.Router, logger log.ContextLo
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	runtime = &nodeRuntime{ctx: ctx, scope: adapter.NewScope(context.WithoutCancel(ctx), logger)}
-	defer func() {
-		if err != nil {
-			cancel()
-			_ = runtime.scope.Close()
-		}
-	}()
+	runtime := &nodeRuntime{
+		ctx:       ctx,
+		scope:     adapter.NewScope(context.WithoutCancel(ctx), logger),
+		interrupt: interrupt.NewGroup(),
+	}
 	ctx = service.ExtendContext(ctx)
 	runtime.endpoints = boxendpoint.NewManager(logger, endpointReg)
 	runtime.outbounds = boxoutbound.NewManager(outboundReg, runtime.endpoints, tag)
 	service.MustRegister[adapter.EndpointManager](ctx, runtime.endpoints)
 	service.MustRegister[adapter.OutboundManager](ctx, runtime.outbounds)
 	if endpoint != nil {
-		if err = runtime.endpoints.Create(ctx, router, logger, endpoint.Tag, endpoint.Type, endpoint.Options); err != nil {
-			return runtime, err
-		}
+		err = runtime.endpoints.Create(ctx, router, logger, endpoint.Tag, endpoint.Type, endpoint.Options)
 	}
 	for _, outbound := range outbounds {
-		if err = runtime.outbounds.Create(ctx, router, logger, outbound.Tag, outbound.Type, outbound.Options); err != nil {
-			return runtime, err
+		if err != nil {
+			break
 		}
+		err = runtime.outbounds.Create(ctx, router, logger, outbound.Tag, outbound.Type, outbound.Options)
 	}
-	runtime.Outbound, _ = runtime.outbounds.Outbound(tag)
-	err = runtime.start(adapter.StartStateInitialize)
+	if err == nil {
+		runtime.Outbound, _ = runtime.outbounds.Outbound(tag)
+		err = runtime.start(adapter.StartStateInitialize)
+	}
 	if err == nil {
 		err = ctx.Err()
 	}
+	if err != nil {
+		cancel()
+		_ = runtime.scope.Close()
+		return nil, err
+	}
 	runtime.scope.Add(func() error { cancel(); return nil })
-	return runtime, err
+	return runtime, nil
 }
 
 func (runtime *nodeRuntime) start(stages ...adapter.StartStage) error {
@@ -81,49 +90,69 @@ func (runtime *nodeRuntime) start(stages ...adapter.StartStage) error {
 	return nil
 }
 
+func (runtime *nodeRuntime) close() error {
+	runtime.interrupt.Interrupt(true)
+	return runtime.scope.Close()
+}
+
 type proxyOutbound struct {
-	*group.Selector
+	boxoutbound.Adapter
 	router  adapter.Router
 	logger  log.ContextLogger
 	node    domain.Node
 	current atomic.Pointer[nodeRuntime]
 }
 
-func newProxy(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, node domain.Node) (adapter.Outbound, error) {
-	selector, err := group.NewSelector(ctx, router, logger, tag, option.SelectorOutboundOptions{Outbounds: []string{"proxy-node"}})
-	if err != nil {
-		return nil, err
-	}
+func newProxy(_ context.Context, router adapter.Router, logger log.ContextLogger, tag string, node domain.Node) (adapter.Outbound, error) {
 	return &proxyOutbound{
-		Selector: selector.(*group.Selector), router: router, logger: logger, node: node,
+		Adapter: boxoutbound.NewAdapter(C.TypeSelector, tag, nil, nil),
+		router:  router,
+		logger:  logger,
+		node:    node,
 	}, nil
 }
 
-func (proxy *proxyOutbound) Dependencies() []string { return nil }
-
+func (proxy *proxyOutbound) Network() []string                { return proxy.current.Load().Network() }
+func (proxy *proxyOutbound) All() []string                    { return []string{proxy.current.Load().Tag()} }
+func (proxy *proxyOutbound) Selected(string) adapter.Outbound { return proxy.current.Load().Outbound }
+func (proxy *proxyOutbound) AttachConnection(c io.Closer) func() {
+	return proxy.current.Load().interrupt.Add(c, true)
+}
+func (proxy *proxyOutbound) DialContext(ctx context.Context, net string, dst M.Socksaddr) (net.Conn, error) {
+	return proxy.current.Load().DialContext(ctx, net, dst)
+}
+func (proxy *proxyOutbound) ListenPacket(ctx context.Context, dst M.Socksaddr) (net.PacketConn, error) {
+	return proxy.current.Load().ListenPacket(ctx, dst)
+}
+func (proxy *proxyOutbound) swap(ctx, lifetime context.Context, node domain.Node) error {
+	runtimeCtx, cancelRuntime := context.WithCancel(lifetime)
+	stopSwap := context.AfterFunc(ctx, cancelRuntime)
+	runtime, err := newRuntime(runtimeCtx, proxy.router, proxy.logger, "proxy-node", node)
+	if err == nil {
+		runtime.scope.Add(func() error { cancelRuntime(); return nil })
+		err = runtime.start(adapter.ListStartStages[1:]...)
+	}
+	if !stopSwap() || err != nil {
+		cancelRuntime()
+		if runtime != nil {
+			_ = runtime.close()
+		}
+		return cmp.Or(ctx.Err(), err)
+	}
+	_ = proxy.current.Swap(runtime).close()
+	return nil
+}
 func (proxy *proxyOutbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage == adapter.StartStateInitialize {
 		runtime, err := newRuntime(scope.Context(), proxy.router, proxy.logger, "proxy-node", proxy.node)
 		if err != nil {
 			return err
 		}
-		registrar := service.FromContext[adapter.OutboundManager](scope.Context()).(adapter.InternalOutboundRegistrar)
-		if err := registrar.AddInternal(runtime.Outbound); err != nil {
-			_ = runtime.scope.Close()
-			return err
-		}
 		proxy.current.Store(runtime)
-		scope.Add(func() error {
-			runtime := proxy.current.Load()
-			registrar.RemoveInternal(runtime.Tag())
-			return runtime.scope.Close()
-		})
+		scope.Add(func() error { return proxy.current.Load().close() })
 		return nil
 	}
-	if err := proxy.current.Load().start(stage); err != nil {
-		return err
-	}
-	return proxy.Selector.Start(stage, scope)
+	return proxy.current.Load().start(stage)
 }
 
 func (proxy *proxyOutbound) InterfaceUpdated(ctx context.Context) {

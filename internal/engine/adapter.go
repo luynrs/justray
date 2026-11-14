@@ -63,7 +63,7 @@ func (e *box) Apply(ctx context.Context, spec Spec) error {
 		return e.start(ctx, spec)
 	}
 	if nodeChanged {
-		return e.swap(spec.Node)
+		return e.swap(ctx, spec.Node)
 	}
 	if tunChanged {
 		if spec.Tun {
@@ -143,33 +143,14 @@ func start(ctx context.Context, opts option.Options) (*sbox.Box, error) {
 	}
 }
 
-func (e *box) swap(n domain.Node) error {
+func (e *box) swap(ctx context.Context, n domain.Node) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	managed, _ := e.inst.Outbound().Outbound("proxy")
-	proxy := managed.(*proxyOutbound)
-	runtime, err := newRuntime(e.runtime, e.inst.Router(), proxy.logger, "proxy-node", n)
-	if err != nil {
+	if err := managed.(*proxyOutbound).swap(ctx, e.runtime, n); err != nil {
 		return err
 	}
-	if err := runtime.start(adapter.ListStartStages[1:]...); err != nil {
-		_ = runtime.scope.Close()
-		return err
-	}
-	registrar := e.inst.Outbound().(adapter.InternalOutboundRegistrar)
-	previous := proxy.current.Load()
-	registrar.RemoveInternal(previous.Tag())
-	if err := registrar.AddInternal(runtime.Outbound); err != nil {
-		_ = registrar.AddInternal(previous.Outbound)
-		_ = runtime.scope.Close()
-		return err
-	}
-	if err := proxy.Selector.Start(adapter.StartStateStart, nil); err != nil {
-		registrar.RemoveInternal(runtime.Tag())
-		_ = registrar.AddInternal(previous.Outbound)
-		_ = runtime.scope.Close()
-		return err
-	}
-	proxy.current.Store(runtime)
-	_ = previous.scope.Close()
 	if invalidator, ok := e.inst.Router().(adapter.ReachabilityInvalidator); ok {
 		invalidator.InvalidateReachability()
 	}
