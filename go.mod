@@ -17,7 +17,7 @@ require (
 	github.com/sagernet/sing-box v1.14.4
 	github.com/sagernet/sing-quic v0.7.2-0.20261020082049-7e0a5869a5f4
 	github.com/spf13/cobra v1.10.2
-	golang.org/x/sys v0.49.0
+	golang.org/x/sys v0.50.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
