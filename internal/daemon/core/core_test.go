@@ -103,6 +103,9 @@ func TestRestore(t *testing.T) {
 		Active:        domain.NodeRef{SubscriptionID: "sub", NodeID: "node"},
 		Subscriptions: []store.Subscription{{ID: "sub", Nodes: []domain.Node{{ID: "node"}}}},
 	})
+	app.stMu.Lock()
+	app.state.Settings.Autostart = "on"
+	app.stMu.Unlock()
 	if err := app.Restore(); err != nil {
 		t.Fatal(err)
 	}
