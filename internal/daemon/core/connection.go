@@ -29,7 +29,7 @@ func (c *Core) Restore() error {
 				return err
 			}
 		}
-		if !c.conn.Status().Connected && state.Active.NodeID != "" {
+		if state.Settings.Autostart == "on" && !c.conn.Status().Connected && state.Active.NodeID != "" {
 			if node, ref, err := find(state.Subscriptions, state.Active); err == nil {
 				if err := c.external(func() error { return c.conn.Restore(node, ref, state.Settings, state.Tun) }); errors.Is(err, ipc.ErrElevate) {
 					return err
