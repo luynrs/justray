@@ -736,6 +736,7 @@ func TestSwitch(t *testing.T) {
 		return
 	}
 	app, stop := start(permission, permission)
+	requireNoError(t, client.Connect(t.Context(), a, nil))
 	check(a, false, false)
 	if err := client.Connect(t.Context(), b, &tun); !errors.Is(err, ipc.ErrElevate) {
 		t.Fatalf("elevation request: %v", err)

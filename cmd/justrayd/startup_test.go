@@ -326,6 +326,7 @@ func TestStartup(t *testing.T) {
 		t.Fatal("WG peer missing from subscription")
 	}
 	settings := snapshot.Settings
+	autostart := settings.Autostart == "on"
 	trafficClient := &http.Client{Transport: &http.Transport{
 		Proxy: http.ProxyURL(&url.URL{Scheme: "http", Host: fmt.Sprintf("127.0.0.1:%d", port)}), DisableKeepAlives: true,
 	}, Timeout: 5 * time.Second}
@@ -391,7 +392,8 @@ func TestStartup(t *testing.T) {
 	traffic("awg3")
 	run("stop")
 	start()
-	ready(true)
+	ready(autostart)
+	run("up", "--proxy")
 	traffic("awg3")
 	for _, transition := range []struct{ probe, target, protocol string }{
 		{"runtime-wg", "runtime-hy2", "hysteria2"},
@@ -425,14 +427,18 @@ func TestStartup(t *testing.T) {
 	run("up", "fixture", "--proxy")
 	run("stop")
 	start()
-	ready(true)
+	ready(autostart)
 	run("down")
 	run("stop")
 	start()
 	ready(false)
-	run("up", "--proxy")
 	run("stop")
 
+	disk := store.Disk{Dir: directory}
+	state, err := disk.Load()
+	requireNoError(t, err)
+	state.Pending = &store.Pending{Ref: state.Last}
+	requireNoError(t, disk.SaveState(state))
 	listener, err = net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 	requireNoError(t, err)
 	t.Cleanup(func() { _ = listener.Close() })
@@ -442,16 +448,12 @@ func TestStartup(t *testing.T) {
 		t.Fatalf("restore failure reported success: %s", output)
 	}
 	_ = listener.Close()
-	run("up", "--proxy")
 	run("stop")
 
 	if runtime.GOOS != "linux" || !elevate.Needed(syscall.EPERM) {
 		return
 	}
-	disk := store.Disk{Dir: directory}
-	state, err := disk.Load()
-	requireNoError(t, err)
-	state.Tun = true
+	state.Pending = &store.Pending{Ref: state.Last, Tun: true}
 	requireNoError(t, disk.SaveState(state))
 	auth := filepath.Join(home, "auth")
 	t.Setenv("TEST_AUTH", auth)
@@ -513,7 +515,7 @@ func TestStartup(t *testing.T) {
 	}
 	run("stop")
 	start()
-	ready(true)
+	ready(autostart)
 	run("status")
 	run("stop")
 }
