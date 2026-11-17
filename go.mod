@@ -5,7 +5,7 @@ go 1.27.3
 require (
 	charm.land/bubbles/v2 v2.2.1
 	charm.land/bubbletea/v2 v2.1.1
-	charm.land/lipgloss/v2 v2.1.0
+	charm.land/lipgloss/v2 v2.1.1
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/charmbracelet/ultraviolet v0.0.0-20261023060817-a45b7c86333f
 	github.com/charmbracelet/x/ansi v0.11.9
@@ -73,7 +73,7 @@ require (
 	github.com/sagernet/bbolt v0.0.0-20260915102804-500ee1e84832 // indirect
 	github.com/sagernet/fswatch v0.1.2 // indirect
 	github.com/sagernet/gvisor v0.0.0-20250811-sing-box-mod.1 // indirect
-	github.com/sagernet/nftables v0.3.0-mod.4 // indirect
+	github.com/sagernet/nftables v0.3.0-mod.4.0.20261114074246-0b310c3e010b // indirect
 	github.com/sagernet/quic-go v0.61.0-sing-box-mod.12 // indirect
 	github.com/sagernet/sing-mux v0.3.10-0.20260929204512-caf09fe32475 // indirect
 	github.com/sagernet/sing-shadowsocks v0.2.9 // indirect
@@ -113,7 +113,7 @@ replace github.com/sagernet/sing-box => github.com/Leadaxe/sing-box-lx v1.14.4-l
 
 replace github.com/sagernet/wireguard-go => github.com/Leadaxe/wireguard-go-awg2-lx v0.0.0-20261104204237-9115d9022cd0
 
-replace github.com/sagernet/sing-tun => github.com/Leadaxe/sing-tun-lx v0.0.0-20261104212215-94280f68f97b
+replace github.com/sagernet/sing-tun => github.com/Leadaxe/sing-tun-lx v0.0.0-20261114124402-513871512fb3
 
 replace github.com/sagernet/gvisor => github.com/Leadaxe/gvisor-lx v0.0.0-20260805115331-117243aa02fa
 
