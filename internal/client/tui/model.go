@@ -52,8 +52,9 @@ type Model struct {
 	start   func() error
 	startup tea.Cmd
 
-	err   string
-	errAt time.Time
+	err     string
+	errAt   time.Time
+	focused time.Time
 
 	w, h     int
 	quitting bool

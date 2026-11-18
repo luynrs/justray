@@ -108,6 +108,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case tea.FocusMsg:
+		m.focused = time.Now()
+		return m, nil
+
 	case pushed:
 		return m.updateSnapshot(msg)
 	}
@@ -115,6 +119,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.quit()
 	}
 	if m.saving {
+		return m, nil
+	}
+	if _, ok := msg.(tea.MouseClickMsg); ok && time.Since(m.focused) < ipc.Retry {
 		return m, nil
 	}
 	showHelp := false

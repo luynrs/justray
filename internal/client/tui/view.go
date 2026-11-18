@@ -34,6 +34,7 @@ func (m Model) View() tea.View {
 	v := tea.NewView(m.content())
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
+	v.ReportFocus = true
 	v.WindowTitle = "JustRay"
 	return v
 }
