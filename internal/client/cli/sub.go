@@ -41,7 +41,7 @@ func (a *app) add(cmd *cobra.Command, args []string) error {
 	}
 	if sub.Refreshable {
 		done("Added " + a.clean(sub.Name))
-		fields([2]string{"ID", sub.SubscriptionID}, [2]string{"Nodes", strconv.Itoa(sub.NodeCount)}, [2]string{"Traffic", style.Usage(domain.Traffic(sub.Traffic))})
+		fields([2]string{"ID", sub.SubscriptionID}, [2]string{"Nodes", strconv.Itoa(sub.NodeCount)}, [2]string{"Traffic", style.Usage(sub.Traffic)})
 		if sub.Warning != "" {
 			out(style.Yellow.Render("Warning: " + a.clean(sub.Warning)))
 		}
@@ -144,7 +144,7 @@ func (a *app) refresh(cmd *cobra.Command, args []string) error {
 				continue
 			}
 			if subscriptionID != "" {
-				fields([2]string{"ID", sub.SubscriptionID}, [2]string{"Nodes", strconv.Itoa(sub.NodeCount)}, [2]string{"Traffic", style.Usage(domain.Traffic(sub.Traffic))})
+				fields([2]string{"ID", sub.SubscriptionID}, [2]string{"Nodes", strconv.Itoa(sub.NodeCount)}, [2]string{"Traffic", style.Usage(sub.Traffic)})
 			}
 			if sub.Warning != "" {
 				message := a.clean(sub.Warning)
@@ -203,7 +203,7 @@ func (a *app) list(cmd *cobra.Command, args []string) error {
 			}
 			s := subOut{ID: g.Sub.SubscriptionID, Name: g.Sub.Name, Warning: g.Sub.Warning, Nodes: nodes}
 			if tr := g.Sub.Traffic; tr.TotalBytes > 0 || tr.UploadBytes > 0 || tr.DownloadBytes > 0 || !tr.ExpiresAt.IsZero() {
-				s.Traffic = new(domain.Traffic(tr))
+				s.Traffic = &tr
 			}
 			result[i] = s
 		}
@@ -235,7 +235,7 @@ func (a *app) tree(subs []ipc.Subscription, nodes []ipc.Node) {
 			out(style.Bold.Render(a.clean(g.Sub.Name)))
 		} else {
 			out(style.Bold.Render(a.clean(g.Sub.Name)) + "  " + style.Gray.Render(g.Sub.SubscriptionID))
-			out(style.Usage(domain.Traffic(g.Sub.Traffic)) + style.Gray.Render(" "+style.Sep()+" updated "+style.Since(g.Sub.UpdatedAt)))
+			out(style.Usage(g.Sub.Traffic) + style.Gray.Render(" "+style.Sep()+" updated "+style.Since(g.Sub.UpdatedAt)))
 			if g.Sub.Warning != "" {
 				out(style.Yellow.Render("Warning: " + a.clean(g.Sub.Warning)))
 			}

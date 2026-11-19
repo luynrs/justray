@@ -95,7 +95,7 @@ type Subscription struct {
 	Name           string
 	NodeCount      int
 	UpdatedAt      time.Time
-	Traffic        Traffic
+	Traffic        domain.Traffic
 	Refreshable    bool
 	Refreshing     bool
 	Warning        string
@@ -158,11 +158,4 @@ type Snapshot struct {
 	Status        Status
 	Selected      domain.NodeRef
 	Collapsed     []string
-}
-
-type Traffic struct {
-	UploadBytes   int64
-	DownloadBytes int64
-	TotalBytes    int64
-	ExpiresAt     time.Time
 }

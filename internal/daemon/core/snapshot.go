@@ -126,7 +126,7 @@ func clone(snapshot ipc.Snapshot) ipc.Snapshot {
 func subView(sub store.Subscription, refreshing bool) ipc.Subscription {
 	return ipc.Subscription{
 		SubscriptionID: sub.ID, Name: sub.Name, NodeCount: len(sub.Nodes),
-		UpdatedAt: sub.UpdatedAt, Traffic: ipc.Traffic(sub.Traffic),
+		UpdatedAt: sub.UpdatedAt, Traffic: sub.Traffic,
 		Refreshable: sub.URL != "", Refreshing: refreshing, Warning: sub.Warning,
 	}
 }
