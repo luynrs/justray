@@ -115,7 +115,7 @@ func usage(h http.Header) domain.Traffic {
 			continue
 		}
 		n, err := strconv.ParseInt(strings.TrimSpace(val), 10, 64)
-		if err != nil {
+		if err != nil || n < 0 {
 			continue
 		}
 		switch strings.TrimSpace(key) {
