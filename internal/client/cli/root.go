@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"syscall"
@@ -350,6 +351,34 @@ func match[T any](key, noun string, items []T, idName func(T) (id, name string))
 	default:
 		var zero T
 		return zero, fmt.Errorf("ambiguous %s: %s (%s)", noun, key, strings.Join(names, ", "))
+	}
+}
+
+// matchRegex is like match, but with an RE2 pattern over names only.
+func matchRegex[T any](pattern, noun string, items []T, idName func(T) (id, name string)) (T, error) {
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		var zero T
+		return zero, fmt.Errorf("invalid %s regex: %w", noun, err)
+	}
+	var hits []T
+	var names []string
+	for _, it := range items {
+		id, name := idName(it)
+		if re.MatchString(name) {
+			hits = append(hits, it)
+			names = append(names, fmt.Sprintf("%s (%s)", style.Sanitize(name, true), shortID(id)))
+		}
+	}
+	switch len(hits) {
+	case 1:
+		return hits[0], nil
+	case 0:
+		var zero T
+		return zero, fmt.Errorf("%s %w: %s", noun, errNotFound, pattern)
+	default:
+		var zero T
+		return zero, fmt.Errorf("ambiguous %s: %s (%s)", noun, pattern, strings.Join(names, ", "))
 	}
 }
 

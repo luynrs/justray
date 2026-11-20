@@ -2,6 +2,7 @@ package cli
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/luynrs/justray/internal/domain"
@@ -70,5 +71,50 @@ func TestJSONFlags(t *testing.T) {
 	}
 	if f := subListCmd.Flags().Lookup("json"); f == nil {
 		t.Error("subListCmd missing --json flag")
+	}
+}
+
+func TestMatchRegex(t *testing.T) {
+	items := []ipc.Node{
+		{NodeID: "11111111", Name: "🇩🇪 Castor"},
+		{NodeID: "22222222", Name: "🇩🇪 Frankfurt gRPC"},
+		{NodeID: "33333333", Name: "🇬🇧 London"},
+		{NodeID: "44444444", Name: "🇨🇭 Zurich"},
+	}
+	idName := func(n ipc.Node) (string, string) { return n.NodeID, n.Name }
+
+	for _, tc := range []struct {
+		pattern, want string
+	}{
+		{`^🇨🇭`, "🇨🇭 Zurich"},
+		{`(?i)castor`, "🇩🇪 Castor"},
+		{`^🇩🇪 Frankfurt`, "🇩🇪 Frankfurt gRPC"},
+	} {
+		got, err := matchRegex(tc.pattern, "node", items, idName)
+		if err != nil {
+			t.Errorf("matchRegex(%q): %v", tc.pattern, err)
+		} else if got.Name != tc.want {
+			t.Errorf("matchRegex(%q) = %q, want %q", tc.pattern, got.Name, tc.want)
+		}
+	}
+
+	if _, err := matchRegex(`^🇩🇪`, "node", items, idName); err == nil || !strings.Contains(err.Error(), "ambiguous") {
+		t.Errorf("matchRegex(^🇩🇪): want ambiguous error, got %v", err)
+	}
+	if _, err := matchRegex(`zzz`, "node", items, idName); !errors.Is(err, errNotFound) {
+		t.Errorf("matchRegex(zzz): want notFoundError, got %v", err)
+	}
+	if _, err := matchRegex(`[`, "node", items, idName); err == nil || !strings.Contains(err.Error(), "invalid") {
+		t.Errorf("matchRegex([): want invalid regex error, got %v", err)
+	}
+}
+
+func TestUpRegexFlag(t *testing.T) {
+	f := upCmd.Flags().Lookup("regex")
+	if f == nil {
+		t.Fatal("upCmd missing --regex flag")
+	}
+	if f.Shorthand != "r" {
+		t.Errorf("upCmd --regex shorthand = %q, want %q", f.Shorthand, "r")
 	}
 }

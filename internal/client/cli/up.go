@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -22,9 +23,13 @@ var upCmd = &cobra.Command{
 func (a *app) up(cmd *cobra.Command, args []string) error {
 	tun, _ := cmd.Flags().GetBool("tun")
 	proxy, _ := cmd.Flags().GetBool("proxy")
+	asRegex, _ := cmd.Flags().GetBool("regex")
 	var mode *bool
 	if tun || proxy {
 		mode = &tun
+	}
+	if asRegex && len(args) != 1 {
+		return fmt.Errorf("usage: %s up --regex <pattern>", cmd.Root().CommandPath())
 	}
 	ctx := cmd.Context()
 
@@ -34,31 +39,36 @@ func (a *app) up(cmd *cobra.Command, args []string) error {
 	}
 	a.style(snapshot.Settings)
 	nodes := snapshot.Nodes
-	var key string
-	if len(args) > 0 {
-		key = args[0]
+	var node ipc.Node
+	if asRegex {
+		node, err = matchRegex(args[0], "node", nodes, func(node ipc.Node) (string, string) { return node.NodeID, node.Name })
 	} else {
-		if snapshot.Status.Connected {
-			if mode != nil {
-				snapshot, err = a.run(ctx, "Switching to "+strings.ToUpper(modeWord(*mode)), func() error {
-					return a.client.SetTun(ctx, *mode)
-				}, snapshot.Status.NodeRef, mode)
-				if err != nil {
-					return err
+		var key string
+		if len(args) > 0 {
+			key = args[0]
+		} else {
+			if snapshot.Status.Connected {
+				if mode != nil {
+					snapshot, err = a.run(ctx, "Switching to "+strings.ToUpper(modeWord(*mode)), func() error {
+						return a.client.SetTun(ctx, *mode)
+					}, snapshot.Status.NodeRef, mode)
+					if err != nil {
+						return err
+					}
 				}
+				a.report(snapshot)
+				return nil
 			}
-			a.report(snapshot)
-			return nil
+			if snapshot.Selected.NodeID == "" {
+				return errors.New("no node selected")
+			}
+			key = snapshot.Selected.NodeID
+			if snapshot.Selected.SubscriptionID != "" {
+				nodes = slices.DeleteFunc(nodes, func(node ipc.Node) bool { return node.SubscriptionID != snapshot.Selected.SubscriptionID })
+			}
 		}
-		if snapshot.Selected.NodeID == "" {
-			return errors.New("no node selected")
-		}
-		key = snapshot.Selected.NodeID
-		if snapshot.Selected.SubscriptionID != "" {
-			nodes = slices.DeleteFunc(nodes, func(node ipc.Node) bool { return node.SubscriptionID != snapshot.Selected.SubscriptionID })
-		}
+		node, err = match(key, "node", nodes, func(node ipc.Node) (string, string) { return node.NodeID, node.Name })
 	}
-	node, err := match(key, "node", nodes, func(node ipc.Node) (string, string) { return node.NodeID, node.Name })
 	if err != nil {
 		return err
 	}
@@ -75,6 +85,7 @@ func (a *app) up(cmd *cobra.Command, args []string) error {
 func init() {
 	upCmd.Flags().Bool("tun", false, "Connect in TUN mode")
 	upCmd.Flags().Bool("proxy", false, "Connect in proxy mode")
+	upCmd.Flags().BoolP("regex", "r", false, "Treat the node argument as a case-sensitive RE2 regex")
 }
 
 func (a *app) run(ctx context.Context, text string, op func() error, ref domain.NodeRef, want *bool) (ipc.Snapshot, error) {
