@@ -24,13 +24,10 @@ type clashProxy struct {
 	Password            string   `yaml:"password"`
 	Cipher              string   `yaml:"cipher"`
 	Network             string   `yaml:"network"`
-	TLS                 bool     `yaml:"tls"`
-	SkipCertVerify      bool     `yaml:"skip-cert-verify"`
-	SkipCertVerifySnake bool     `yaml:"skip_cert_verify"`
-	ServerName          string   `yaml:"servername"`
-	ServerNameKebab     string   `yaml:"server-name"`
-	ServerNameSnake     string   `yaml:"server_name"`
-	SNI                 string   `yaml:"sni"`
+	TLS               bool     `yaml:"tls"`
+	SkipCertVerify    bool     `yaml:"skip-cert-verify"`
+	ServerName        string   `yaml:"server-name"`
+	SNI               string   `yaml:"sni"`
 	Flow                string   `yaml:"flow"`
 	ClientFingerprint   string   `yaml:"client-fingerprint"`
 	Fingerprint         string   `yaml:"fingerprint"`
@@ -69,19 +66,45 @@ type clashProxy struct {
 		Headers map[string]string `yaml:"headers"`
 	} `yaml:"ws-opts"`
 	GRPCOpts *struct {
-		ServiceName      string `yaml:"grpc-service-name"`
-		ServiceNameKebab string `yaml:"service-name"`
+		ServiceName string `yaml:"service-name"`
 	} `yaml:"grpc-opts"`
 	XHTTPOpts   xhttpYAML `yaml:"xhttp-opts"`
 	RealityOpts *struct {
-		PublicKey      string `yaml:"public-key"`
-		PublicKeyCamel string `yaml:"publicKey"`
-		PublicKeySnake string `yaml:"public_key"`
-		ShortID        string `yaml:"short-id"`
-		ShortIDCamel   string `yaml:"shortId"`
-		ShortIDSnake   string `yaml:"short_id"`
-		Fingerprint    string `yaml:"fingerprint"`
+		PublicKey   string `yaml:"public-key"`
+		ShortID     string `yaml:"short-id"`
+		Fingerprint string `yaml:"fingerprint"`
 	} `yaml:"reality-opts"`
+}
+
+var clashAliases = map[string]string{
+	"skip_cert_verify":  "skip-cert-verify",
+	"servername":        "server-name",
+	"server_name":       "server-name",
+	"grpc-service-name": "service-name",
+	"publicKey":         "public-key",
+	"public_key":        "public-key",
+	"shortId":           "short-id",
+	"short_id":          "short-id",
+}
+
+func normalizeClashYAML(node *yaml.Node) {
+	if node.Kind != yaml.MappingNode {
+		return
+	}
+	seen := make(map[string]bool, len(node.Content)/2)
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		seen[node.Content[i].Value] = true
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		key := node.Content[i].Value
+		if canonical := clashAliases[key]; canonical != "" && !seen[canonical] {
+			node.Content[i].Value = canonical
+			seen[canonical] = true
+		}
+		if key == "grpc-opts" || key == "reality-opts" {
+			normalizeClashYAML(node.Content[i+1])
+		}
+	}
 }
 
 type xhttpYAML string
@@ -99,6 +122,7 @@ func (settings *xhttpYAML) UnmarshalYAML(node *yaml.Node) error {
 // Clash/Mihomo "proxies:" list
 func (result *parseResult) clash(entries []yaml.Node) {
 	for _, entry := range entries {
+		normalizeClashYAML(&entry)
 		var proxy clashProxy
 		if entry.Decode(&proxy) != nil || proxy.Type == "" {
 			result.add(domain.Node{}, errors.New("clash: invalid proxy fields"))
@@ -114,10 +138,10 @@ func clash(p clashProxy) (domain.Node, error) {
 		Server: p.Server,
 		Port:   p.Port,
 	}
-	fp, insecure := fingerprint(p.Fingerprint, p.SkipCertVerify || p.SkipCertVerifySnake)
+	fp, insecure := fingerprint(p.Fingerprint, p.SkipCertVerify)
 	clientFP := cmp.Or(p.ClientFingerprint, fp)
 	tls := &domain.TLS{
-		SNI:         cmp.Or(p.SNI, p.ServerName, p.ServerNameKebab, p.ServerNameSnake, p.Server),
+		SNI:         cmp.Or(p.SNI, p.ServerName, p.Server),
 		ALPN:        p.ALPN,
 		Fingerprint: clientFP,
 		Insecure:    insecure,
@@ -137,8 +161,8 @@ func clash(p clashProxy) (domain.Node, error) {
 				tls.Fingerprint = p.RealityOpts.Fingerprint
 			}
 			n.Reality = &domain.Reality{
-				PublicKey: cmp.Or(p.RealityOpts.PublicKey, p.RealityOpts.PublicKeyCamel, p.RealityOpts.PublicKeySnake),
-				ShortID:   cmp.Or(p.RealityOpts.ShortID, p.RealityOpts.ShortIDCamel, p.RealityOpts.ShortIDSnake),
+				PublicKey: p.RealityOpts.PublicKey,
+				ShortID:   p.RealityOpts.ShortID,
 			}
 		}
 
@@ -191,7 +215,7 @@ func clash(p clashProxy) (domain.Node, error) {
 		n.ShadowTLS = &domain.ShadowTLS{
 			Version:  cmp.Or(p.Version, 3),
 			Password: pw,
-			SNI:      cmp.Or(p.SNI, p.ServerName, p.ServerNameKebab, p.ServerNameSnake, p.Server),
+			SNI:      cmp.Or(p.SNI, p.ServerName, p.Server),
 		}
 
 	case "hysteria2", "hy2":
@@ -329,7 +353,7 @@ func clashTransport(p clashProxy) domain.Transport {
 		}
 	case "grpc":
 		if p.GRPCOpts != nil {
-			t.ServiceName = cmp.Or(p.GRPCOpts.ServiceName, p.GRPCOpts.ServiceNameKebab)
+			t.ServiceName = p.GRPCOpts.ServiceName
 		}
 	case "xhttp", "splithttp":
 		t.Network, t.Extra = "xhttp", string(p.XHTTPOpts)
