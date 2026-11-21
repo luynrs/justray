@@ -18,7 +18,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart=:%q
+ExecStart=:"%s"
 Restart=on-failure
 RestartSec=3
 
@@ -77,7 +77,9 @@ func enable(ctx context.Context) error {
 
 	bin, err := exec.LookPath(os.Args[0])
 	if err != nil && !errors.Is(err, exec.ErrDot) {
-		return err
+		if bin, err = os.Executable(); err != nil {
+			return err
+		}
 	}
 	bin, err = filepath.Abs(bin)
 	if err != nil {
@@ -86,7 +88,7 @@ func enable(ctx context.Context) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, fmt.Appendf(nil, unit, strings.ReplaceAll(bin, "%", "%%")), 0o600); err != nil {
+	if err := os.WriteFile(path, fmt.Appendf(nil, unit, strings.NewReplacer(`\`, `\\`, `"`, `\"`, "%", "%%").Replace(bin)), 0o600); err != nil {
 		return err
 	}
 

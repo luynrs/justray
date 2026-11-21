@@ -24,7 +24,8 @@ func Restart(_ string, _ *os.File) error {
 
 	verb, _ := windows.UTF16PtrFromString("runas")
 	file, _ := windows.UTF16PtrFromString(self)
-	if err := windows.ShellExecute(0, verb, file, nil, nil, windows.SW_HIDE); err != nil {
+	args, _ := windows.UTF16PtrFromString(windows.ComposeCommandLine(os.Args[1:]))
+	if err := windows.ShellExecute(0, verb, file, args, nil, windows.SW_HIDE); err != nil {
 		return errors.New("could not grant permissions")
 	}
 	return nil

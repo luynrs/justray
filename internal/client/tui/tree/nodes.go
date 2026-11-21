@@ -20,7 +20,7 @@ func (d Data) Render(r Row, selected bool, width int) string {
 	case Gap:
 		return ""
 	case Meta:
-		return bar + style.Flush("  "+style.Usage(domain.Traffic(r.Sub.Traffic)), meta(r.Sub, d.Spinner), width-2)
+		return bar + style.Flush("  "+style.Usage(r.Sub.Traffic), meta(r.Sub, d.Spinner), width-2)
 	case Header:
 		return bar + header(r.Sub, slices.Contains(d.Collapsed, r.Sub.SubscriptionID), selected, d.Emoji)
 	}
