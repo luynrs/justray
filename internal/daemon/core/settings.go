@@ -17,11 +17,9 @@ func (c *Core) SetSettings(ctx context.Context, expected, settings domain.Settin
 			return err
 		}
 		previous := c.current()
-		if c.autostart == nil || expected.Autostart != "" || settings.Autostart != "" {
-			previous.Settings.Autostart, err = c.readAutostart(ctx, nil)
-			if err != nil {
-				return err
-			}
+		previous.Settings.Autostart, err = c.readAutostart(ctx, nil)
+		if err != nil {
+			return err
 		}
 		if settings.Autostart == "" {
 			settings.Autostart = previous.Settings.Autostart
@@ -55,9 +53,7 @@ func (c *Core) SetSettings(ctx context.Context, expected, settings domain.Settin
 				err = c.store.SaveConfig(settings)
 			}
 			if err != nil && settings.Autostart != previous.Settings.Autostart {
-				if c.autostart != nil {
-					previous.Settings.Autostart = ""
-				} else if _, rollbackErr := c.readAutostart(context.WithoutCancel(ctx), new(previous.Settings.Autostart == "on")); rollbackErr != nil {
+				if _, rollbackErr := c.readAutostart(context.WithoutCancel(ctx), new(previous.Settings.Autostart == "on")); rollbackErr != nil {
 					var readErr error
 					previous.Settings.Autostart, readErr = c.readAutostart(context.WithoutCancel(ctx), nil)
 					err = errors.Join(err, fmt.Errorf("restore autostart: %w", rollbackErr), readErr)
