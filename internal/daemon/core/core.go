@@ -31,7 +31,6 @@ type Core struct {
 	subs    *subscription.Service
 
 	refreshes map[string]*refreshCall
-	autostart *autostartCall
 	changing  *changeCall
 	restart   chan struct{}
 

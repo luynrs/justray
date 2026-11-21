@@ -2,87 +2,30 @@ package core
 
 import (
 	"context"
-	"errors"
 	"time"
-
-	"github.com/sagernet/sing-box/log"
 
 	"github.com/luynrs/justray/internal/platform/autostart"
 )
 
-type autostartCall struct {
-	done  chan struct{}
-	value string
-	err   error
-}
-
-func (app *Core) readAutostart(ctx context.Context, enabled *bool) (string, error) {
+func (app *Core) readAutostart(ctx context.Context, enabled *bool) (value string, err error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	if app.autostart != nil {
-		return "", errors.New("autostart operation pending")
-	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	call := &autostartCall{done: make(chan struct{})}
-	app.autostart = call
-	go func() {
-		defer close(call.done)
-		if call.err = ctx.Err(); call.err != nil {
-			return
+	err = app.external(func() error {
+		if enabled == nil {
+			value, err = autostart.Current(ctx)
+			return err
 		}
-		if enabled != nil {
-			call.err = autostart.Set(ctx, *enabled)
-			if call.err == nil {
-				if *enabled {
-					call.value = "on"
-				} else {
-					call.value = "off"
-				}
+		if err = autostart.Set(ctx, *enabled); err == nil {
+			if *enabled {
+				value = "on"
+			} else {
+				value = "off"
 			}
-		} else {
-			call.value, call.err = autostart.Current(ctx)
 		}
-	}()
-	app.opMu.Unlock()
-	select {
-	case <-call.done:
-		app.opMu.Lock()
-		app.autostart = nil
-		return call.value, call.err
-	case <-ctx.Done():
-		app.opMu.Lock()
-		app.stMu.Lock()
-		app.state.Settings.Autostart = ""
-		if app.changing == nil {
-			app.publishLocked()
-		}
-		app.stMu.Unlock()
-		go func() {
-			select {
-			case <-app.ctx.Done():
-				return
-			case <-call.done:
-			}
-			app.opMu.Lock()
-			defer app.opMu.Unlock()
-			if app.ctx.Err() != nil {
-				return
-			}
-			app.autostart = nil
-			value, err := call.value, call.err
-			if err != nil {
-				value, err = app.readAutostart(app.ctx, nil)
-			}
-			if err != nil && app.ctx.Err() == nil {
-				log.Warn("cannot read autostart status: ", err)
-			}
-			app.stMu.Lock()
-			app.state.Settings.Autostart = value
-			app.publishLocked()
-			app.stMu.Unlock()
-		}()
-		return "", ctx.Err()
-	}
+		return err
+	})
+	return value, err
 }

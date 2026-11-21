@@ -3,6 +3,7 @@ package connection
 import (
 	"context"
 	"errors"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -20,6 +21,7 @@ type Service struct {
 	newEngine func(context.Context, string) engine.Engine
 	dir       string
 
+	mu     sync.Mutex
 	eng    engine.Engine
 	status atomic.Pointer[ipc.Status]
 }
@@ -77,6 +79,8 @@ func (s *Service) SetError(err error) {
 }
 
 func (s *Service) Probe(ctx context.Context, nodes []domain.Node, settings domain.Settings, onResult func(int, engine.Result)) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	instance := s.eng
 	if instance == nil {
 		instance = s.newEngine(s.ctx, ipc.EngineLog(s.dir))
@@ -98,6 +102,8 @@ func (s *Service) Status() ipc.Status {
 }
 
 func (s *Service) apply(ctx context.Context, n domain.Node, ref domain.NodeRef, settings domain.Settings, tun, resetStarted bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -142,6 +148,8 @@ func (s *Service) apply(ctx context.Context, n domain.Node, ref domain.NodeRef, 
 }
 
 func (s *Service) stop() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	eng := s.eng
 	s.eng = nil
 	s.status.Store(nil)
