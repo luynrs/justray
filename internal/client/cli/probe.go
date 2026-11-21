@@ -21,6 +21,10 @@ var probeCmd = &cobra.Command{
 }
 
 func (a *app) probe(cmd *cobra.Command, args []string) error {
+	asRegex, _ := cmd.Flags().GetBool("regex")
+	if asRegex && len(args) == 0 {
+		return errors.New("missing regex pattern")
+	}
 	snapshot, err := a.client.Snapshot(cmd.Context())
 	if err != nil {
 		return err
@@ -36,14 +40,14 @@ func (a *app) probe(cmd *cobra.Command, args []string) error {
 		spinnerText = "Probing nodes"
 	} else {
 		key := args[0]
-		sub, subErr := match(key, "subscription", snapshot.Subscriptions, func(s ipc.Subscription) (string, string) { return s.SubscriptionID, s.Name })
+		sub, subErr := match(key, "subscription", snapshot.Subscriptions, func(s ipc.Subscription) (string, string) { return s.SubscriptionID, s.Name }, asRegex)
 		if subErr == nil {
 			subID = sub.SubscriptionID
 			spinnerText = "Probing " + a.clean(sub.Name)
 		} else if !errors.Is(subErr, errNotFound) {
 			return subErr
 		} else {
-			node, nodeErr := match(key, "node", snapshot.Nodes, func(n ipc.Node) (string, string) { return n.NodeID, n.Name })
+			node, nodeErr := match(key, "node", snapshot.Nodes, func(n ipc.Node) (string, string) { return n.NodeID, n.Name }, asRegex)
 			if nodeErr == nil {
 				subID = node.SubscriptionID
 				nodeID = node.NodeID
@@ -116,4 +120,8 @@ func (a *app) probe(cmd *cobra.Command, args []string) error {
 	}
 	a.tree(subs, nodes)
 	return probeErr
+}
+
+func init() {
+	probeCmd.Flags().BoolP("regex", "r", false, "Match subscription or node name by regular expression")
 }

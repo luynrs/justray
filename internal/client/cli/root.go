@@ -8,10 +8,12 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"syscall"
 	"time"
+	"unicode"
 
 	"charm.land/lipgloss/v2"
 	"github.com/spf13/cobra"
@@ -326,29 +328,53 @@ func (a *app) daemon() *ipc.Client {
 
 var errNotFound = errors.New("not found")
 
-func match[T any](key, noun string, items []T, idName func(T) (id, name string)) (T, error) {
-	key = strings.ToLower(key)
-	var hits []T
+func match[T any](key, noun string, items []T, idName func(T) (id, name string), regex ...bool) (T, error) {
+	var zero T
+	var re *regexp.Regexp
+	if len(regex) > 0 && regex[0] {
+		pattern := key
+		if !strings.ContainsFunc(pattern, unicode.IsUpper) {
+			pattern = "(?i)" + pattern
+		}
+		var err error
+		if re, err = regexp.Compile(pattern); err != nil {
+			return zero, fmt.Errorf("invalid %s regex: %w", noun, err)
+		}
+	}
+
+	keyLower := strings.ToLower(key)
+	var hits, exact []T
 	var names []string
 	for _, it := range items {
 		id, name := idName(it)
-		idLower := strings.ToLower(id)
-		if idLower == key {
-			return it, nil
+		clean := style.Sanitize(name, true)
+		var matched bool
+		if re != nil {
+			matched = re.MatchString(clean)
+		} else {
+			idLower := strings.ToLower(id)
+			if idLower == keyLower {
+				return it, nil
+			}
+			if strings.EqualFold(name, key) {
+				exact = append(exact, it)
+			}
+			matched = strings.HasPrefix(idLower, keyLower) || strings.Contains(strings.ToLower(name), keyLower)
 		}
-		if strings.HasPrefix(idLower, key) || strings.Contains(strings.ToLower(name), key) {
+		if matched {
 			hits = append(hits, it)
-			names = append(names, fmt.Sprintf("%s (%s)", style.Sanitize(name, true), shortID(id)))
+			names = append(names, fmt.Sprintf("%s (%s)", clean, shortID(id)))
 		}
+	}
+	if len(hits) > 1 && len(exact) == 1 {
+		return exact[0], nil
 	}
 	switch len(hits) {
 	case 1:
 		return hits[0], nil
 	case 0:
-		var zero T
 		return zero, fmt.Errorf("%s %w: %s", noun, errNotFound, key)
 	default:
-		var zero T
 		return zero, fmt.Errorf("ambiguous %s: %s (%s)", noun, key, strings.Join(names, ", "))
 	}
 }

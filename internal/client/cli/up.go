@@ -22,9 +22,13 @@ var upCmd = &cobra.Command{
 func (a *app) up(cmd *cobra.Command, args []string) error {
 	tun, _ := cmd.Flags().GetBool("tun")
 	proxy, _ := cmd.Flags().GetBool("proxy")
+	asRegex, _ := cmd.Flags().GetBool("regex")
 	var mode *bool
 	if tun || proxy {
 		mode = &tun
+	}
+	if asRegex && len(args) == 0 {
+		return errors.New("missing regex pattern")
 	}
 	ctx := cmd.Context()
 
@@ -58,7 +62,7 @@ func (a *app) up(cmd *cobra.Command, args []string) error {
 			nodes = slices.DeleteFunc(nodes, func(node ipc.Node) bool { return node.SubscriptionID != snapshot.Selected.SubscriptionID })
 		}
 	}
-	node, err := match(key, "node", nodes, func(node ipc.Node) (string, string) { return node.NodeID, node.Name })
+	node, err := match(key, "node", nodes, func(node ipc.Node) (string, string) { return node.NodeID, node.Name }, asRegex)
 	if err != nil {
 		return err
 	}
@@ -75,6 +79,7 @@ func (a *app) up(cmd *cobra.Command, args []string) error {
 func init() {
 	upCmd.Flags().Bool("tun", false, "Connect in TUN mode")
 	upCmd.Flags().Bool("proxy", false, "Connect in proxy mode")
+	upCmd.Flags().BoolP("regex", "r", false, "Match node name by regular expression")
 }
 
 func (a *app) run(ctx context.Context, text string, op func() error, ref domain.NodeRef, want *bool) (ipc.Snapshot, error) {
