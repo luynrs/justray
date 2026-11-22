@@ -3,10 +3,6 @@
 </p>
 
 <p align="center">
-  <a href="../../README.md">English</a> / <a href="README.RU.md">Русский</a> / <a href="README.CN.md">简体中文</a>
-</p>
-
-<p align="center">
   <a href="https://github.com/luynrs/justray/commits/main"><img alt="最近提交" src="https://img.shields.io/github/last-commit/luynrs/justray?style=for-the-badge&logo=github&logoColor=white&labelColor=1e1e2e&color=cba6f7"></a>
   <img alt="支持的平台" src="https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-cba6f7?style=for-the-badge&logo=linux&logoColor=white&labelColor=1e1e2e">
   <a href="https://github.com/luynrs/justray/releases"><img alt="版本" src="https://img.shields.io/github/v/release/luynrs/justray?style=for-the-badge&labelColor=1e1e2e&color=cba6f7"></a>
@@ -17,16 +13,20 @@
 </p>
 
 <p align="center">
-  <img src="../assets/tui.gif" width="100%" alt="justray 界面">
+  <a href="../../README.md">English</a> / <a href="README.RU.md">Русский</a> / <a href="README.CN.md">简体中文</a>
+</p>
+
+<p align="center">
+  <img src="../assets/tui.gif" width="100%" alt="meow >.<">
 </p>
 
 ### 功能
 
 - **协议支持：** VMess、VLESS、Trojan、WireGuard/AmneziaWG、Shadowsocks、Hysteria 1/2、TUIC、AnyTLS、SOCKS5 等
 - **导入与设置：** 可导入节点链接，以及 Clash/Mihomo YAML、sing-box 或 Xray JSON 格式的订阅，支持自动更新和多种设置
-<!-- - **基于规则的路由：** 支持应用、域名、通配符和 GeoIP/Geosite 规则 -->
 - **后台运行：** 后台服务和内嵌的 sing-box 核心独立于 TUI 运行，关闭界面后仍保持连接
 - **内存占用：** Linux / MacOS 上约 50 MB，Windows 上约 100 MB
+- **基于规则的路由：** 支持应用、域名、通配符和 GeoIP/Geosite 规则
 - **平台支持：** 可在 Linux、MacOS 13+ 和 Windows 1803+ 的现代终端中运行
 
 ### 安装
@@ -68,8 +68,6 @@ irm https://raw.githubusercontent.com/luynrs/justray/main/install.ps1 | iex
 
 Nix：
 
-Home Manager 模块在 Linux 上启动后台服务；在 MacOS 上仅安装软件包
-
 ```bash
 nix run github:luynrs/justray
 ```
@@ -84,10 +82,7 @@ nix run github:luynrs/justray
 
 ### 使用
 
-通过包管理器或脚本安装时，还会提供 `jray`，作为 `justray` 的简写
-
-> [!NOTE]
-> WinGet 只提供 `justray` 和 `justrayd`；需要手动添加 `jray` 别名
+通过包管理器（WinGet 除外）或脚本安装时，还会提供 `jray`，作为 `justray` 的简写
 
 - `justray`：打开 TUI
 
@@ -102,11 +97,11 @@ nix run github:luynrs/justray
 
 #### 订阅与节点
 
-`justray subscription` 或 `justray sub`
+`justray subscription <command>` 或 `justray sub <command>`
 
-- `add`：添加订阅或节点链接
-- `remove`：按 ID 或名称删除订阅
-- `refresh`：更新订阅
+- `add <url>`：添加订阅或节点链接
+- `remove <id | name>`：按 ID 或名称删除订阅
+- `refresh [id | name]`：更新订阅
 - `list [--json]`：列出订阅和节点
 
 #### 其他选项
@@ -118,13 +113,22 @@ nix run github:luynrs/justray
 
 | **按键** | **操作** | **按键** | **操作** |
 | ------------ | ------------ | ------------ | ------------ |
-| `↑/↓`、`k/j` | 移动光标 | `Shift+↑/↓` | 调整订阅顺序 |
-| `←/→`、`h/l` | 折叠 / 展开 | `Enter` | 连接 / 断开连接 |
-| `t` / `T` | 测量选中节点 / 所有节点的延迟 | `r` / `R` | 更新选中订阅 / 所有订阅 |
-| `m` | 切换模式（PROXY / TUN） | `/` | 筛选节点 |
-| `a` | 添加订阅 / 节点 | `d` | 删除订阅 |
-| `o` | 打开设置 | `Esc` | 保存设置 / 取消编辑 |
-| `Tab` | 切换设置标签页 | `q`、`Ctrl+C` | 退出 TUI |
+| `↑/↓`、`k/j`   | 移动光标                   | `Shift+↑/↓`   | 调整订阅顺序           |
+| `←/→`、`h/l`   | 折叠 / 展开                | `Enter`       | 连接 / 断开连接        |
+| `Home` / `End` | 跳转到顶部 / 底部          | `/`           | 筛选节点               |
+| `t` / `T`      | 测量选中节点 / 所有节点的延迟 | `r` / `R`     | 更新选中订阅 / 所有订阅 |
+| `m`            | 切换模式（PROXY / TUN）    | `?`           | 显示帮助               |
+| `a`            | 添加订阅 / 节点            | `d`           | 删除订阅               |
+| `o`            | 打开设置                   | `Tab`         | 切换设置标签页         |
+| `Esc`          | 保存设置 / 取消编辑        | `q`、`Ctrl+C` | 退出 TUI               |
+
+### 截图
+
+| 主界面 | 添加弹窗 |
+|:---:|:---:|
+| ![JustRay](../assets/screenshots/main.png) | ![JustRay (Add)](../assets/screenshots/add.png) |
+| **TTY 模式下的主界面** | **设置** |
+| ![JustRay (TTY)](../assets/screenshots/tty.png) | ![JustRay (Settings)](../assets/screenshots/settings.png) |
 
 ### 许可证
 

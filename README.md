@@ -22,11 +22,11 @@
 
 ### Features
 
-- **Modern protocols:** VMess, VLESS, Trojan, WireGuard/AmneziaWG, Shadowsocks, Hysteria 1/2, TUIC, AnyTLS, SOCKS5 and other
-- **Flexible:** import subscriptions from raw links or Clash/Mihomo YAML, sing-box or Xray json with automatic refresh and a wide range of settings
-- **Rule-based routing:** rules for apps, domains, wildcard patterns and GeoIP/GeoSite
+- **Modern protocols:** VMess, VLESS, Trojan, WireGuard/AmneziaWG, Shadowsocks, Hysteria 1/2, TUIC, AnyTLS, SOCKS5 and others
+- **Flexible:** import subscriptions from raw links or Clash/Mihomo YAML, sing-box or Xray JSON with automatic refresh and a wide range of settings
 - **Headless:** the daemon and embedded sing-box core run independently from the TUI, keeping connections alive after you detach
 - **Lightweight:** ~50 MB RAM on Linux / MacOS and ~100 MB on Windows
+- **Rule-based routing:** rules for apps, domains, wildcard patterns and GeoIP/GeoSite
 - **Cross-platform:** runs in modern terminals on Linux, MacOS 13+, and Windows 1803+
 
 ### Installation
@@ -86,7 +86,7 @@ Package manager (except WinGet) and script installations also provide `jray` as 
 
 - `justray`: open the TUI
 
-#### Connection 
+#### Connection
 
 - `justray up <node> [--tun | --proxy]`: start the daemon and connect
 - `justray down`: disconnect
@@ -99,9 +99,9 @@ Package manager (except WinGet) and script installations also provide `jray` as 
 
 `justray subscription <command>` or `justray sub <command>`
 
-- `add`: add a subscription or raw protocol link
-- `remove`: remove a subscription by ID or name
-- `refresh`: refresh subscriptions
+- `add <url>`: add a subscription or raw protocol link
+- `remove <id | name>`: remove a subscription by ID or name
+- `refresh [id | name]`: refresh subscriptions
 - `list [--json]`: list subscriptions and nodes
 
 #### Additional
@@ -113,13 +113,14 @@ Package manager (except WinGet) and script installations also provide `jray` as 
 
 | **Key**      | **Action**              | **Key**       | **Action**             |
 | ------------ | ----------------------- | ------------- | ----------------------- |
-| `↑/↓`, `k/j` | Navigate                | `Shift+↑/↓`   | Reorder subscriptions  |
-| `←/→`, `h/l` | Fold / expand           | `Enter`       | Toggle / connect       |
-| `t` / `T`    | Ping selected / all     | `r` / `R`     | Refresh selected / all |
-| `m`          | Switch mode (PROXY / TUN) | `/`         | Filter nodes            |
-| `a`          | Add subscription / node | `d`           | Delete subscription     |
-| `o`          | Open settings           | `Esc`         | Save settings / cancel edit |
-| `Tab`        | Switch settings tabs    | `q`, `Ctrl+C` | Exit TUI                |
+| `↑/↓`, `k/j`   | Navigate                    | `Shift+↑/↓`   | Reorder subscriptions  |
+| `←/→`, `h/l`   | Fold / expand               | `Enter`       | Toggle / connect       |
+| `Home` / `End` | Jump to top / bottom        | `/`           | Filter nodes           |
+| `t` / `T`      | Ping selected / all         | `r` / `R`     | Refresh selected / all |
+| `m`            | Switch mode (PROXY / TUN)   | `?`           | Show help              |
+| `a`            | Add subscription / node     | `d`           | Delete subscription    |
+| `o`            | Open settings               | `Tab`         | Switch settings tabs   |
+| `Esc`          | Save settings / cancel edit | `q`, `Ctrl+C` | Exit TUI               |
 
 ### Screenshots
 
