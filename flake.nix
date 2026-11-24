@@ -1,6 +1,6 @@
 # Usage:
 #   nix run .#justray               # try it without installing (jray - short alias)
-#   nix build .#justray              # build ./result/bin/{justray,jray,justrayd}
+#   nix build .#justray             # build ./result/bin/{justray,jray,justrayd}
 #
 # NixOS:        imports = [ justray.nixosModules.default ]; programs.justray.enable = true;
 # home-manager: imports = [ justray.homeManagerModules.default ]; services.justray.enable = true;
@@ -30,6 +30,83 @@
         "with_awg"
         "badlinkname"
       ];
+
+      package =
+        {
+          lib,
+          buildGo127Module,
+          installShellFiles,
+          stdenv,
+          vendorHash ? "sha256-XzwfN4UiEpdv1BLr76R3Fv30v2fakKhr1CWex987GfA=",
+          proxyVendor ? true,
+          overrideModAttrs ? (_: { }),
+        }:
+        buildGo127Module {
+          pname = "justray";
+          inherit
+            version
+            vendorHash
+            proxyVendor
+            overrideModAttrs
+            tags
+            ;
+
+          src = lib.fileset.toSource {
+            root = ./.;
+            fileset = lib.fileset.unions [
+              ./go.mod
+              ./go.sum
+              ./cmd
+              ./internal
+              ./LICENSE
+            ];
+          };
+
+          subPackages = [
+            "cmd/justray"
+            "cmd/justrayd"
+          ];
+          ldflags = [
+            "-s"
+            "-w"
+            "-X"
+            "github.com/luynrs/justray/internal/version.Version=${version}"
+          ];
+
+          nativeBuildInputs = [ installShellFiles ];
+
+          preCheck = lib.optionalString stdenv.hostPlatform.isLinux ''
+            cp internal/platform/device/other.go "$TMPDIR/device-other.go"
+            printf '%s\n' 0123456789abcdef0123456789abcdef > "$TMPDIR/machine-id"
+            substituteInPlace internal/platform/device/other.go \
+              --replace-fail /etc/machine-id "$TMPDIR/machine-id"
+          '';
+
+          postCheck = lib.optionalString stdenv.hostPlatform.isLinux ''
+            mv "$TMPDIR/device-other.go" internal/platform/device/other.go
+          '';
+
+          postInstall =
+            ''
+              ln -s justray $out/bin/jray
+            ''
+            + lib.optionalString (stdenv.buildPlatform.canExecute stdenv.hostPlatform) ''
+              for cmd in justray jray; do
+                installShellCompletion --cmd "$cmd" \
+                  --bash <($out/bin/$cmd completion bash) \
+                  --zsh <($out/bin/$cmd completion zsh) \
+                  --fish <($out/bin/$cmd completion fish)
+              done
+            '';
+
+          meta = {
+            description = "A modern VPN client that lives in your terminal";
+            homepage = "https://github.com/luynrs/justray";
+            license = lib.licenses.gpl3Plus;
+            mainProgram = "justray";
+            platforms = lib.platforms.unix;
+          };
+        };
     in
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = [
@@ -39,14 +116,9 @@
       ];
 
       perSystem =
-        {
-          self',
-          pkgs,
-          lib,
-          ...
-        }:
+        { pkgs, lib, ... }:
         let
-          pkg = self'.packages.default;
+          pkg = pkgs.callPackage package { };
           app = program: {
             type = "app";
             inherit program;
@@ -54,70 +126,10 @@
           };
         in
         {
-          packages.default = pkgs.buildGo127Module {
-            pname = "justray";
-            inherit version;
-
-            src = lib.fileset.toSource {
-              root = ./.;
-              fileset = lib.fileset.unions [
-                ./go.mod
-                ./go.sum
-                ./cmd
-                ./internal
-                ./LICENSE
-              ];
-            };
-
-            vendorHash = "sha256-XzwfN4UiEpdv1BLr76R3Fv30v2fakKhr1CWex987GfA=";
-            proxyVendor = true;
-
-            subPackages = [
-              "cmd/justray"
-              "cmd/justrayd"
-            ];
-            inherit tags;
-            ldflags = [
-              "-s"
-              "-w"
-              "-X"
-              "github.com/luynrs/justray/internal/version.Version=${version}"
-            ];
-
-            nativeBuildInputs = [ pkgs.installShellFiles ];
-
-            preCheck = lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
-              cp internal/platform/device/other.go "$TMPDIR/device-other.go"
-              printf '%s\n' 0123456789abcdef0123456789abcdef > "$TMPDIR/machine-id"
-              substituteInPlace internal/platform/device/other.go \
-                --replace-fail /etc/machine-id "$TMPDIR/machine-id"
-            '';
-
-            postCheck = lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
-              mv "$TMPDIR/device-other.go" internal/platform/device/other.go
-            '';
-
-            postInstall = ''
-              ln -s justray $out/bin/jray
-            ''
-            + lib.optionalString (pkgs.stdenv.buildPlatform.canExecute pkgs.stdenv.hostPlatform) ''
-              for cmd in justray jray; do
-                installShellCompletion --cmd "$cmd" \
-                  --bash <($out/bin/$cmd completion bash) \
-                  --zsh <($out/bin/$cmd completion zsh) \
-                  --fish <($out/bin/$cmd completion fish)
-              done
-            '';
-
-            meta = {
-              description = "A modern VPN client that lives in your terminal";
-              homepage = "https://github.com/luynrs/justray";
-              license = lib.licenses.gpl3Plus;
-              mainProgram = "justray";
-              platforms = lib.platforms.unix;
-            };
+          packages = {
+            default = pkg;
+            justray = pkg;
           };
-          packages.justray = self'.packages.default;
 
           apps = {
             default = app (lib.getExe pkg);
@@ -135,13 +147,16 @@
               golangci-lint
               goreleaser
             ];
-            GOFLAGS = "-tags=${builtins.concatStringsSep "," tags}";
+            env.GOFLAGS = "-tags=${builtins.concatStringsSep "," tags}";
           };
         };
 
       flake = {
-        overlays.default = final: prev: {
-          justray = inputs.self.packages.${final.stdenv.hostPlatform.system}.justray;
+        overlays = rec {
+          default = final: prev: {
+            justray = final.callPackage package { };
+          };
+          justray = default;
         };
 
         nixosModules = rec {
@@ -161,6 +176,8 @@
                 package = lib.mkOption {
                   type = lib.types.package;
                   default = pkgs.justray or inputs.self.packages.${pkgs.stdenv.hostPlatform.system}.justray;
+                  defaultText = lib.literalExpression "pkgs.justray";
+                  description = "The justray package to use.";
                 };
               };
               config = lib.mkIf cfg.enable {
@@ -194,6 +211,8 @@
                 package = lib.mkOption {
                   type = lib.types.package;
                   default = pkgs.justray or inputs.self.packages.${pkgs.stdenv.hostPlatform.system}.justray;
+                  defaultText = lib.literalExpression "pkgs.justray";
+                  description = "The justray package to use.";
                 };
                 execPath = lib.mkOption {
                   type = lib.types.str;
@@ -202,6 +221,13 @@
                       "/run/wrappers/bin/justrayd"
                     else
                       lib.getExe' cfg.package "justrayd";
+                  defaultText = lib.literalExpression ''
+                    if osConfig != null && (osConfig.programs.justray.enable or false) then
+                      "/run/wrappers/bin/justrayd"
+                    else
+                      lib.getExe' config.services.justray.package "justrayd"
+                  '';
+                  description = "Path to the justrayd executable used by the systemd user service.";
                 };
               };
               config = lib.mkIf cfg.enable {
