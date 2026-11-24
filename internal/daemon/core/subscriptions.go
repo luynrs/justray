@@ -131,11 +131,9 @@ func (c *Core) MoveSubscription(ctx context.Context, id string, dir int) error {
 	if i < 0 {
 		return fmt.Errorf("subscription not found: %s", id)
 	}
-	j := i + dir
-	if j < 0 || j >= len(next.Subscriptions) {
+	if !domain.Reorder(next.Subscriptions, i, dir) {
 		return nil
 	}
-	next.Subscriptions[i], next.Subscriptions[j] = next.Subscriptions[j], next.Subscriptions[i]
 	if err := c.commit(next); err != nil {
 		return err
 	}

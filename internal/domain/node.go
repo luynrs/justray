@@ -71,6 +71,15 @@ func (node Node) ProtocolName() string {
 
 func ValidPort(port int) bool { return port >= 1 && port <= 65535 }
 
+func Reorder[S ~[]E, E any](items S, index, dir int) bool {
+	target := index + dir
+	if dir == 0 || index < 0 || index >= len(items) || target < 0 || target >= len(items) {
+		return false
+	}
+	items[index], items[target] = items[target], items[index]
+	return true
+}
+
 func ServerAddress(server string, port int) string {
 	if strings.HasPrefix(server, "[") && strings.HasSuffix(server, "]") {
 		server = server[1 : len(server)-1]
