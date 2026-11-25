@@ -82,6 +82,8 @@ func Segment(s string, active bool) string {
 	return White.Background(Blue.GetForeground()).Bold(true).Render(" " + s + " ")
 }
 
+func SegmentWidth(s string) int { return lipgloss.Width(s) + 2 }
+
 func Progress(fraction float64) string {
 	fill := Green
 	switch {

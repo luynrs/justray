@@ -14,10 +14,13 @@ import (
 )
 
 func ErrorText(err error) string {
-	switch kind := ipc.ErrorType(err); {
-	case err == nil || kind == "canceled":
+	if err == nil {
 		return ""
-	case kind == "timeout":
+	}
+	switch ipc.ErrorType(err) {
+	case "canceled":
+		return ""
+	case "timeout":
 		return "Error: operation timed out"
 	}
 	if message := err.Error(); message != "" {
@@ -42,9 +45,12 @@ func Flush(left, right string, width int) string {
 	if right == "" {
 		return left
 	}
-	gap := max(width-lipgloss.Width(left)-lipgloss.Width(right), 2)
+	leftWidth := lipgloss.Width(left)
+	gap := RightStart(width, leftWidth, lipgloss.Width(right)) - leftWidth
 	return left + strings.Repeat(" ", gap) + right
 }
+
+func RightStart(width, left, right int) int { return max(width-right, left+2) }
 
 func Fit(body string, n int) string {
 	lines := strings.Split(body, "\n")
@@ -136,20 +142,20 @@ func Expiry(t time.Time) string {
 
 func Usage(t domain.Traffic) string {
 	used := t.UploadBytes + t.DownloadBytes
-	var parts []string
+	var usage string
 	switch {
 	case t.TotalBytes > 0:
-		parts = append(parts, fmt.Sprintf("%s %s %s",
+		usage = fmt.Sprintf("%s %s %s",
 			Gray.Render(Bytes(used)),
 			Progress(float64(used)/float64(t.TotalBytes)),
-			Gray.Render(Bytes(t.TotalBytes))))
+			Gray.Render(Bytes(t.TotalBytes)))
 	case used > 0:
-		parts = append(parts, Gray.Render(Bytes(used)+" used"))
+		usage = Gray.Render(Bytes(used) + " used")
 	default:
-		parts = append(parts, Gray.Render("No data"))
+		usage = Gray.Render("No data")
 	}
 	if !t.ExpiresAt.IsZero() {
-		parts = append(parts, Gray.Render(Expiry(t.ExpiresAt)))
+		usage += Gray.Render(" "+Sep()+" ") + Gray.Render(Expiry(t.ExpiresAt))
 	}
-	return strings.Join(parts, Gray.Render(" "+Sep()+" "))
+	return usage
 }
