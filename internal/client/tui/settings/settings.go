@@ -376,6 +376,13 @@ func (s *Model) focus(cursor int) {
 	}
 }
 
+func (s *Model) reorder(dir int) {
+	if f := s.at(); f.removable() && domain.Reorder(*f.list.at(&s.cur), f.index, dir) {
+		s.err = ""
+		s.move(dir)
+	}
+}
+
 func (s *Model) assign(f field, v string) {
 	s.err = ""
 	if err := f.apply(&s.cur, v); err != nil {

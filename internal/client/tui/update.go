@@ -13,6 +13,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/luynrs/justray/internal/client/tui/navigation"
 	"github.com/luynrs/justray/internal/client/tui/settings"
 	"github.com/luynrs/justray/internal/client/tui/style"
 	"github.com/luynrs/justray/internal/client/tui/tree"
@@ -245,15 +246,14 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.updateFilter(msg)
 	}
 	if motion, handled := m.navigation.Read(k); handled {
+		if motion.Action == navigation.Reorder {
+			return m.reorder(motion.Direction)
+		}
 		m.navigate(motion)
 		return m, nil
 	}
 
 	switch k {
-	case "shift+up":
-		return m.reorder(-1)
-	case "shift+down":
-		return m.reorder(1)
 	case "left", "h":
 		return m.collapse()
 	case "right", "l":

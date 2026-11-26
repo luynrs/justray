@@ -11,6 +11,9 @@ func (s *Model) navigate(motion navigation.Motion) {
 	case navigation.Move:
 		s.move(motion.Distance(s.height, len(rows)))
 		return
+	case navigation.Reorder:
+		s.reorder(motion.Direction)
+		return
 	case navigation.Line, navigation.Last:
 		s.focus(0)
 		if motion.Action == navigation.Last {

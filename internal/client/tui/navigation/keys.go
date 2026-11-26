@@ -6,6 +6,7 @@ type Action uint8
 
 const (
 	Move Action = iota + 1
+	Reorder
 	Page
 	HalfPage
 	Scroll
@@ -53,6 +54,10 @@ func (keys *Keys) Read(input string) (Motion, bool) {
 		motion.Action, motion.Direction = Move, -1
 	case "down", "j":
 		motion.Action = Move
+	case "shift+up":
+		motion.Action, motion.Direction = Reorder, -1
+	case "shift+down":
+		motion.Action = Reorder
 	case "pgup", "ctrl+b":
 		motion.Action, motion.Direction = Page, -1
 	case "pgdown", "ctrl+f":
