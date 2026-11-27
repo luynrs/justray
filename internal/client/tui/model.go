@@ -28,6 +28,7 @@ type Model struct {
 	client *ipc.Client
 
 	snapshot ipc.Snapshot
+	list     tree.List
 
 	spin          spinner.Model
 	spinnerActive bool
@@ -60,7 +61,7 @@ type Model struct {
 	quitting bool
 }
 
-func New(c *ipc.Client, start func(context.Context) error) Model {
+func New(c *ipc.Client, start func(context.Context) error) *Model {
 	watch, stop := context.WithCancel(context.Background())
 	editor := textarea.New()
 	editor.Prompt = ""
@@ -73,7 +74,7 @@ func New(c *ipc.Client, start func(context.Context) error) Model {
 	filter.Prompt = "/"
 	filter.CharLimit = 128
 	filter.SetStyles(style.Input)
-	m := Model{
+	m := &Model{
 		client:        c,
 		spin:          spinner.New(),
 		spinnerActive: true,
@@ -95,7 +96,7 @@ func New(c *ipc.Client, start func(context.Context) error) Model {
 	return m
 }
 
-func (m Model) Init() tea.Cmd {
+func (m *Model) Init() tea.Cmd {
 	cmds := []tea.Cmd{next(m.watch, m.updates), tickCmd(), m.spin.Tick}
 	if m.startup != nil {
 		cmds = append(cmds, m.startup)
@@ -105,7 +106,7 @@ func (m Model) Init() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-func (m Model) needsSpinner() bool {
+func (m *Model) needsSpinner() bool {
 	return m.busy || m.snapshot.Status.Busy || m.startup != nil ||
 		slices.ContainsFunc(m.snapshot.Nodes, func(node ipc.Node) bool { return node.Probing }) ||
 		slices.ContainsFunc(m.snapshot.Subscriptions, func(subscription ipc.Subscription) bool { return subscription.Refreshing })
@@ -141,15 +142,15 @@ func (m *Model) syncTTY() tea.Cmd {
 	return nil
 }
 
-func (m Model) emoji() bool {
+func (m *Model) emoji() bool {
 	return !style.TTY && m.snapshot.Settings.Emoji == "on"
 }
 
-func (m Model) editing() bool {
+func (m *Model) editing() bool {
 	return m.filter.Focused() || m.dialog != nil && m.dialog.Editing()
 }
 
-func (m Model) data() tree.Data {
+func (m *Model) data() tree.Data {
 	return tree.Data{
 		Subs:      m.snapshot.Subscriptions,
 		Nodes:     m.snapshot.Nodes,
@@ -163,27 +164,26 @@ func (m Model) data() tree.Data {
 	}
 }
 
-func (m Model) rows() []tree.Row { return m.data().Rows() }
-
-func (m Model) at() (tree.Row, bool) { return tree.At(m.rows(), m.cursor) }
-
-func (model Model) visible(rows []tree.Row) bool {
-	selected, ok := tree.At(rows, model.cursor)
-	return ok && slices.Contains(rows[model.scroll:min(model.scroll+model.height(), len(rows))], selected)
+func (m *Model) visible() bool {
+	pos := m.list.Position(m.cursor)
+	return pos >= m.scroll && pos < m.scroll+m.height()
 }
 
-func (m Model) connected() bool { return m.live && m.snapshot.Status.Connected }
+func (m *Model) connected() bool { return m.live && m.snapshot.Status.Connected }
 
-func (m Model) height() int { return max(m.h-topLines-footerLines, 1) }
+func (m *Model) height() int { return max(m.h-topLines-footerLines, 1) }
 
-func (m *Model) clamp() {
-	m.cursor, m.scroll = tree.Clamp(m.rows(), m.cursor, m.scroll, m.height())
+func (m *Model) hasBody() bool { return m.h > topLines+footerLines }
+
+func (m *Model) refilter() {
+	m.list = m.data().List()
+	m.cursor, m.scroll = m.list.Clamp(m.cursor, m.scroll, m.height())
 }
 
-func (m Model) quit() (tea.Model, tea.Cmd) {
+func (m *Model) quit() tea.Cmd {
 	m.quitting = true
 	m.stop()
-	return m, tea.Quit
+	return tea.Quit
 }
 
 func Run(c *ipc.Client, start func(context.Context) error) error {

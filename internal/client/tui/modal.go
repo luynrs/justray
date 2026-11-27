@@ -28,7 +28,7 @@ type modalLayout struct {
 	body   image.Rectangle
 }
 
-func (m Model) layout() modalLayout {
+func (m *Model) layout() modalLayout {
 	width, height := min(max(m.w-4, 1), 60), min(max(m.h, 1), 9)
 	if m.w < 28 {
 		width = max(m.w, 1)
@@ -65,18 +65,18 @@ func (m *Model) closeModal() {
 	m.editor.Blur()
 }
 
-func (m Model) updateModal(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *Model) updateModal(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		if msg.String() == "esc" || (msg.String() == "?" && m.activeModal == modalHelp) {
 			m.closeModal()
-			return m, nil
+			return nil
 		}
 		if m.activeModal == modalHelp {
 			key := msg.String()
 			if len(key) == 1 && key[0] >= '0' && key[0] <= '9' {
 				m.navigation.Reset()
-				return m, nil
+				return nil
 			}
 			if motion, handled := m.navigation.Read(key); handled {
 				switch motion.Action {
@@ -87,16 +87,16 @@ func (m Model) updateModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case navigation.Last:
 					m.help.GotoBottom()
 				}
-				return m, nil
+				return nil
 			}
 		}
 		if msg.String() == "enter" && m.activeModal == modalAdd {
 			url := strings.TrimSpace(m.editor.Value())
 			m.closeModal()
 			if url == "" {
-				return m, nil
+				return nil
 			}
-			return m, action(false, m.start, func() error {
+			return action(false, m.start, func() error {
 				_, err := m.client.AddSubscription(m.watch, url)
 				return err
 			})
@@ -104,7 +104,7 @@ func (m Model) updateModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.String() == "enter" && m.activeModal == modalDelete {
 			target := m.deleteTarget
 			m.closeModal()
-			return m, action(false, m.start, func() error {
+			return action(false, m.start, func() error {
 				if target.Kind == tree.Header {
 					return m.client.RemoveSubscription(m.watch, target.Sub.SubscriptionID)
 				}
@@ -116,7 +116,7 @@ func (m Model) updateModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		layout := m.layout()
 		mouse := msg.Mouse()
 		if m.activeModal != modalHelp || !image.Pt(mouse.X, mouse.Y).In(layout.body) {
-			return m, nil
+			return nil
 		}
 	}
 	var cmd tea.Cmd
@@ -126,21 +126,22 @@ func (m Model) updateModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case modalHelp:
 		m.help, cmd = m.help.Update(msg)
 	}
-	return m, cmd
+	return cmd
 }
 
-func (m Model) modal(background string) string {
+func (m *Model) modal(background string) string {
 	layout := m.layout()
 	var title, content string
 	switch m.activeModal {
 	case modalAdd:
 		title = "Add"
-		if m.editor.Value() == "" {
-			editorStyles := m.editor.Styles()
+		editor := m.editor
+		if editor.Value() == "" {
+			editorStyles := editor.Styles()
 			editorStyles.Focused.CursorLine = style.Gray
-			m.editor.SetStyles(editorStyles)
+			editor.SetStyles(editorStyles)
 		}
-		content = m.editor.View()
+		content = editor.View()
 	case modalHelp:
 		title = "Shortcuts"
 		content = m.help.View()

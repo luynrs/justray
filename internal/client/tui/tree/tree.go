@@ -19,11 +19,9 @@ const (
 
 type Row struct {
 	Kind Kind
-	Sub  ipc.Subscription
-	Node ipc.Node
+	Sub  *ipc.Subscription
+	Node *ipc.Node
 }
-
-func (r Row) Selectable() bool { return r.Kind == Header || r.Kind == Node }
 
 func (r Row) Removable() bool {
 	return r.Kind == Header || r.Kind == Node && r.Sub.SubscriptionID == "default" && !r.Sub.Refreshable
@@ -51,11 +49,7 @@ type Group struct {
 }
 
 func (d Data) Groups() []Group {
-	index := make(map[string][]*ipc.Node, len(d.Subs))
-	for i := range d.Nodes {
-		node := &d.Nodes[i]
-		index[node.SubscriptionID] = append(index[node.SubscriptionID], node)
-	}
+	index := d.bySub()
 	groups := make([]Group, 0, len(d.Subs))
 	for _, sub := range d.Subs {
 		groups = append(groups, Group{Sub: sub, Nodes: index[sub.SubscriptionID]})
@@ -63,123 +57,96 @@ func (d Data) Groups() []Group {
 	return groups
 }
 
-func (d Data) Rows() []Row {
+func (d Data) bySub() map[string][]*ipc.Node {
+	index := make(map[string][]*ipc.Node, len(d.Subs))
+	for i := range d.Nodes {
+		node := &d.Nodes[i]
+		index[node.SubscriptionID] = append(index[node.SubscriptionID], node)
+	}
+	return index
+}
+
+type List struct {
+	Rows       []Row
+	Selectable []int
+}
+
+func (d Data) List() List {
+	if len(d.Subs) == 0 {
+		return List{}
+	}
 	query := strings.ToLower(strings.TrimSpace(d.Query))
-	var rows []Row
-	for _, group := range d.Groups() {
-		start := len(rows)
+	nodes := d.bySub()
+	capacity := len(d.Subs)
+	if query == "" && len(d.Collapsed) == 0 {
+		capacity += len(d.Nodes)
+	}
+	rows := make([]Row, 0, capacity+2*len(d.Subs))
+	selectable := make([]int, 0, capacity)
+	for i := range d.Subs {
+		sub := &d.Subs[i]
+		start, first := len(rows), len(selectable)
 		if len(rows) > 0 {
 			rows = append(rows, Row{Kind: Gap})
 		}
 
-		rows = append(rows, Row{Kind: Header, Sub: group.Sub})
-		if group.Sub.Refreshable {
-			rows = append(rows, Row{Kind: Meta, Sub: group.Sub})
+		selectable = append(selectable, len(rows))
+		rows = append(rows, Row{Kind: Header, Sub: sub})
+		if sub.Refreshable {
+			rows = append(rows, Row{Kind: Meta, Sub: sub})
 		}
-		nodeStart := len(rows)
-		filtered := query != "" && !strings.Contains(strings.ToLower(group.Sub.Name), query)
-		collapsed := slices.Contains(d.Collapsed, group.Sub.SubscriptionID)
-		for _, node := range group.Nodes {
+		filtered := query != "" && !strings.Contains(strings.ToLower(sub.Name), query)
+		collapsed := query == "" && slices.Contains(d.Collapsed, sub.SubscriptionID)
+		for _, node := range nodes[sub.SubscriptionID] {
 			if filtered && !strings.Contains(strings.ToLower(node.Name+" "+node.Protocol+" "+node.Server), query) {
 				continue
 			}
-			if query != "" || !collapsed || d.active(*node) {
-				rows = append(rows, Row{Kind: Node, Sub: group.Sub, Node: *node})
+			if !collapsed || d.active(*node) {
+				selectable = append(selectable, len(rows))
+				rows = append(rows, Row{Kind: Node, Sub: sub, Node: node})
 			}
 		}
-		if filtered && len(rows) == nodeStart {
+		if filtered && len(selectable) == first+1 {
 			rows = rows[:start]
+			selectable = selectable[:first]
 		}
 	}
-	return rows
+	return List{Rows: rows, Selectable: selectable}
 }
 
-func Selectable(rows []Row) []int {
-	var out []int
-	for i, r := range rows {
-		if r.Selectable() {
-			out = append(out, i)
-		}
+func (l List) Position(cursor int) int {
+	if cursor >= 0 && cursor < len(l.Selectable) {
+		return l.Selectable[cursor]
 	}
-	return out
+	return -1
 }
 
-func At(rows []Row, cursor int) (Row, bool) {
-	if cursor < 0 {
-		return Row{}, false
-	}
-	for _, row := range rows {
-		if row.Selectable() {
-			if cursor == 0 {
-				return row, true
-			}
-			cursor--
-		}
+func (l List) At(cursor int) (Row, bool) {
+	if position := l.Position(cursor); position >= 0 {
+		return l.Rows[position], true
 	}
 	return Row{}, false
 }
 
-func Clamp(rows []Row, cursor, scroll, height int) (int, int) {
-	count := 0
-	for _, row := range rows {
-		if row.Selectable() {
-			count++
-		}
-	}
-	return min(max(cursor, 0), max(count-1, 0)), min(max(scroll, 0), max(len(rows)-height, 0))
+func (l List) Clamp(cursor, scroll, height int) (int, int) {
+	return min(max(cursor, 0), max(len(l.Selectable)-1, 0)), min(max(scroll, 0), max(len(l.Rows)-height, 0))
 }
 
-func Reveal(rows []Row, cursor, scroll, height int) (int, int) {
-	cursor = max(cursor, 0)
-	count, pos := 0, 0
-	for i, row := range rows {
-		if row.Selectable() {
-			if count <= cursor {
-				pos = i
-			}
-			count++
-		}
-	}
-	if count == 0 {
+func (l List) Reveal(cursor, scroll, height int) (int, int) {
+	if len(l.Selectable) == 0 {
 		return 0, 0
 	}
-	cursor = min(cursor, count-1)
-	if pos < scroll {
-		scroll = pos
-	}
-	if pos >= scroll+height {
-		scroll = pos - height + 1
-	}
-	return cursor, min(max(scroll, 0), max(len(rows)-height, 0))
+	cursor, scroll = l.Clamp(cursor, scroll, height)
+	pos := l.Selectable[cursor]
+	return cursor, min(max(scroll, pos-height+1), pos)
 }
 
-func Page(rows []Row, cursor, scroll, delta, height int) (int, int) {
-	selectable := Selectable(rows)
-	if len(selectable) == 0 {
-		return 0, 0
-	}
-	cursor, exact := slices.BinarySearch(selectable, selectable[min(max(cursor, 0), len(selectable)-1)]+delta)
-	if delta < 0 && !exact {
-		cursor--
-	}
-	return Reveal(rows, cursor, scroll+delta, height)
-}
-
-func Point(rows []Row, scroll, height, top, y int) (cursor int, ok bool) {
-	i := scroll + y - top
-	if y < top || y >= top+height || i < 0 || i >= len(rows) {
+func (l List) Point(i int) (int, bool) {
+	if i < 0 || i >= len(l.Rows) {
 		return 0, false
 	}
-	if rows[i].Kind == Meta && i > 0 && rows[i-1].Kind == Header {
+	if l.Rows[i].Kind == Meta {
 		i--
 	}
-	if !rows[i].Selectable() {
-		return 0, false
-	}
-	for _, row := range rows[:i] {
-		if row.Selectable() {
-			cursor++
-		}
-	}
-	return cursor, true
+	return slices.BinarySearch(l.Selectable, i)
 }

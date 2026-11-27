@@ -11,12 +11,12 @@ import (
 	"github.com/luynrs/justray/internal/ipc"
 )
 
-func (m Model) activate(r tree.Row) (tea.Model, tea.Cmd) {
+func (m *Model) activate(r tree.Row) tea.Cmd {
 	if r.Kind == tree.Header {
-		return m, action(false, nil, func() error { return m.client.SetCollapsed(m.watch, r.Sub.SubscriptionID, nil) })
+		return action(false, nil, func() error { return m.client.SetCollapsed(m.watch, r.Sub.SubscriptionID, nil) })
 	}
 	if m.busy {
-		return m, nil
+		return nil
 	}
 	m.err = ""
 
@@ -27,77 +27,74 @@ func (m Model) activate(r tree.Row) (tea.Model, tea.Cmd) {
 		ref := r.Node.Ref()
 		act = func() error { return m.await(m.client.Connect(m.watch, ref, nil), ref, true) }
 	}
-	return m, tea.Batch(spinnerCommand, action(true, m.start, act))
+	return tea.Batch(spinnerCommand, action(true, m.start, act))
 }
 
-func (m Model) collapse() (tea.Model, tea.Cmd) {
-	row, ok := m.at()
+func (m *Model) fold(collapsed bool) tea.Cmd {
+	row, ok := m.list.At(m.cursor)
 	if !ok {
-		return m, nil
+		return nil
 	}
-	if row.Kind == tree.Node {
-		rows := m.rows()
-		for i, index := range tree.Selectable(rows) {
-			if rows[index].Kind == tree.Header && rows[index].Sub.SubscriptionID == row.Sub.SubscriptionID {
-				m.cursor, m.scroll = tree.Reveal(rows, i, m.scroll, m.height())
-				break
-			}
+	if collapsed && row.Kind == tree.Node {
+		for m.list.Rows[m.list.Selectable[m.cursor]].Kind == tree.Node {
+			m.cursor--
 		}
+		m.cursor, m.scroll = m.list.Reveal(m.cursor, m.scroll, m.height())
 	}
-	return m, action(false, nil, func() error { return m.client.SetCollapsed(m.watch, row.Sub.SubscriptionID, new(true)) })
+	return action(false, nil, func() error { return m.client.SetCollapsed(m.watch, row.Sub.SubscriptionID, &collapsed) })
 }
 
-func (m Model) expand() (tea.Model, tea.Cmd) {
-	r, ok := m.at()
+func (m *Model) probe() tea.Cmd {
+	row, ok := m.list.At(m.cursor)
 	if !ok {
-		return m, nil
+		return nil
 	}
-	return m, action(false, nil, func() error { return m.client.SetCollapsed(m.watch, r.Sub.SubscriptionID, new(false)) })
+	var nodeID string
+	if row.Node != nil {
+		if row.Node.Probing {
+			return nil
+		}
+		nodeID = row.Node.NodeID
+	}
+	return action(false, m.start, func() error { return m.client.Probe(m.watch, row.Sub.SubscriptionID, nodeID) })
 }
 
-func (m Model) probe() (tea.Model, tea.Cmd) {
-	row, ok := m.at()
-	if !ok || row.Node.Probing {
-		return m, nil
-	}
-	return m, action(false, m.start, func() error { return m.client.Probe(m.watch, row.Sub.SubscriptionID, row.Node.NodeID) })
-}
-
-func (m Model) refresh() (tea.Model, tea.Cmd) {
-	row, ok := m.at()
+func (m *Model) refresh() tea.Cmd {
+	row, ok := m.list.At(m.cursor)
 	if !ok || !row.Sub.Refreshable {
-		return m, nil
+		return nil
 	}
-	return m, action(false, m.start, func() error { return m.client.RefreshSubscriptions(m.watch, row.Sub.SubscriptionID) })
+	return action(false, m.start, func() error { return m.client.RefreshSubscriptions(m.watch, row.Sub.SubscriptionID) })
 }
 
-func (m Model) reorder(dir int) (tea.Model, tea.Cmd) {
-	r, ok := m.at()
+func (m *Model) reorder(dir int) tea.Cmd {
+	r, ok := m.list.At(m.cursor)
 	if !ok || r.Kind != tree.Header {
-		return m, nil
+		return nil
 	}
 	id := r.Sub.SubscriptionID
 	i := slices.IndexFunc(m.snapshot.Subscriptions, func(sub ipc.Subscription) bool { return sub.SubscriptionID == id })
 	j := i + dir
 	if i < 0 || j < 0 || j >= len(m.snapshot.Subscriptions) {
-		return m, nil
+		return nil
 	}
-	return m, action(false, m.start, func() error { return m.client.MoveSubscription(m.watch, id, dir) })
+	return action(false, m.start, func() error { return m.client.MoveSubscription(m.watch, id, dir) })
 }
 
-func (m Model) setTun(enable bool) (tea.Model, tea.Cmd) {
+func (m *Model) setTun(enable bool) tea.Cmd {
 	if m.busy {
-		return m, nil
+		return nil
 	}
 	m.err = ""
 	m.busy = m.connected()
 	spinnerCommand := m.startSpinner()
-	return m, tea.Batch(spinnerCommand, action(m.busy, m.start, func() error {
-		return m.await(m.client.SetTun(m.watch, enable), m.snapshot.Selected, enable)
+	selected := m.snapshot.Selected
+	return tea.Batch(spinnerCommand, action(m.busy, m.start, func() error {
+		return m.await(m.client.SetTun(m.watch, enable), selected, enable)
 	}))
 }
 
-func (m Model) await(err error, ref domain.NodeRef, tun bool) error {
+func (m *Model) await(err error, ref domain.NodeRef, tun bool) error {
 	if errors.Is(err, ipc.ErrElevate) {
 		_, err = m.client.AwaitConnection(m.watch, ref, &tun)
 	}

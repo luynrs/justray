@@ -20,11 +20,11 @@ func (d Data) Render(r Row, selected bool, width int) string {
 	case Gap:
 		return ""
 	case Meta:
-		return bar + style.Flush("  "+style.Usage(r.Sub.Traffic), meta(r.Sub, d.Spinner), width-2)
+		return bar + style.Flush("  "+style.Usage(r.Sub.Traffic), meta(*r.Sub, d.Spinner), width-2)
 	case Header:
-		return bar + header(r.Sub, slices.Contains(d.Collapsed, r.Sub.SubscriptionID), selected, d.Emoji)
+		return bar + header(*r.Sub, slices.Contains(d.Collapsed, r.Sub.SubscriptionID), selected, d.Emoji)
 	}
-	return bar + style.Flush(d.node(r.Node, selected), d.info(r.Node), width-2)
+	return bar + style.Flush(d.node(*r.Node, selected), d.info(*r.Node), width-2)
 }
 
 func header(s ipc.Subscription, collapsed, selected, emoji bool) string {

@@ -18,19 +18,12 @@ const (
 )
 
 func modeAt(x, w, leftWidth int) (tun, ok bool) {
-	proxyW, tunW := segW(modeProxy), segW(modeTun)
-	switch x -= max(w-proxyW-tunW, leftWidth+2); {
-	case x < 0:
-		return false, false
-	case x < proxyW:
-		return false, true
-	}
-	return true, true
+	proxyW, tunW := style.SegmentWidth(modeProxy), style.SegmentWidth(modeTun)
+	start := style.RightStart(w, leftWidth, proxyW+tunW)
+	return x >= start+proxyW, x >= start && x < w
 }
 
-func segW(s string) int { return lipgloss.Width(style.Segment(s, false)) }
-
-func (m Model) View() tea.View {
+func (m *Model) View() tea.View {
 	v := tea.NewView(m.content())
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
@@ -39,18 +32,18 @@ func (m Model) View() tea.View {
 	return v
 }
 
-func (m Model) content() string {
+func (m *Model) content() string {
 	if m.quitting || m.w <= 0 || m.h <= 0 {
 		return ""
 	}
 
 	content := m.title()
-	if m.h >= topLines+footerLines+1 {
+	if m.hasBody() {
 		var body string
 		if m.dialog != nil {
 			body = m.dialog.View()
 		} else {
-			body = m.tree(m.rows())
+			body = m.tree()
 		}
 		content = style.Fit(content+"\n\n"+body, m.h-footerLines) + "\n\n" + m.footer() + "\n"
 		err := m.err
@@ -58,13 +51,13 @@ func (m Model) content() string {
 			err = cmp.Or(m.dialog.Err(), err)
 		}
 		if m.dialog == nil && (m.filter.Focused() || m.filter.Value() != "" && err == "") {
-			content += m.clip(m.filter.View())
+			content += style.Clip(m.filter.View(), m.w)
 		} else if err != "" {
 			errStyle := style.Red
 			if strings.HasPrefix(err, "Warning:") {
 				errStyle = style.Yellow
 			}
-			content += m.clip(errStyle.Bold(true).Italic(true).Render(style.Sanitize(err, true)))
+			content += style.Clip(errStyle.Bold(true).Italic(true).Render(style.Sanitize(err, true)), m.w)
 		}
 	}
 	if m.activeModal != modalNone {
@@ -73,43 +66,41 @@ func (m Model) content() string {
 	return content
 }
 
-func (m Model) title() string {
+func (m *Model) title() string {
 	var right string
 	if m.dialog != nil {
 		right = m.dialog.TabBar()
 	} else {
 		right = style.Segment(modeProxy, !m.snapshot.Status.Tun) + style.Segment(modeTun, m.snapshot.Status.Tun)
 	}
-	return m.clip(style.Flush(style.Title(), right, m.w))
+	return style.Clip(style.Flush(style.Title(), right, m.w), m.w)
 }
 
-func (m Model) tree(rows []tree.Row) string {
+func (m *Model) tree() string {
 	data := m.data()
 	h := m.height()
+	rows := m.list.Rows
 
 	lines := make([]string, 0, h)
 
 	switch {
 	case len(rows) > 0:
-		cursor := -1
-		if selectable := tree.Selectable(rows); m.cursor >= 0 && m.cursor < len(selectable) {
-			cursor = selectable[m.cursor]
-		}
+		cursor := m.list.Position(m.cursor)
 		for i, r := range rows[m.scroll:min(m.scroll+h, len(rows))] {
 			idx := m.scroll + i
 			selected := idx == cursor || (r.Kind == tree.Meta && cursor >= 0 && idx == cursor+1 && rows[cursor].Kind == tree.Header)
-			lines = append(lines, m.clip(data.Render(r, selected, m.w)))
+			lines = append(lines, style.Clip(data.Render(r, selected, m.w), m.w))
 		}
 	case m.filter.Value() != "":
-		lines = append(lines, m.clip("    "+style.Gray.Render("No matches: "+m.filter.Value())))
+		lines = append(lines, style.Clip("    "+style.Gray.Render("No matches: "+m.filter.Value()), m.w))
 	default:
-		lines = append(lines, m.clip("    "+style.Gray.Render("No subscriptions. Press ")+style.Bold.Render("a")+style.Gray.Render(" to add one")))
+		lines = append(lines, style.Clip("    "+style.Gray.Render("No subscriptions. Press ")+style.Bold.Render("a")+style.Gray.Render(" to add one"), m.w))
 	}
 
 	return strings.Join(lines, "\n")
 }
 
-func (m Model) footer() string {
+func (m *Model) footer() string {
 	busy := m.busy || m.live && m.snapshot.Status.Busy
 	var status string
 	switch {
@@ -134,7 +125,7 @@ func (m Model) footer() string {
 	return style.Pad(status, max(m.w-hintWidth, 0)) + hint
 }
 
-func (m Model) footerHint() string {
+func (m *Model) footerHint() string {
 	switch {
 	case m.activeModal != modalNone:
 		return style.KeyHints(m.w, [2]string{"esc", "cancel"})
@@ -146,8 +137,6 @@ func (m Model) footerHint() string {
 	return m.helpHint()
 }
 
-func (m Model) helpHint() string {
+func (m *Model) helpHint() string {
 	return style.KeyHints(max(m.w-4, 1), [2]string{"?", "shortcuts"})
 }
-
-func (m Model) clip(s string) string { return style.Clip(s, m.w) }
