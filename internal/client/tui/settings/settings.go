@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -17,8 +18,7 @@ import (
 
 type field struct {
 	name  string
-	bare  bool   // the row is its own value, like a routing rule
-	hint  string // the editor placeholder, and the value shown while unset
+	hint  string
 	get   func(*domain.Settings) string
 	set   func(*domain.Settings, string) error
 	enum  []string
@@ -144,6 +144,9 @@ type Model struct {
 	cur        domain.Settings
 	orig       domain.Settings
 	err        string
+	rows       []field
+	layout     []fieldLayout
+	editable   []int
 }
 
 func New(s domain.Settings, top, width, height int) *Model {
@@ -155,7 +158,10 @@ func New(s domain.Settings, top, width, height int) *Model {
 		top: top, width: width, height: max(height, 1),
 		cur: s.Clone(), orig: s, input: input,
 	}
-	m.focus(0)
+	m.rebuild()
+	if len(m.editable) > 0 {
+		m.focus(m.editable[0])
+	}
 	return m
 }
 
@@ -178,9 +184,8 @@ func (s *Model) Err() string { return s.err }
 
 func (s *Model) Editing() bool { return s.input.Focused() }
 
-func (s *Model) Selecting() bool {
-	current := s.at()
-	return len(current.enum) > 0 || len(current.multi) > 0
+func (s *Model) selecting() bool {
+	return s.at().options() > 0
 }
 
 func (s *Model) CancelNavigation() { s.navigation.Reset() }
@@ -188,29 +193,40 @@ func (s *Model) CancelNavigation() { s.navigation.Reset() }
 func (s *Model) Update(msg tea.Msg) (closed bool, cmd tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
-		return s.key(msg)
+		key := msg.String()
+		if !s.Editing() {
+			return s.key(key)
+		}
+		switch key {
+		case "esc":
+			s.err = ""
+			s.input.Blur()
+			return false, nil
+		case "enter":
+			if s.assign(s.at(), s.input.Value()) {
+				s.input.Blur()
+				s.move(0)
+			}
+			return false, nil
+		}
 	case tea.MouseMsg:
 		s.navigation.Reset()
 		return false, s.mouse(msg)
 	}
 	if s.input.Focused() {
-		var cmd tea.Cmd
 		s.input, cmd = s.input.Update(msg)
 		return false, cmd
 	}
 	return false, nil
 }
 
-func (s *Model) key(msg tea.KeyPressMsg) (bool, tea.Cmd) {
-	if s.input.Focused() {
-		return false, s.edit(msg)
-	}
-	if motion, handled := s.navigation.Read(msg.String()); handled {
+func (s *Model) key(key string) (bool, tea.Cmd) {
+	if motion, handled := s.navigation.Read(key); handled {
 		s.navigate(motion)
 		return false, nil
 	}
 
-	switch msg.String() {
+	switch key {
 	case "esc":
 		return true, nil
 
@@ -234,13 +250,12 @@ func (s *Model) key(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 		}
 		return false, s.activate()
 	case "space":
-		if s.Selecting() {
+		if s.selecting() {
 			return false, s.activate()
 		}
 
 	case "d":
-		if f := s.at(); f.removable() {
-			s.assign(f, "")
+		if f := s.at(); f.removable() && s.assign(f, "") {
 			s.move(0)
 		}
 	}
@@ -271,26 +286,28 @@ func (s *Model) mouse(msg tea.MouseMsg) tea.Cmd {
 		if y < 0 || y >= s.height {
 			return nil
 		}
-		rows := s.rows()
-		layout, _ := s.layout(rows)
 		position := s.scroll + y
-		for index, bounds := range layout {
-			if position < bounds.start || position >= bounds.end || !rows[index].editable() {
-				continue
-			}
-			if index != s.cursor {
-				s.focus(index)
-				s.move(0)
+		extra := s.extra()
+		index := sort.Search(len(s.rows), func(i int) bool { return s.bounds(i, extra).end > position })
+		if index == len(s.rows) || !s.rows[index].editable() {
+			return nil
+		}
+		bounds := s.bounds(index, extra)
+		if position < bounds.start {
+			return nil
+		}
+		if index != s.cursor {
+			s.focus(index)
+			s.reveal()
+			return nil
+		}
+		if s.selecting() {
+			if position == bounds.start {
 				return nil
 			}
-			if s.Selecting() {
-				if position == bounds.start {
-					return nil
-				}
-				s.option = position - bounds.start - 1
-			}
-			return s.activate()
+			s.option = position - bounds.start - 1
 		}
+		return s.activate()
 
 	case tea.MouseWheelMsg:
 		if y < 0 || y >= s.height {
@@ -307,8 +324,7 @@ func (s *Model) mouse(msg tea.MouseMsg) tea.Cmd {
 }
 
 func (s *Model) activate() tea.Cmd {
-	defer s.clamp()
-	s.move(0)
+	s.reveal()
 	f := s.at()
 	if len(f.multi) > 0 {
 		value := "on"
@@ -327,29 +343,8 @@ func (s *Model) activate() tea.Cmd {
 	s.input.Placeholder = f.hint
 	s.input.SetValue(f.value(&s.cur))
 	s.input.CursorEnd()
-	return s.input.Focus()
-}
-
-func (s *Model) edit(msg tea.KeyPressMsg) tea.Cmd {
-	switch msg.String() {
-	case "esc":
-		s.err = ""
-		s.input.Blur()
-		return nil
-
-	case "enter":
-		if err := s.at().apply(&s.cur, s.input.Value()); err != nil {
-			s.err = style.ErrorText(err)
-			return nil
-		}
-		s.err = ""
-		s.input.Blur()
-		s.move(0)
-		return nil
-	}
-
-	var cmd tea.Cmd
-	s.input, cmd = s.input.Update(msg)
+	cmd := s.input.Focus()
+	s.clamp()
 	return cmd
 }
 
@@ -379,43 +374,60 @@ func (s *Model) focus(cursor int) {
 func (s *Model) reorder(dir int) {
 	if f := s.at(); f.removable() && domain.Reorder(*f.list.at(&s.cur), f.index, dir) {
 		s.err = ""
-		s.move(dir)
+		s.focus(s.cursor + dir)
+		s.reveal()
 	}
 }
 
-func (s *Model) assign(f field, v string) {
-	s.err = ""
-	if err := f.apply(&s.cur, v); err != nil {
-		s.err = style.ErrorText(err)
+func (s *Model) assign(f field, v string) bool {
+	var err error
+	if f.list == nil {
+		err = f.set(&s.cur, v)
+	} else {
+		err = s.setRule(f, v)
 	}
+	s.err = style.ErrorText(err)
+	return err == nil
 }
 
-func (s *Model) rows() []field {
-	t := &tabs[s.tab]
-	if len(t.lists) == 0 {
-		return t.fields
+func (s *Model) rebuild() {
+	tab := &tabs[s.tab]
+	s.rows = append(s.rows[:0], tab.fields...)
+	for i := range tab.lists {
+		group := &tab.lists[i]
+		rules := *group.at(&s.cur)
+		s.rows = slices.Grow(s.rows, len(rules)+2)
+		s.rows = append(s.rows, field{name: group.title, hint: fmt.Sprintf("(%d)", len(rules))})
+		for index := range rules {
+			s.rows = append(s.rows, field{hint: "Delete?", list: group, index: index})
+		}
+		s.rows = append(s.rows, field{name: "Add rule", hint: "Domain, app, path, geoip: or geosite:", list: group, index: -1})
 	}
-	out := slices.Clone(t.fields)
-	for i := range t.lists {
-		out = append(out, s.list(&t.lists[i])...)
-	}
-	return out
-}
 
-// list is a heading, its entries and an add row
-func (s *Model) list(l *list) []field {
-	entries := *l.at(&s.cur)
-	out := make([]field, 0, len(entries)+2)
-	out = append(out, field{name: l.title, hint: fmt.Sprintf("(%d)", len(entries))})
-	for i, entry := range entries {
-		out = append(out, field{name: entry, bare: true, hint: "Delete?", list: l, index: i})
+	s.layout = slices.Grow(s.layout[:0], len(s.rows))
+	s.editable = slices.Grow(s.editable[:0], len(s.rows))
+	position := 0
+	for i, row := range s.rows {
+		if i > 0 && row.list == nil {
+			position++
+		}
+		end := position + 1
+		if row.editable() {
+			s.editable = append(s.editable, i)
+			if row.list == nil {
+				end++
+			}
+		}
+		s.layout = append(s.layout, fieldLayout{position, end})
+		position = end
 	}
-	return append(out, field{name: "+ Add rule", bare: true, hint: "Domain, app, path, geoip: or geosite:", list: l, index: -1})
 }
 
 func (f field) editable() bool { return f.set != nil || f.list != nil || len(f.multi) > 0 }
 
 func (f field) removable() bool { return f.list != nil && f.index >= 0 }
+
+func (f field) options() int { return max(len(f.enum), len(f.multi)) }
 
 func (f field) value(settings *domain.Settings) string {
 	if len(f.multi) > 0 {
@@ -436,14 +448,12 @@ func (f field) value(settings *domain.Settings) string {
 	return f.get(settings)
 }
 
-func (f field) apply(s *domain.Settings, in string) error {
-	if f.list == nil {
-		return f.set(s, in)
-	}
-	at := f.list.at(s)
+func (s *Model) setRule(f field, in string) error {
+	at := f.list.at(&s.cur)
 	if in = strings.TrimSpace(in); in == "" {
 		if f.index >= 0 {
 			*at = slices.Delete(*at, f.index, f.index+1)
+			s.rebuild()
 		}
 		return nil
 	}
@@ -451,47 +461,78 @@ func (f field) apply(s *domain.Settings, in string) error {
 	if err != nil {
 		return err
 	}
-	if at == &s.Direct && slices.Contains(s.Proxy, rule) {
-		return fmt.Errorf("rule already exists in proxy: %s", rule)
+	conflict := ""
+	switch {
+	case slices.Contains(*at, rule):
+		if f.index < 0 || (*at)[f.index] == rule {
+			return nil
+		}
+		conflict = strings.ToLower(f.list.title)
+	case at == &s.cur.Direct && slices.Contains(s.cur.Proxy, rule):
+		conflict = "proxy"
+	case at == &s.cur.Proxy && slices.Contains(s.cur.Direct, rule):
+		conflict = "direct"
 	}
-	if at == &s.Proxy && slices.Contains(s.Direct, rule) {
-		return fmt.Errorf("rule already exists in direct: %s", rule)
+	if conflict != "" {
+		return fmt.Errorf("rule already exists in %s: %s", conflict, rule)
 	}
 	if f.index >= 0 {
 		(*at)[f.index] = rule
-	} else if !slices.Contains(*at, rule) {
+	} else {
 		*at = append(*at, rule)
+		s.rebuild()
 	}
 	return nil
 }
 
-func (s *Model) at() field { return s.rows()[s.cursor] }
+func (s *Model) at() field { return s.rows[s.cursor] }
+
+func (s *Model) navigate(motion navigation.Motion) {
+	switch motion.Action {
+	case navigation.Move:
+		s.move(motion.Distance(s.height, len(s.editable)))
+	case navigation.Reorder:
+		s.reorder(motion.Direction)
+	case navigation.Line:
+		s.focus(s.editable[min(motion.Count-1, len(s.editable)-1)])
+		s.reveal()
+	case navigation.Last:
+		s.focus(s.editable[len(s.editable)-1])
+		s.reveal()
+	case navigation.Page, navigation.HalfPage:
+		extra := s.extra()
+		delta := motion.Distance(s.height, s.total(extra))
+		target := s.layout[s.cursor].start + delta
+		index := sort.Search(len(s.editable), func(i int) bool { return s.bounds(s.editable[i], extra).start >= target })
+		if delta < 0 && (index == len(s.editable) || s.bounds(s.editable[index], extra).start != target) {
+			index--
+		}
+		s.focus(s.editable[min(max(index, 0), len(s.editable)-1)])
+		s.scroll += delta
+		s.reveal()
+	case navigation.Scroll:
+		s.scrollBy(motion.Distance(s.height, s.total(s.extra())))
+	}
+}
 
 // move skips list headings
 func (s *Model) move(delta int) {
-	rows := s.rows()
-	var editable []int
-	for index, row := range rows {
-		if row.editable() {
-			editable = append(editable, index)
-		}
-	}
-	cursor, _ := slices.BinarySearch(editable, s.cursor)
-	delta = min(max(delta, -len(editable)), len(editable))
-	cursor = editable[min(max(cursor+delta, 0), len(editable)-1)]
+	cursor, _ := slices.BinarySearch(s.editable, s.cursor)
+	cursor = s.editable[min(max(cursor+delta, 0), len(s.editable)-1)]
 	if cursor != s.cursor {
 		s.focus(cursor)
 	}
-	layout, total := s.layout(rows)
-	s.reveal(layout, total)
-	s.clamp()
+	s.reveal()
 }
 
 func (s *Model) switchTab(delta int) {
 	s.tab = (s.tab + delta + len(tabs)) % len(tabs)
 	s.scroll, s.err = 0, ""
-	s.focus(0)
-	s.move(0)
+	s.rebuild()
+	if len(s.editable) > 0 {
+		s.focus(s.editable[0])
+	}
+	s.reveal()
 }
 
 func hours(v int) string {

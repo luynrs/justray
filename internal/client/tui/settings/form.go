@@ -2,6 +2,7 @@ package settings
 
 import (
 	"cmp"
+	"sort"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -14,23 +15,17 @@ type fieldLayout struct {
 	end   int
 }
 
-func (s Model) View() string {
-	rows := s.rows()
-	layout, total := s.layout(rows)
-	lines := make([]string, min(s.height, total-s.scroll))
-	for i, bounds := range layout {
-		if bounds.end <= s.scroll {
-			continue
-		}
+func (s *Model) View() string {
+	extra := s.extra()
+	lines := make([]string, min(s.height, s.total(extra)-s.scroll))
+	first := sort.Search(len(s.rows), func(i int) bool { return s.bounds(i, extra).end > s.scroll })
+	for i := first; i < len(s.rows); i++ {
+		bounds := s.bounds(i, extra)
 		if bounds.start >= s.scroll+s.height {
 			break
 		}
-		offset := bounds.start
-		if i > 0 && !rows[i].bare {
-			offset--
-		}
-		for j, line := range s.block(rows[i], i) {
-			position := offset + j - s.scroll
+		for j, line := range s.block(s.rows[i], i == s.cursor) {
+			position := bounds.start + j - s.scroll
 			if position < 0 || position >= len(lines) {
 				continue
 			}
@@ -47,87 +42,79 @@ func (s *Model) Resize(width, height int) {
 }
 
 func (s *Model) clamp() {
-	layout, total := s.layout(s.rows())
-	s.scroll = min(max(s.scroll, 0), max(total-s.height, 0))
-	if s.Selecting() {
-		position := layout[s.cursor].start + 1 + s.option
+	extra := s.extra()
+	s.scroll = min(max(s.scroll, 0), max(s.total(extra)-s.height, 0))
+	bounds := s.bounds(s.cursor, extra)
+	if s.selecting() {
+		position := bounds.start + 1 + s.option
 		s.scroll = min(max(s.scroll, position-s.height+1), position)
 	} else if s.input.Focused() {
-		s.scroll = min(max(s.scroll, layout[s.cursor].end-s.height), layout[s.cursor].end-1)
+		s.scroll = min(max(s.scroll, bounds.end-s.height), bounds.end-1)
 	}
 }
 
-func (s Model) layout(rows []field) ([]fieldLayout, int) {
-	layout := make([]fieldLayout, len(rows))
-	position := 0
-	for i, row := range rows {
-		if i > 0 && !row.bare {
-			position++
-		}
-		layout[i].start = position
-		position++
-		if row.editable() && !row.bare {
-			if i == s.cursor && !s.input.Focused() {
-				position += max(len(row.enum), len(row.multi), 1)
-			} else {
-				position++
-			}
-		}
-		layout[i].end = position
-	}
-	return layout, position
+func (s *Model) extra() int {
+	return max(s.at().options(), 1) - 1
 }
 
-func (s *Model) reveal(layout []fieldLayout, total int) {
-	s.scroll = min(max(s.scroll, 0), max(total-s.height, 0))
-	start, end := layout[s.cursor].start, layout[s.cursor].end
-	end = min(end, start+s.height)
-	s.scroll = min(max(s.scroll, end-s.height), start)
+func (s *Model) bounds(index, extra int) fieldLayout {
+	bounds := s.layout[index]
+	if index > s.cursor {
+		bounds.start += extra
+	}
+	if index >= s.cursor {
+		bounds.end += extra
+	}
+	return bounds
+}
+
+func (s *Model) total(extra int) int { return s.layout[len(s.layout)-1].end + extra }
+
+func (s *Model) reveal() {
+	bounds := s.bounds(s.cursor, s.extra())
+	end := min(bounds.end, bounds.start+s.height)
+	s.scroll = min(max(s.scroll, end-s.height), bounds.start)
+	s.clamp()
 }
 
 func (s *Model) scrollBy(delta int) {
-	_, total := s.layout(s.rows())
-	s.scroll = min(max(s.scroll+delta, 0), max(total-s.height, 0))
+	s.scroll = min(max(s.scroll+delta, 0), max(s.total(s.extra())-s.height, 0))
 }
 
-func (s Model) compact() bool {
+func (s *Model) shownTabs() (int, []tab) {
 	width := 0
 	for _, tab := range tabs {
-		width += lipgloss.Width(style.Segment(" "+tab.name+" ", false))
+		width += style.SegmentWidth(" " + tab.name + " ")
 	}
-	return width > s.width-lipgloss.Width(style.Title())-2
+	if width > s.width-lipgloss.Width(style.Title())-2 {
+		return s.tab, tabs[s.tab : s.tab+1]
+	}
+	return 0, tabs
 }
 
-func (s Model) TabBar() string {
-	if s.compact() {
-		return style.Segment(" "+tabs[s.tab].name+" ", true)
-	}
+func (s *Model) TabBar() string {
+	first, visible := s.shownTabs()
 	var b strings.Builder
-	for i, t := range tabs {
-		b.WriteString(style.Segment(" "+t.name+" ", i == s.tab))
+	for i, t := range visible {
+		b.WriteString(style.Segment(" "+t.name+" ", first+i == s.tab))
 	}
 	return b.String()
 }
 
-func (s Model) tabAt(x int) (int, bool) {
-	pos := max(s.width-lipgloss.Width(s.TabBar()), lipgloss.Width(style.Title())+2)
-	if s.compact() {
-		width := lipgloss.Width(style.Segment(" "+tabs[s.tab].name+" ", true))
-		return s.tab, x >= pos && x < pos+width
-	}
-	for i, t := range tabs {
-		w := lipgloss.Width(style.Segment(" "+t.name+" ", false))
+func (s *Model) tabAt(x int) (int, bool) {
+	pos := style.RightStart(s.width, lipgloss.Width(style.Title()), lipgloss.Width(s.TabBar()))
+	first, visible := s.shownTabs()
+	for i, t := range visible {
+		w := style.SegmentWidth(" " + t.name + " ")
 		if x >= pos && x < pos+w {
-			return i, true
+			return first + i, true
 		}
 		pos += w
 	}
 	return 0, false
 }
 
-func (s Model) block(f field, i int) (lines []string) {
-	selected := i == s.cursor
-
+func (s *Model) block(f field, selected bool) []string {
 	bar := "  "
 	if selected {
 		bar = style.Cyan.Render(style.Bar())
@@ -139,15 +126,12 @@ func (s Model) block(f field, i int) (lines []string) {
 		if f.hint != "" {
 			line += " " + style.Gray.Render(f.hint)
 		}
-		lines = []string{line}
-	case f.bare:
-		var prefix, body string
+		return []string{line}
+	case f.list != nil:
+		prefix, body := "+ ", f.name
 		if f.removable() {
 			prefix = style.Sep() + " "
-			body = style.Sanitize(f.name, true)
-		} else {
-			prefix = "+ "
-			body = strings.TrimPrefix(f.name, "+ ")
+			body = style.Sanitize(f.value(&s.cur), true)
 		}
 
 		if selected && s.input.Focused() {
@@ -155,25 +139,17 @@ func (s Model) block(f field, i int) (lines []string) {
 		} else if !selected {
 			body = style.Gray.Render(body)
 		}
-		text := style.Gray.Render(prefix) + body
-		lines = []string{bar + text}
-	default:
-		lines = []string{bar + f.name}
-		lines = append(lines, s.value(f, selected, bar)...)
+		return []string{bar + style.Gray.Render(prefix) + body}
 	}
-
-	if i > 0 && !f.bare {
-		lines = append([]string{""}, lines...)
-	}
-	return lines
+	return append([]string{bar + f.name}, s.value(f, selected, bar)...)
 }
 
-func (s Model) value(f field, selected bool, bar string) (lines []string) {
+func (s *Model) value(f field, selected bool, bar string) (lines []string) {
 	if selected && s.input.Focused() {
 		return []string{bar + s.input.View()}
 	}
-	if selected && s.Selecting() {
-		for index := range max(len(f.enum), len(f.multi)) {
+	if options := f.options(); selected && options > 0 {
+		for index := range options {
 			var name string
 			var checked bool
 			if len(f.multi) > 0 {
