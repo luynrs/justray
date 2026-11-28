@@ -1,7 +1,7 @@
 charm.land/bubbles/v2 v2.2.2 h1:lXTAX9eRzW4t92r+pG4qTzkV1vU6rIO6TaIoETFf7v4=
 charm.land/bubbles/v2 v2.2.2/go.mod h1:fuhrxpXZGQ6D+Yl2cr+/72Vyp/JNhpZFqsuIEmUiyLk=
-charm.land/bubbletea/v2 v2.1.2 h1:vB3XAcHhLB2gR3HOHpwO3lHB3nbvaowIgL3e5x/DUZo=
-charm.land/bubbletea/v2 v2.1.2/go.mod h1:xWHeyxIX9/wiFU2kgPW04ojOZyTzrWf+8lGjUCaftiU=
+charm.land/bubbletea/v2 v2.2.0 h1:qeO/8WGuwjkiptxsa381BxIDvAiRs+/AIwK65KQhfIA=
+charm.land/bubbletea/v2 v2.2.0/go.mod h1:iQhXpKZdI+MYXzldkoJx/bV/EbGGvw3yrgyaqK5s+No=
 charm.land/lipgloss/v2 v2.1.1 h1:F+vKWis9Kz3MFRsbICSDFtT1ZwVL+8f+36Dtg+OpKwc=
 charm.land/lipgloss/v2 v2.1.1/go.mod h1:k79y/56yThpkJvbwyrcHr8MyZF42e84Q5fW9Ibu6LFc=
 code.pfad.fr/check v1.1.0 h1:GWvjdzhSEgHvEHe2uJujDcpmZoySKuHQNrZMfzfO0bE=
@@ -51,10 +51,10 @@ github.com/caddyserver/zerossl v0.1.6 h1:1yrhTx5DWi43wOJPQ+Y4mVl++EPmSqqT/4REW//
 github.com/caddyserver/zerossl v0.1.6/go.mod h1:CxA0acn7oEGO6//4rtrRjYgEoa4MFw/XofZnrYwGqG4=
 github.com/charmbracelet/colorprofile v0.4.3 h1:QPa1IWkYI+AOB+fE+mg/5/4HRMZcaXex9t5KX76i20Q=
 github.com/charmbracelet/colorprofile v0.4.3/go.mod h1:/zT4BhpD5aGFpqQQqw7a+VtHCzu+zrQtt1zhMt9mR4Q=
-github.com/charmbracelet/ultraviolet v0.0.0-20261119151026-8ecbcf0e188c h1:izHJ6cjHd9HGtre1J+c/+QE3rQZ2t4EZH6BqykQbpjc=
-github.com/charmbracelet/ultraviolet v0.0.0-20261119151026-8ecbcf0e188c/go.mod h1:aJDVk+WOVM1K04rdc/71PMPoUGfjxjhvXfP3Pjz1Zio=
-github.com/charmbracelet/x/ansi v0.11.10 h1:GjcX3+rAk+8wDX/jY0XwrZstxkjRcLkYU3TvwzZWiRA=
-github.com/charmbracelet/x/ansi v0.11.10/go.mod h1:DG/hpOnaI2QJ/KMMqLL2h0KVhluuJLazf8973P+Vy5w=
+github.com/charmbracelet/ultraviolet v0.0.0-20261125122737-8ed499892fb4 h1:+qSOCXQdH9dkIYGlh21aTN5ee1+KCZAWtrRNTwyLTjI=
+github.com/charmbracelet/ultraviolet v0.0.0-20261125122737-8ed499892fb4/go.mod h1:aJDVk+WOVM1K04rdc/71PMPoUGfjxjhvXfP3Pjz1Zio=
+github.com/charmbracelet/x/ansi v0.12.0 h1:jnU2i7TOTBWrXQdkkQ8JUEDUkQDIR+ED2zRlh+XqcC0=
+github.com/charmbracelet/x/ansi v0.12.0/go.mod h1:DG/hpOnaI2QJ/KMMqLL2h0KVhluuJLazf8973P+Vy5w=
 github.com/charmbracelet/x/exp/golden v0.1.0 h1:qgUxGaHX4I8Fg077vD+54+qFmDWrgO19lTCQLblHWko=
 github.com/charmbracelet/x/exp/golden v0.1.0/go.mod h1:6fMpcW6iwN/kX+xJ52eqVWsDiBTe0UJD24JLoHFe+P0=
 github.com/charmbracelet/x/term v0.2.2 h1:xVRT/S2ZcKdhhOuSP4t5cLi5o+JxklsoEObBSgfgZRk=
@@ -202,8 +202,8 @@ github.com/muesli/cancelreader v0.2.2 h1:3I4Kt4BQjOR54NavqnDogx/MIoWBFa0StPA8ELU
 github.com/muesli/cancelreader v0.2.2/go.mod h1:3XuTXfFS2VjM+HTLZY9Ak0l6eUKfijIfMUZ4EgX0QYo=
 github.com/openai/openai-go/v3 v3.26.0 h1:bRt6H/ozMNt/dDkN4gobnLqaEGrRGBzmbVs0xxJEnQE=
 github.com/openai/openai-go/v3 v3.26.0/go.mod h1:cdufnVK14cWcT9qA1rRtrXx4FTRsgbDPW7Ia7SS5cZo=
-github.com/pierrec/lz4/v4 v4.1.26 h1:GrpZw1gZttORinvzBdXPUXATeqlJjqUG/D87TKMnhjY=
-github.com/pierrec/lz4/v4 v4.1.26/go.mod h1:EoQMVJgeeEOMsCqCzqFm2O0cJvljX2nGZjcRIPL34O4=
+github.com/pierrec/lz4/v4 v4.1.34 h1:5cPY8+z/ffHDpF6Pvv5FffjtZOJJQEiG75267Ol3QtU=
+github.com/pierrec/lz4/v4 v4.1.34/go.mod h1:R7aiqKav9M7+k1JW19D7y7rcavDvw9Te/YTdFJyNXBs=
 github.com/pion/dtls/v3 v3.1.5 h1:9xJtVsHwMYeSjPp5Hh1FTis4DchnQWtnOa5o+6ygqfc=
 github.com/pion/dtls/v3 v3.1.5/go.mod h1:gz1K4jg6c+fq86oQMH4pilpCEOEPwmEr2jY+VcF/mkU=
 github.com/pion/logging v0.2.4 h1:tTew+7cmQ+Mc1pTBLKH2puKsOvhm32dROumOZ655zB8=
@@ -295,8 +295,8 @@ github.com/sagernet/fswatch v0.1.2 h1:/TT7k4mkce1qFPxamLO842WjqBgbTBiXP2mlUjp9PF
 github.com/sagernet/fswatch v0.1.2/go.mod h1:5BpGmpUQVd3Mc5r313HRpvADHRg3/rKn5QbwFteB880=
 github.com/sagernet/gliderssh v0.3.4-0.20261023092853-e0cad6d28647 h1:k4Yg+5FnI1CIYc25zxHJJ1A5JDr/VULxw0Bs5U7fpsY=
 github.com/sagernet/gliderssh v0.3.4-0.20261023092853-e0cad6d28647/go.mod h1:FmW0l0t/PzGIdJMr3iXOL+KuxvJTt6XAfF4GxbMlfZc=
-github.com/sagernet/netlink v0.0.0-20261114050611-bf24b30b925f h1:P+oPGqB02OjxQ2Stmwf8U8eLPfspcAFdTQp+o3/OTJ8=
-github.com/sagernet/netlink v0.0.0-20261114050611-bf24b30b925f/go.mod h1:xLnfdiJbSp8rNqYEdIW/6eDO4mVoogml14Bh2hSiFpM=
+github.com/sagernet/netlink v0.0.0-20261125120807-b006b90aa077 h1:L1pxwVWz02wU/ojtL/TpR9jfT/LUsDlP7AoXrc2SX+0=
+github.com/sagernet/netlink v0.0.0-20261125120807-b006b90aa077/go.mod h1:xLnfdiJbSp8rNqYEdIW/6eDO4mVoogml14Bh2hSiFpM=
 github.com/sagernet/nftables v0.3.0-mod.4.0.20261114074246-0b310c3e010b h1:dgnXJAbP71bzUrl31YvQNO3DGqQq20tz7h8MaroD4fY=
 github.com/sagernet/nftables v0.3.0-mod.4.0.20261114074246-0b310c3e010b/go.mod h1:8kslHG4VvYNihcco+i6uxIX7qbT8A56T0y5q7U44ZaQ=
 github.com/sagernet/quic-go v0.61.0-sing-box-mod.14 h1:7yVZHC+/ka9RloKeOMVECnRSwj+Nx+iedJ2J2pW2abQ=

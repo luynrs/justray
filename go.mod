@@ -4,15 +4,15 @@ go 1.27.3
 
 require (
 	charm.land/bubbles/v2 v2.2.2
-	charm.land/bubbletea/v2 v2.1.2
+	charm.land/bubbletea/v2 v2.2.0
 	charm.land/lipgloss/v2 v2.1.1
 	github.com/charmbracelet/colorprofile v0.4.3
-	github.com/charmbracelet/ultraviolet v0.0.0-20261119151026-8ecbcf0e188c
-	github.com/charmbracelet/x/ansi v0.11.10
+	github.com/charmbracelet/ultraviolet v0.0.0-20261125122737-8ed499892fb4
+	github.com/charmbracelet/x/ansi v0.12.0
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-ole/go-ole v1.3.0
 	github.com/miekg/dns v1.1.73
-	github.com/sagernet/netlink v0.0.0-20261114050611-bf24b30b925f
+	github.com/sagernet/netlink v0.0.0-20261125120807-b006b90aa077
 	github.com/sagernet/sing v0.9.7-0.20261110095939-f545d0260412
 	github.com/sagernet/sing-box v1.14.4
 	github.com/sagernet/sing-quic v0.7.2-0.20261114063120-0979e001618d
@@ -67,6 +67,7 @@ require (
 	github.com/metacubex/utls v1.9.0-alpha.1 // indirect
 	github.com/mholt/acmez/v3 v3.1.7 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
+	github.com/pierrec/lz4/v4 v4.1.34 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
 	github.com/rivo/uniseg v0.4.8-0.20261110175422-3a370411ca06 // indirect
 	github.com/rogpeppe/go-internal v1.16.0 // indirect

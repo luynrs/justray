@@ -1,0 +1,27 @@
+name: Nix
+
+on:
+  push:
+    branches: [main]
+    paths: [go.mod, go.sum]
+  workflow_dispatch:
+
+permissions: { contents: write }
+concurrency: nix-${{ github.ref }}
+
+jobs:
+  hash:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@main
+      - name: Update vendorHash
+        run: |
+          if nix build .#justray.goModules --no-link 2>nix.log; then exit 0; fi
+          cat nix.log
+          hash=$(awk '/got:[[:space:]]+sha256-/ { print $2; exit }' nix.log)
+          test -n "$hash"
+          sed -i -E "s|(vendorHash \? \")sha256-[^\"]+(\")|\1$hash\2|" flake.nix
+          nix build .#justray.goModules --no-link
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -am "chore(nix): update hash"
+          git push
