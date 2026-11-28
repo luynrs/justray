@@ -37,7 +37,7 @@
           buildGo127Module,
           installShellFiles,
           stdenv,
-          vendorHash ? "sha256-XzwfN4UiEpdv1BLr76R3Fv30v2fakKhr1CWex987GfA=",
+          vendorHash ? "sha256-slcCCjaDu29zlDBzcFnI5N4Dof/8eA8VKlmzxufbPSQ=",
           proxyVendor ? true,
           overrideModAttrs ? (_: { }),
         }:
