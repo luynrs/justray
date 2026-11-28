@@ -75,7 +75,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case completed:
 		if msg.connection {
-			m.busy = false
+			m.connecting = false
 		}
 		m.setErr(style.ErrorText(msg.err))
 
@@ -158,7 +158,7 @@ func (m *Model) setErr(text string) {
 
 func (m *Model) updateSnapshot(message pushed) tea.Cmd {
 	if !message.live {
-		if m.startup == nil && !m.busy {
+		if m.startup == nil && !m.connecting {
 			m.setErr(style.ErrorText(message.err))
 		}
 		if !m.live {
@@ -177,12 +177,13 @@ func (m *Model) updateSnapshot(message pushed) tea.Cmd {
 			m.setErr(message.snapshot.Status.Error)
 		}
 		m.snapshot = message.snapshot
-		m.snapBusy = m.snapshot.Status.Busy ||
+		m.groups = tree.Groups(m.snapshot.Subscriptions, m.snapshot.Nodes)
+		m.busy = m.snapshot.Status.Busy ||
 			slices.ContainsFunc(m.snapshot.Subscriptions, func(sub ipc.Subscription) bool { return sub.Refreshing }) ||
 			slices.ContainsFunc(m.snapshot.Nodes, func(node ipc.Node) bool { return node.Probing })
 		m.syncTTY()
 	}
-	m.list = m.data().List()
+	m.list = m.data().List(m.groups, m.filter.Value())
 	switch {
 	case initial && m.snapshot.Status.Connected:
 		for index, rowIndex := range m.list.Selectable {

@@ -101,7 +101,7 @@ func (m *Model) tree() string {
 }
 
 func (m *Model) footer() string {
-	busy := m.busy || m.live && m.snapshot.Status.Busy
+	busy := m.connecting || m.live && m.snapshot.Status.Busy
 	var status string
 	switch {
 	case m.connected():

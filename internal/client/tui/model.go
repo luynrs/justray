@@ -28,8 +28,10 @@ type Model struct {
 	client *ipc.Client
 
 	snapshot ipc.Snapshot
-	snapBusy bool
-	list     tree.List
+	busy     bool
+
+	groups []tree.Group
+	list   tree.List
 
 	spin       spinner.Model
 	cursor     int
@@ -47,10 +49,10 @@ type Model struct {
 
 	live    bool
 	updates chan pushed
-	watch   context.Context
-	stop    context.CancelFunc
-	busy    bool
-	start   func() error
+	watch      context.Context
+	stop       context.CancelFunc
+	connecting bool
+	start      func() error
 	startup tea.Cmd
 
 	err     string
@@ -107,7 +109,7 @@ func (m *Model) Init() tea.Cmd {
 }
 
 func (m *Model) needsSpinner() bool {
-	return m.busy || m.startup != nil || m.live && m.snapBusy
+	return m.connecting || m.startup != nil || m.live && m.busy
 }
 
 func (m *Model) syncTTY() {
@@ -126,7 +128,6 @@ func (m *Model) syncTTY() {
 		return
 	}
 	m.spin = spinner.New(spinner.WithSpinner(animation))
-	m.spin, _ = m.spin.Update(m.spin.Tick())
 }
 
 func (m *Model) emoji() bool {
@@ -139,10 +140,7 @@ func (m *Model) editing() bool {
 
 func (m *Model) data() tree.Data {
 	return tree.Data{
-		Subs:      m.snapshot.Subscriptions,
-		Nodes:     m.snapshot.Nodes,
 		Collapsed: m.snapshot.Collapsed,
-		Query:     m.filter.Value(),
 		Status:    m.snapshot.Status,
 		Live:      m.live,
 		Emoji:     m.emoji(),
@@ -163,7 +161,7 @@ func (m *Model) height() int { return max(m.h-topLines-footerLines, 1) }
 func (m *Model) hasBody() bool { return m.h > topLines+footerLines }
 
 func (m *Model) refilter() {
-	m.list = m.data().List()
+	m.list = m.data().List(m.groups, m.filter.Value())
 	m.cursor, m.scroll = m.list.Clamp(m.cursor, m.scroll, m.height())
 }
 

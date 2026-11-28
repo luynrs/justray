@@ -15,12 +15,12 @@ func (m *Model) activate(r tree.Row) tea.Cmd {
 	if r.Kind == tree.Header {
 		return action(false, nil, func() error { return m.client.SetCollapsed(m.watch, r.Sub.SubscriptionID, nil) })
 	}
-	if m.busy {
+	if m.connecting {
 		return nil
 	}
 	m.err = ""
 
-	m.busy = true
+	m.connecting = true
 	act := func() error { return m.client.Disconnect(m.watch) }
 	if !m.connected() || m.snapshot.Status.NodeRef != r.Node.Ref() {
 		ref := r.Node.Ref()
@@ -81,13 +81,13 @@ func (m *Model) reorder(dir int) tea.Cmd {
 }
 
 func (m *Model) setTun(enable bool) tea.Cmd {
-	if m.busy {
+	if m.connecting {
 		return nil
 	}
 	m.err = ""
-	m.busy = m.connected()
+	m.connecting = m.connected()
 	selected := m.snapshot.Selected
-	return action(m.busy, m.start, func() error {
+	return action(m.connecting, m.start, func() error {
 		return m.await(m.client.SetTun(m.watch, enable), selected, enable)
 	})
 }

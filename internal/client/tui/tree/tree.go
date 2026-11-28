@@ -28,10 +28,7 @@ func (r Row) Removable() bool {
 }
 
 type Data struct {
-	Subs      []ipc.Subscription
-	Nodes     []ipc.Node
 	Collapsed []string
-	Query     string
 	Status    ipc.Status
 	Live      bool
 	Emoji     bool
@@ -44,26 +41,25 @@ func (d Data) active(n ipc.Node) bool {
 }
 
 type Group struct {
-	Sub   ipc.Subscription
-	Nodes []*ipc.Node
+	Sub    *ipc.Subscription
+	Nodes  []*ipc.Node
+	search []string
 }
 
-func (d Data) Groups() []Group {
-	index := d.bySub()
-	groups := make([]Group, 0, len(d.Subs))
-	for _, sub := range d.Subs {
-		groups = append(groups, Group{Sub: sub, Nodes: index[sub.SubscriptionID]})
+func Groups(subs []ipc.Subscription, nodes []ipc.Node) []Group {
+	if len(subs) == 0 {
+		return nil
 	}
-	return groups
-}
-
-func (d Data) bySub() map[string][]*ipc.Node {
-	index := make(map[string][]*ipc.Node, len(d.Subs))
-	for i := range d.Nodes {
-		node := &d.Nodes[i]
+	index := make(map[string][]*ipc.Node, len(subs))
+	for i := range nodes {
+		node := &nodes[i]
 		index[node.SubscriptionID] = append(index[node.SubscriptionID], node)
 	}
-	return index
+	groups := make([]Group, len(subs))
+	for i := range subs {
+		groups[i] = Group{Sub: &subs[i], Nodes: index[subs[i].SubscriptionID]}
+	}
+	return groups
 }
 
 type List struct {
@@ -71,20 +67,19 @@ type List struct {
 	Selectable []int
 }
 
-func (d Data) List() List {
-	if len(d.Subs) == 0 {
-		return List{}
-	}
-	query := strings.ToLower(strings.TrimSpace(d.Query))
-	nodes := d.bySub()
-	capacity := len(d.Subs)
+func (d Data) List(groups []Group, query string) List {
+	query = strings.ToLower(strings.TrimSpace(query))
+	capacity := len(groups)
 	if query == "" && len(d.Collapsed) == 0 {
-		capacity += len(d.Nodes)
+		for i := range groups {
+			capacity += len(groups[i].Nodes)
+		}
 	}
-	rows := make([]Row, 0, capacity+2*len(d.Subs))
+	rows := make([]Row, 0, capacity+2*len(groups))
 	selectable := make([]int, 0, capacity)
-	for i := range d.Subs {
-		sub := &d.Subs[i]
+	for i := range groups {
+		group := &groups[i]
+		sub := group.Sub
 		start, first := len(rows), len(selectable)
 		if len(rows) > 0 {
 			rows = append(rows, Row{Kind: Gap})
@@ -97,8 +92,14 @@ func (d Data) List() List {
 		}
 		filtered := query != "" && !strings.Contains(strings.ToLower(sub.Name), query)
 		collapsed := query == "" && slices.Contains(d.Collapsed, sub.SubscriptionID)
-		for _, node := range nodes[sub.SubscriptionID] {
-			if filtered && !strings.Contains(strings.ToLower(node.Name+" "+node.Protocol+" "+node.Server), query) {
+		if filtered && group.search == nil {
+			group.search = make([]string, len(group.Nodes))
+			for j, node := range group.Nodes {
+				group.search[j] = strings.ToLower(node.Name + " " + node.Protocol + " " + node.Server)
+			}
+		}
+		for j, node := range group.Nodes {
+			if filtered && !strings.Contains(group.search[j], query) {
 				continue
 			}
 			if !collapsed || d.active(*node) {

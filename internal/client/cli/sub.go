@@ -194,7 +194,7 @@ func (a *app) list(cmd *cobra.Command, args []string) error {
 			Warning string          `json:"warning,omitempty"`
 			Nodes   []nodeOut       `json:"nodes"`
 		}
-		groups := (tree.Data{Subs: subs, Nodes: snapshot.Nodes}).Groups()
+		groups := tree.Groups(subs, snapshot.Nodes)
 		result := make([]subOut, len(groups))
 		for i, g := range groups {
 			nodes := make([]nodeOut, len(g.Nodes))
@@ -226,7 +226,7 @@ func init() {
 }
 
 func (a *app) tree(subs []ipc.Subscription, nodes []ipc.Node) {
-	groups := (tree.Data{Subs: subs, Nodes: nodes}).Groups()
+	groups := tree.Groups(subs, nodes)
 	for i, g := range groups {
 		if i > 0 {
 			out("")
