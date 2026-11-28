@@ -28,13 +28,13 @@ type Model struct {
 	client *ipc.Client
 
 	snapshot ipc.Snapshot
+	snapBusy bool
 	list     tree.List
 
-	spin          spinner.Model
-	spinnerActive bool
-	cursor        int
-	scroll        int
-	navigation    navigation.Keys
+	spin       spinner.Model
+	cursor     int
+	scroll     int
+	navigation navigation.Keys
 
 	editor       textarea.Model
 	deleteTarget tree.Row
@@ -75,16 +75,14 @@ func New(c *ipc.Client, start func(context.Context) error) *Model {
 	filter.CharLimit = 128
 	filter.SetStyles(style.Input)
 	m := &Model{
-		client:        c,
-		spin:          spinner.New(),
-		spinnerActive: true,
-		editor:        editor,
-		filter:        filter,
-		help:          viewport.New(),
-		updates:       make(chan pushed),
-		dimmedColors:  make(map[color.Color]color.Color),
-		watch:         watch,
-		stop:          stop,
+		client:       c,
+		editor:       editor,
+		filter:       filter,
+		help:         viewport.New(),
+		updates:      make(chan pushed),
+		dimmedColors: make(map[color.Color]color.Color),
+		watch:        watch,
+		stop:         stop,
 	}
 	m.help.SoftWrap = true
 	if start != nil {
@@ -97,30 +95,22 @@ func New(c *ipc.Client, start func(context.Context) error) *Model {
 }
 
 func (m *Model) Init() tea.Cmd {
-	cmds := []tea.Cmd{next(m.watch, m.updates), tickCmd(), m.spin.Tick}
-	if m.startup != nil {
-		cmds = append(cmds, m.startup)
-	} else {
-		cmds = append(cmds, watch(m.watch, m.client, m.updates))
+	start := m.startup
+	if start == nil {
+		start = watch(m.watch, m.client, m.updates)
 	}
-	return tea.Batch(cmds...)
+	var spin tea.Cmd
+	if m.needsSpinner() {
+		spin = m.spin.Tick
+	}
+	return tea.Batch(next(m.watch, m.updates), tickCmd(), start, spin)
 }
 
 func (m *Model) needsSpinner() bool {
-	return m.busy || m.snapshot.Status.Busy || m.startup != nil ||
-		slices.ContainsFunc(m.snapshot.Nodes, func(node ipc.Node) bool { return node.Probing }) ||
-		slices.ContainsFunc(m.snapshot.Subscriptions, func(subscription ipc.Subscription) bool { return subscription.Refreshing })
+	return m.busy || m.startup != nil || m.live && m.snapBusy
 }
 
-func (m *Model) startSpinner() tea.Cmd {
-	if m.spinnerActive || !m.needsSpinner() {
-		return nil
-	}
-	m.spinnerActive = true
-	return m.spin.Tick
-}
-
-func (m *Model) syncTTY() tea.Cmd {
+func (m *Model) syncTTY() {
 	force := m.snapshot.Settings.ForceTTY
 	if m.dialog != nil {
 		force = m.dialog.Current().ForceTTY
@@ -133,13 +123,10 @@ func (m *Model) syncTTY() tea.Cmd {
 	}
 	animation := style.Spinner()
 	if slices.Equal(m.spin.Spinner.Frames, animation.Frames) {
-		return nil
+		return
 	}
 	m.spin = spinner.New(spinner.WithSpinner(animation))
-	if m.spinnerActive {
-		return m.spin.Tick
-	}
-	return nil
+	m.spin, _ = m.spin.Update(m.spin.Tick())
 }
 
 func (m *Model) emoji() bool {

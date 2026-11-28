@@ -3,13 +3,28 @@ package tui
 import (
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/luynrs/justray/internal/client/tui/style"
 )
 
-func (m Model) shortcuts(width int) string {
+func (m *Model) openHelp(msg tea.Msg) bool {
+	switch msg := msg.(type) {
+	case tea.KeyPressMsg:
+		return msg.String() == "?"
+	case tea.MouseClickMsg:
+		if msg.Button != tea.MouseLeft || !m.hasBody() || msg.Y != m.h-2 || msg.X >= m.w {
+			return false
+		}
+		hint := m.helpHint()
+		return msg.X >= m.w-lipgloss.Width(hint) && strings.HasSuffix(m.footerHint(), hint)
+	}
+	return false
+}
+
+func shortcuts(width int) string {
 	keys := [][2]string{
 		{style.Move(), "Move"}, {style.Fold(), "Fold"}, {style.Enter(), "Toggle"}, {"m", "Proxy / TUN"},
 		{"a/d", "Add / Delete"}, {"t/T", "Ping one/all"}, {"r/R", "Refresh one/all"},

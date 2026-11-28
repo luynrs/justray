@@ -23,38 +23,37 @@ const (
 	modalDelete
 )
 
-type modalLayout struct {
-	bounds image.Rectangle
-	body   image.Rectangle
-}
-
-func (m *Model) layout() modalLayout {
+func (m *Model) layout() (bounds, body image.Rectangle) {
 	width, height := min(max(m.w-4, 1), 60), min(max(m.h, 1), 9)
 	if m.w < 28 {
 		width = max(m.w, 1)
 	}
 	if m.activeModal == modalHelp {
-		height = min(max(m.h-2, 1), lipgloss.Height(m.shortcuts(max(width-6, 1)))+4)
+		height = min(max(m.h-2, 1), lipgloss.Height(shortcuts(max(width-6, 1)))+4)
 	}
 	left, top := max((m.w-width)/2, 0), max((m.h-height)/2, 0)
-	layout := modalLayout{bounds: image.Rect(left, top, left+width, top+height)}
-	if width < 4 || height < 3 {
-		layout.body = layout.bounds
-		return layout
+	bounds = image.Rect(left, top, left+width, top+height)
+	body = bounds
+	if width >= 4 && height >= 3 {
+		paddingX, paddingY := min(2, (width-3)/2), min(1, (height-3)/2)
+		body = image.Rect(left+1+paddingX, top+1+paddingY, left+width-1-paddingX, top+height-1-paddingY)
 	}
-	paddingX, paddingY := min(2, (width-3)/2), min(1, (height-3)/2)
-	layout.body = image.Rect(left+1+paddingX, top+1+paddingY, left+width-1-paddingX, top+height-1-paddingY)
-	return layout
+	return bounds, body
 }
 
 func (m *Model) resizeModal() {
-	layout := m.layout()
-	m.editor.SetWidth(layout.body.Dx())
-	m.editor.SetHeight(layout.body.Dy())
-	m.help.SetWidth(layout.body.Dx())
-	m.help.SetHeight(layout.body.Dy())
-	if m.activeModal == modalHelp {
-		m.help.SetContent(m.shortcuts(layout.body.Dx()))
+	if m.activeModal == modalNone {
+		return
+	}
+	_, body := m.layout()
+	switch m.activeModal {
+	case modalAdd:
+		m.editor.SetWidth(body.Dx())
+		m.editor.SetHeight(body.Dy())
+	case modalHelp:
+		m.help.SetWidth(body.Dx())
+		m.help.SetHeight(body.Dy())
+		m.help.SetContent(shortcuts(body.Dx()))
 	}
 }
 
@@ -68,12 +67,12 @@ func (m *Model) closeModal() {
 func (m *Model) updateModal(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
-		if msg.String() == "esc" || (msg.String() == "?" && m.activeModal == modalHelp) {
+		key := msg.String()
+		if key == "esc" || (key == "?" && m.activeModal == modalHelp) {
 			m.closeModal()
 			return nil
 		}
 		if m.activeModal == modalHelp {
-			key := msg.String()
 			if len(key) == 1 && key[0] >= '0' && key[0] <= '9' {
 				m.navigation.Reset()
 				return nil
@@ -90,7 +89,7 @@ func (m *Model) updateModal(msg tea.Msg) tea.Cmd {
 				return nil
 			}
 		}
-		if msg.String() == "enter" && m.activeModal == modalAdd {
+		if key == "enter" && m.activeModal == modalAdd {
 			url := strings.TrimSpace(m.editor.Value())
 			m.closeModal()
 			if url == "" {
@@ -101,7 +100,7 @@ func (m *Model) updateModal(msg tea.Msg) tea.Cmd {
 				return err
 			})
 		}
-		if msg.String() == "enter" && m.activeModal == modalDelete {
+		if key == "enter" && m.activeModal == modalDelete {
 			target := m.deleteTarget
 			m.closeModal()
 			return action(false, m.start, func() error {
@@ -113,9 +112,9 @@ func (m *Model) updateModal(msg tea.Msg) tea.Cmd {
 		}
 	case tea.MouseMsg:
 		m.navigation.Reset()
-		layout := m.layout()
+		_, body := m.layout()
 		mouse := msg.Mouse()
-		if m.activeModal != modalHelp || !image.Pt(mouse.X, mouse.Y).In(layout.body) {
+		if m.activeModal != modalHelp || !image.Pt(mouse.X, mouse.Y).In(body) {
 			return nil
 		}
 	}
@@ -130,7 +129,7 @@ func (m *Model) updateModal(msg tea.Msg) tea.Cmd {
 }
 
 func (m *Model) modal(background string) string {
-	layout := m.layout()
+	bounds, body := m.layout()
 	var title, content string
 	switch m.activeModal {
 	case modalAdd:
@@ -152,22 +151,22 @@ func (m *Model) modal(background string) string {
 			name = m.deleteTarget.Node.Name
 		}
 		const question = "Do you really want to delete "
-		warning := ansi.Hardwrap("This action can't be undone.", layout.body.Dx(), true)
-		questionLines := max(layout.body.Dy()-lipgloss.Height(warning), 1)
-		name = ansi.Truncate(style.Sanitize(name, m.emoji()), max(layout.body.Dx()*questionLines-len(question)-1, 0), "...")
-		content = ansi.Hardwrap(question+style.Bold.Render(name)+"?", layout.body.Dx(), true) + "\n" + warning
+		warning := ansi.Hardwrap("This action can't be undone.", body.Dx(), true)
+		questionLines := max(body.Dy()-lipgloss.Height(warning), 1)
+		name = ansi.Truncate(style.Sanitize(name, m.emoji()), max(body.Dx()*questionLines-len(question)-1, 0), "...")
+		content = ansi.Hardwrap(question+style.Bold.Render(name)+"?", body.Dx(), true) + "\n" + warning
 	}
-	width, height := layout.bounds.Dx(), layout.bounds.Dy()
+	width, height := bounds.Dx(), bounds.Dy()
 	if width < 4 || height < 3 {
 		return style.Fit(style.Clip(content, width), height)
 	}
-	content = style.Fit(style.Clip(content, layout.body.Dx()), layout.body.Dy())
+	content = style.Fit(style.Clip(content, body.Dx()), body.Dy())
 	border := lipgloss.RoundedBorder()
 	if style.TTY {
 		border = lipgloss.ASCIIBorder()
 	}
 	window := lipgloss.NewStyle().Border(border).BorderForeground(style.Blue.GetForeground()).
-		Padding(layout.body.Min.Y-layout.bounds.Min.Y-1, layout.body.Min.X-layout.bounds.Min.X-1).
+		Padding(body.Min.Y-bounds.Min.Y-1, body.Min.X-bounds.Min.X-1).
 		Width(width).Height(height).Render(content)
 	frame := strings.Split(window, "\n")
 	titlePadding := min(2, width-4)
@@ -196,6 +195,6 @@ func (m *Model) modal(background string) string {
 			}
 		}
 	}
-	lipgloss.NewLayer(strings.Join(frame, "\n")).Draw(canvas, layout.bounds)
+	lipgloss.NewLayer(strings.Join(frame, "\n")).Draw(canvas, bounds)
 	return canvas.Render()
 }

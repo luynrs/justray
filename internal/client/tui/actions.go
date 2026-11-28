@@ -21,13 +21,12 @@ func (m *Model) activate(r tree.Row) tea.Cmd {
 	m.err = ""
 
 	m.busy = true
-	spinnerCommand := m.startSpinner()
 	act := func() error { return m.client.Disconnect(m.watch) }
 	if !m.connected() || m.snapshot.Status.NodeRef != r.Node.Ref() {
 		ref := r.Node.Ref()
 		act = func() error { return m.await(m.client.Connect(m.watch, ref, nil), ref, true) }
 	}
-	return tea.Batch(spinnerCommand, action(true, m.start, act))
+	return action(true, m.start, act)
 }
 
 func (m *Model) fold(collapsed bool) tea.Cmd {
@@ -87,11 +86,10 @@ func (m *Model) setTun(enable bool) tea.Cmd {
 	}
 	m.err = ""
 	m.busy = m.connected()
-	spinnerCommand := m.startSpinner()
 	selected := m.snapshot.Selected
-	return tea.Batch(spinnerCommand, action(m.busy, m.start, func() error {
+	return action(m.busy, m.start, func() error {
 		return m.await(m.client.SetTun(m.watch, enable), selected, enable)
-	}))
+	})
 }
 
 func (m *Model) await(err error, ref domain.NodeRef, tun bool) error {

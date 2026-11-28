@@ -21,6 +21,8 @@ import (
 )
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	spinning, spinID := m.needsSpinner(), m.spin.ID()
+	var cmd tea.Cmd
 	switch msg := msg.(type) {
 	case tea.ColorProfileMsg:
 		clear(m.dimmedColors)
@@ -31,11 +33,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for index := range 16 {
 			query = fmt.Appendf(query, "\x1b]4;%d;?\x1b\\", index)
 		}
-		return m, tea.Batch(tea.Raw(string(query)), tea.RequestForegroundColor)
+		cmd = tea.Batch(tea.Raw(string(query)), tea.RequestForegroundColor)
 
 	case tea.ForegroundColorMsg:
 		m.dimmedColors[nil] = lipgloss.Darken(msg.Color, 0.35)
-		return m, nil
 
 	case uv.UnknownOscEvent:
 		var index uint
@@ -45,7 +46,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.dimmedColors[ansi.BasicColor(index)] = lipgloss.Darken(parsed, 0.35)
 			}
 		}
-		return m, nil
 
 	case tea.WindowSizeMsg:
 		follow := m.visible()
@@ -60,78 +60,71 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.cursor, m.scroll = m.list.Clamp(m.cursor, m.scroll, m.height())
 		}
-		return m, nil
 
 	case tick:
 		if m.err != "" && !m.filter.Focused() && time.Since(m.errAt) > 10*time.Second {
 			m.err = ""
 		}
-		return m, tickCmd()
+		cmd = tickCmd()
 
 	case spinner.TickMsg:
-		if !m.needsSpinner() {
-			m.spinnerActive = false
+		if !spinning || msg.ID > 0 && msg.ID != spinID {
 			return m, nil
 		}
-		var cmd tea.Cmd
 		m.spin, cmd = m.spin.Update(msg)
-		return m, cmd
 
 	case completed:
 		if msg.connection {
 			m.busy = false
 		}
-		if message := style.ErrorText(msg.err); message != "" {
-			m.err, m.errAt = message, time.Now()
-		}
-		return m, nil
+		m.setErr(style.ErrorText(msg.err))
 
 	case settingsSaved:
 		m.saving = false
 		if msg.err == nil {
 			m.dialog = nil
-		} else if message := style.ErrorText(msg.err); message != "" {
-			m.err, m.errAt = message, time.Now()
 		}
-		return m, m.syncTTY()
+		m.setErr(style.ErrorText(msg.err))
+		m.syncTTY()
 
 	case started:
 		if m.startup != nil {
 			m.startup = nil
-			if msg.err != nil {
-				if message := style.ErrorText(msg.err); message != "" && m.watch.Err() == nil {
-					m.err, m.errAt = message, time.Now()
-				}
-				return m, nil
+			if m.watch.Err() == nil {
+				m.setErr(style.ErrorText(msg.err))
+				cmd = watch(m.watch, m.client, m.updates)
 			}
-			return m, watch(m.watch, m.client, m.updates)
 		}
-		return m, nil
 
 	case tea.FocusMsg:
 		m.focused = time.Now()
-		return m, nil
 
 	case pushed:
-		return m.updateSnapshot(msg)
+		cmd = m.updateSnapshot(msg)
+
+	default:
+		cmd = m.updateInput(msg)
 	}
+	if (!spinning || m.spin.ID() != spinID) && m.needsSpinner() {
+		cmd = tea.Batch(cmd, m.spin.Tick)
+	}
+	return m, cmd
+}
+
+func (m *Model) updateInput(msg tea.Msg) tea.Cmd {
 	if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "ctrl+c" {
-		return m, m.quit()
+		return m.quit()
 	}
 	if m.saving {
-		return m, nil
+		return nil
 	}
 	if _, ok := msg.(tea.MouseClickMsg); ok && time.Since(m.focused) < ipc.Retry {
-		return m, nil
+		return nil
 	}
-	showHelp := false
-	switch msg := msg.(type) {
-	case tea.KeyPressMsg:
-		showHelp = m.activeModal == modalNone && msg.String() == "?" && !m.editing()
-	case tea.MouseClickMsg:
-		showHelp = m.activeModal == modalNone && !m.editing() && msg.Button == tea.MouseLeft && m.h >= topLines+footerLines+1 && msg.Y == m.h-2 && msg.X >= m.w-lipgloss.Width(m.helpHint()) && msg.X < m.w && strings.HasSuffix(m.footerHint(), m.helpHint())
+	if m.activeModal != modalNone {
+		return m.updateModal(msg)
 	}
-	if showHelp {
+	if !m.editing() && m.openHelp(msg) {
 		m.navigation.Reset()
 		if m.dialog != nil {
 			m.dialog.CancelNavigation()
@@ -139,63 +132,56 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.activeModal = modalHelp
 		m.resizeModal()
 		m.help.GotoTop()
-		return m, nil
-	}
-	if m.activeModal != modalNone {
-		return m, m.updateModal(msg)
+		return nil
 	}
 	if m.dialog != nil {
-		if mouse, ok := msg.(tea.MouseMsg); ok && !m.hasBody() {
-			if _, wheel := msg.(tea.MouseWheelMsg); wheel || mouse.Mouse().Y != 0 {
-				m.dialog.CancelNavigation()
-				return m, nil
-			}
-		}
-		closed, cmd := m.dialog.Update(msg)
-		if closed {
-			return m, m.closeSettings()
-		}
-		spinnerCommand := m.syncTTY()
-		return m, tea.Batch(cmd, spinnerCommand)
+		return m.updateSettings(msg)
 	}
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
-		return m, m.key(msg)
+		return m.key(msg)
 	case tea.MouseMsg:
-		return m, m.mouse(msg)
+		return m.mouse(msg)
 	default:
 		if m.filter.Focused() {
-			return m, m.updateFilter(msg)
+			return m.updateFilter(msg)
 		}
 	}
-	return m, nil
+	return nil
 }
 
-func (m *Model) updateSnapshot(message pushed) (tea.Model, tea.Cmd) {
+func (m *Model) setErr(text string) {
+	if text != "" {
+		m.err, m.errAt = text, time.Now()
+	}
+}
+
+func (m *Model) updateSnapshot(message pushed) tea.Cmd {
+	if !message.live {
+		if m.startup == nil && !m.busy {
+			m.setErr(style.ErrorText(message.err))
+		}
+		if !m.live {
+			return next(m.watch, m.updates)
+		}
+	}
 	initial := m.snapshot.Settings.Port == 0
 	selected, selectedOK := m.list.At(m.cursor)
 	follow := m.visible()
-	var spinnerCommand tea.Cmd
+	m.live = message.live
 	if message.live {
 		if !initial {
-			for _, subscription := range message.snapshot.Subscriptions {
-				if subscription.Warning != "" && !slices.ContainsFunc(m.snapshot.Subscriptions, func(previous ipc.Subscription) bool {
-					return previous.SubscriptionID == subscription.SubscriptionID && previous.Warning == subscription.Warning && previous.UpdatedAt.Equal(subscription.UpdatedAt)
-				}) {
-					warnLine, _, _ := strings.Cut(subscription.Warning, "\n")
-					m.err, m.errAt = "Warning: "+warnLine, time.Now()
-				}
-			}
+			m.setErr(subWarning(m.snapshot.Subscriptions, message.snapshot.Subscriptions))
 		}
-		if message.snapshot.Status.Error != "" && message.snapshot.Status.Error != m.snapshot.Status.Error {
-			m.err, m.errAt = message.snapshot.Status.Error, time.Now()
+		if message.snapshot.Status.Error != m.snapshot.Status.Error {
+			m.setErr(message.snapshot.Status.Error)
 		}
 		m.snapshot = message.snapshot
-		spinnerCommand = tea.Batch(m.syncTTY(), m.startSpinner())
-	} else if errorText := style.ErrorText(message.err); errorText != "" && m.startup == nil && !m.busy {
-		m.err, m.errAt = errorText, time.Now()
+		m.snapBusy = m.snapshot.Status.Busy ||
+			slices.ContainsFunc(m.snapshot.Subscriptions, func(sub ipc.Subscription) bool { return sub.Refreshing }) ||
+			slices.ContainsFunc(m.snapshot.Nodes, func(node ipc.Node) bool { return node.Probing })
+		m.syncTTY()
 	}
-	m.live = message.live
 	m.list = m.data().List()
 	switch {
 	case initial && m.snapshot.Status.Connected:
@@ -208,10 +194,13 @@ func (m *Model) updateSnapshot(message pushed) (tea.Model, tea.Cmd) {
 	case selectedOK:
 		for index, rowIndex := range m.list.Selectable {
 			row := m.list.Rows[rowIndex]
-			if selected.Kind == tree.Node && row.Kind == tree.Header && row.Sub.SubscriptionID == selected.Sub.SubscriptionID {
+			if row.Sub.SubscriptionID != selected.Sub.SubscriptionID {
+				continue
+			}
+			if row.Kind == tree.Header {
 				m.cursor = index
 			}
-			if row.Kind == selected.Kind && row.Sub.SubscriptionID == selected.Sub.SubscriptionID && (row.Kind != tree.Node || row.Node.Ref() == selected.Node.Ref()) {
+			if row.Kind == selected.Kind && (row.Kind == tree.Header || row.Node.Ref() == selected.Node.Ref()) {
 				m.cursor = index
 				break
 			}
@@ -222,26 +211,44 @@ func (m *Model) updateSnapshot(message pushed) (tea.Model, tea.Cmd) {
 	} else {
 		m.cursor, m.scroll = m.list.Clamp(m.cursor, m.scroll, m.height())
 	}
-	return m, tea.Batch(next(m.watch, m.updates), spinnerCommand)
+	return next(m.watch, m.updates)
+}
+
+func subWarning(previous, current []ipc.Subscription) string {
+	var old map[string]*ipc.Subscription
+	for _, sub := range slices.Backward(current) {
+		if sub.Warning == "" {
+			continue
+		}
+		if old == nil {
+			old = make(map[string]*ipc.Subscription, len(previous))
+			for i := range previous {
+				old[previous[i].SubscriptionID] = &previous[i]
+			}
+		}
+		if prev := old[sub.SubscriptionID]; prev == nil || prev.Warning != sub.Warning || !prev.UpdatedAt.Equal(sub.UpdatedAt) {
+			line, _, _ := strings.Cut(sub.Warning, "\n")
+			return "Warning: " + line
+		}
+	}
+	return ""
 }
 
 func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 	k := msg.String()
-
+	if k == "esc" && m.filter.Value() != "" {
+		m.filter.SetValue("")
+		m.refilter()
+	}
 	if m.filter.Focused() {
-		switch k {
-		case "esc", "enter":
-			if k == "esc" {
-				m.filter.SetValue("")
-			}
-			m.filter.Blur()
-			if m.err != "" {
-				m.errAt = time.Now()
-			}
-			m.refilter()
-			return nil
+		if k != "esc" && k != "enter" {
+			return m.updateFilter(msg)
 		}
-		return m.updateFilter(msg)
+		m.filter.Blur()
+		if m.err != "" {
+			m.errAt = time.Now()
+		}
+		return nil
 	}
 	if motion, handled := m.navigation.Read(k); handled {
 		return m.navigate(motion)
@@ -276,7 +283,8 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 		m.dialog = settings.New(m.snapshot.Settings, topLines, m.w, m.height())
-		return m.syncTTY()
+		m.syncTTY()
+		return nil
 	case "/":
 		m.filter.CursorEnd()
 		return m.filter.Focus()
@@ -288,11 +296,6 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 		}
 	case "q":
 		return m.quit()
-	case "esc":
-		if m.filter.Value() != "" {
-			m.filter.SetValue("")
-			m.refilter()
-		}
 	}
 	return nil
 }
@@ -380,6 +383,21 @@ func (m *Model) mouse(msg tea.MouseMsg) tea.Cmd {
 	return nil
 }
 
+func (m *Model) updateSettings(msg tea.Msg) tea.Cmd {
+	if mouse, ok := msg.(tea.MouseMsg); ok && !m.hasBody() {
+		if _, wheel := msg.(tea.MouseWheelMsg); wheel || mouse.Mouse().Y != 0 {
+			m.dialog.CancelNavigation()
+			return nil
+		}
+	}
+	closed, cmd := m.dialog.Update(msg)
+	if closed {
+		return m.closeSettings()
+	}
+	m.syncTTY()
+	return cmd
+}
+
 // closeSettings saves on the way out
 func (m *Model) closeSettings() tea.Cmd {
 	next, previous, err := m.dialog.Result()
@@ -388,13 +406,15 @@ func (m *Model) closeSettings() tea.Cmd {
 		return nil
 	case next.Equal(previous):
 		m.dialog = nil
-		return m.syncTTY()
+		m.syncTTY()
+		return nil
 	}
 	m.saving = true
 	m.err = ""
-	return tea.Batch(m.syncTTY(), func() tea.Msg {
+	m.syncTTY()
+	return func() tea.Msg {
 		return settingsSaved{err: request(m.start, func() error {
 			return m.client.SetSettings(m.watch, previous, next)
 		})}
-	})
+	}
 }
