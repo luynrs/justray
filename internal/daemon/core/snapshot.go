@@ -5,6 +5,7 @@ import (
 
 	"github.com/luynrs/justray/internal/daemon/store"
 	"github.com/luynrs/justray/internal/domain"
+	"github.com/luynrs/justray/internal/engine"
 	"github.com/luynrs/justray/internal/ipc"
 )
 
@@ -16,9 +17,9 @@ func (c *Core) Watch() (ipc.Snapshot, <-chan ipc.Snapshot, func()) {
 	ch := make(chan ipc.Snapshot, 1)
 	c.stMu.Lock()
 	c.watchers[ch] = struct{}{}
-	initial := c.Snapshot()
+	initial := c.snapshot.Load()
 	c.stMu.Unlock()
-	return initial, ch, func() {
+	return clone(*initial), ch, func() {
 		c.stMu.Lock()
 		delete(c.watchers, ch)
 		c.stMu.Unlock()
@@ -38,8 +39,10 @@ func (c *Core) publishLocked() {
 		state = c.changing.state
 	}
 	subs := make([]ipc.Subscription, len(state.Subscriptions))
+	count := 0
 	for i, sub := range state.Subscriptions {
 		subs[i] = subView(sub, c.refreshes[sub.ID] != nil)
+		count += len(sub.Nodes)
 	}
 	selected := state.Active
 	if selected.NodeID == "" {
@@ -48,7 +51,7 @@ func (c *Core) publishLocked() {
 	snapshot := &ipc.Snapshot{
 		Settings:      state.Settings.Clone(),
 		Subscriptions: subs,
-		Nodes:         c.nodes(state.Subscriptions),
+		Nodes:         c.nodes(state.Subscriptions, count),
 		Status:        c.status(state),
 		Selected:      selected,
 		Collapsed:     slices.Clone(c.state.Collapsed),
@@ -56,15 +59,25 @@ func (c *Core) publishLocked() {
 	c.snapshot.Store(snapshot)
 	for ch := range c.watchers {
 		select {
-		case ch <- *snapshot:
+		case <-ch:
 		default:
-			select {
-			case <-ch:
-			default:
-			}
-			ch <- *snapshot
+		}
+		ch <- *snapshot
+	}
+}
+
+func (c *Core) pruneProbes() {
+	if len(c.probes) == 0 {
+		return
+	}
+	keep := make(map[domain.NodeRef]engine.Result, len(c.probes))
+	for _, node := range c.snapshot.Load().Nodes {
+		if node.Probed {
+			ref := node.Ref()
+			keep[ref] = c.probes[ref]
 		}
 	}
+	c.probes = keep
 }
 
 func (c *Core) status(state store.State) ipc.Status {
@@ -80,14 +93,11 @@ func (c *Core) status(state store.State) ipc.Status {
 	return status
 }
 
-// Caller holds stMu.
-func (c *Core) nodes(subscriptions []store.Subscription) []ipc.Node {
-	live := map[domain.NodeRef]bool{}
-	out := []ipc.Node{}
+func (c *Core) nodes(subscriptions []store.Subscription, count int) []ipc.Node {
+	out := make([]ipc.Node, 0, count)
 	for _, subscription := range subscriptions {
 		for _, node := range subscription.Nodes {
 			ref := domain.NodeRef{SubscriptionID: subscription.ID, NodeID: node.ID}
-			live[ref] = true
 			item := ipc.Node{
 				NodeID:         node.ID,
 				Name:           node.Name,
@@ -103,13 +113,6 @@ func (c *Core) nodes(subscriptions []store.Subscription) []ipc.Node {
 				item.Failure, item.Error = result.Failure, result.Error
 			}
 			out = append(out, item)
-		}
-	}
-	if c.changing == nil {
-		for ref := range c.probes {
-			if !live[ref] {
-				delete(c.probes, ref)
-			}
 		}
 	}
 	return out

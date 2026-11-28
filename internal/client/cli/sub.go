@@ -226,8 +226,12 @@ func init() {
 }
 
 func (a *app) tree(subs []ipc.Subscription, nodes []ipc.Node) {
-	groups := tree.Groups(subs, nodes)
-	for i, g := range groups {
+	branch, last := "  ", "  "
+	if !style.TTY {
+		branch, last = style.Gray.Render("├─")+" ", style.Gray.Render("└─")+" "
+	}
+	var rows []struct{ name, info string }
+	for i, g := range tree.Groups(subs, nodes) {
 		if i > 0 {
 			out("")
 		}
@@ -241,37 +245,33 @@ func (a *app) tree(subs []ipc.Subscription, nodes []ipc.Node) {
 			}
 		}
 
+		rows = rows[:0]
 		nameW, infoW := 0, 0
 		for _, n := range g.Nodes {
-			nameW = max(nameW, lipgloss.Width(a.name(n.Name, "")))
-			infoW = max(infoW, lipgloss.Width(a.info(*n)))
+			name := a.clean(n.Name)
+			info := domain.ServerAddress(a.clean(n.Server), n.Port) + " " + style.Sep() + " " + n.Protocol
+			rows = append(rows, struct{ name, info string }{name, info})
+			nameW = max(nameW, lipgloss.Width(name))
+			infoW = max(infoW, lipgloss.Width(info))
 		}
 		for j, n := range g.Nodes {
-			branch := style.Branch(j == len(g.Nodes)-1)
-			out(a.line(*n, branch, nameW, infoW))
+			name := style.Pad(rows[j].name, nameW)
+			info := style.Gray.Render(style.Pad(rows[j].info, infoW))
+			id := style.Gray.Render(style.Pad(shortID(n.NodeID), 8))
+			prefix := branch
+			if j == len(g.Nodes)-1 {
+				prefix = last
+			}
+
+			line := prefix + name + "  " + info + "  " + id
+			if n.Probed {
+				color := style.Red
+				if n.Alive {
+					color = style.Green
+				}
+				line += "  " + color.Render(n.Latency())
+			}
+			out(line)
 		}
 	}
-}
-
-func (a *app) line(n ipc.Node, branch string, nameW, infoW int) string {
-	name := style.Pad(a.name(n.Name, ""), nameW)
-	info := style.Gray.Render(style.Pad(a.info(n), infoW))
-	id := style.Gray.Render(style.Pad(shortID(n.NodeID), 8))
-	prefix := "  "
-	if branch != "" {
-		prefix = style.Gray.Render(branch) + " "
-	}
-	line := fmt.Sprintf("%s%s  %s  %s", prefix, name, info, id)
-	if n.Probed {
-		color := style.Red
-		if n.Alive {
-			color = style.Green
-		}
-		line += "  " + color.Render(n.Latency())
-	}
-	return line
-}
-
-func (a *app) info(n ipc.Node) string {
-	return fmt.Sprintf("%s %s %s", domain.ServerAddress(a.clean(n.Server), n.Port), style.Sep(), n.Protocol)
 }

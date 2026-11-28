@@ -103,6 +103,7 @@ func (app *Core) begin(ctx context.Context, wait bool, action func(context.Conte
 		app.stMu.Lock()
 		app.changing = nil
 		app.publishLocked()
+		app.pruneProbes()
 		app.stMu.Unlock()
 		close(call.done)
 		app.opMu.Unlock()

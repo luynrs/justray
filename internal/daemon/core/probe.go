@@ -36,7 +36,9 @@ func (c *Core) Probe(ctx context.Context, sub, id string) error {
 			c.stMu.Unlock()
 			return err
 		}
-		c.probing.cancel()
+		if id == "" {
+			c.probing.cancel()
+		}
 		done := c.probing.done
 		c.stMu.Unlock()
 		select {

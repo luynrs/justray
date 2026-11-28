@@ -122,12 +122,12 @@ func TestProbeProgress(t *testing.T) {
 }
 
 func TestProbePreempt(t *testing.T) {
+	var first sync.Once
 	probe := func(ctx context.Context, node domain.Node, _ domain.Settings) (engine.Result, error) {
 		if node.ID == "0" {
-			<-ctx.Done()
-			return engine.Result{}, ctx.Err()
+			first.Do(func() { <-ctx.Done() })
 		}
-		return engine.Result{Alive: true, Duration: 10}, nil
+		return engine.Result{Alive: true, Duration: 10}, ctx.Err()
 	}
 	app := probeCore(t, 2, probe)
 	_, updates, stop := app.Watch()
@@ -148,16 +148,15 @@ func TestProbePreempt(t *testing.T) {
 		}
 	}
 started:
-	if err := app.Probe(t.Context(), "s", "1"); err != nil {
-		t.Fatalf("probe of node 1 failed: %v", err)
+	if err := app.Probe(t.Context(), "s", ""); err != nil {
+		t.Fatalf("probe failed: %v", err)
 	}
 
 	if err := <-firstDone; !errors.Is(err, context.Canceled) {
 		t.Fatalf("preempted probe returned: %v", err)
 	}
 
-	snapshot := app.Snapshot()
-	if !snapshot.Nodes[1].Probed || !snapshot.Nodes[1].Alive {
-		t.Fatalf("node 1 not probed: %+v", snapshot.Nodes[1])
+	if got := app.Snapshot().Nodes; !got[0].Probed || !got[1].Probed || !got[1].Alive {
+		t.Fatalf("incomplete probe: %+v", got)
 	}
 }
