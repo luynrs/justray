@@ -39,7 +39,7 @@ brew install luynrs/tap/justray
 ```
 
 ```bash
-# Arch Linux (AUR)
+# Arch Linux
 yay -S justray-bin
 ```
 
